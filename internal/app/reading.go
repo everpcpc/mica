@@ -8,8 +8,6 @@ import (
 	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
-	"github.com/egoist/mygo/ui/richtext"
 )
 
 func (a *App) reader(c *ui.Context) {
@@ -68,30 +66,36 @@ func (a *App) emptyReader(c *ui.Context) {
 func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
-	ui.Scroll(c.Key("read-" + thread.ID)).Grow(1).Transition(ui.ElementTransition{
+	ui.Scroll(c.Key("read-" + thread.ID)).Grow(1).Background(t.Surface).Transition(ui.ElementTransition{
 		Enter:    &ui.Motion{Y: 6},
 		Duration: 180 * time.Millisecond,
 	}).Children(func() {
-		ui.Column(c).Padding(24, 28, 32, 28).Gap(20).MaxWidth(780).Children(func() {
-			ui.Column(c).Gap(10).Children(func() {
-				ui.Text(c, thread.Subject).FontSize(23).Bold().LineHeight(1.25)
-				ui.Row(c).Gap(6).Children(func() {
-					for _, id := range thread.LabelIDs {
-						if id == mail.Inbox || id == mail.Sent {
-							ui.Badge(c, a.labelName(id))
+		ui.Row(c).Justify(ui.Center).Children(func() {
+			ui.Column(c).Grow(1).MaxWidth(960).Padding(24, 24, 32, 24).Gap(20).Children(func() {
+				ui.Column(c).Gap(10).Children(func() {
+					ui.Text(c, thread.Subject).FontSize(23).Bold().LineHeight(1.25)
+					ui.Row(c).Gap(6).Children(func() {
+						if containsLabel(thread.LabelIDs, mail.Important) {
+							ui.Icon(c, iconImportant).Size(14, 14).TextColor(t.Warning).Label(locales.Important())
 						}
-					}
-					ui.Text(c, locales.MessageCount(len(thread.Messages))).FontSize(11).TextColor(t.TextMuted)
+						for _, id := range thread.LabelIDs {
+							if id == mail.Inbox || id == mail.Sent {
+								ui.Badge(c, a.labelName(id))
+							}
+						}
+						ui.Text(c, locales.MessageCount(len(thread.Messages))).FontSize(11).TextColor(t.TextMuted)
+					})
 				})
-			})
-			for i, message := range thread.Messages {
-				if i > 0 {
-					ui.Divider(c)
+				for i, message := range thread.Messages {
+					if i > 0 {
+						ui.Divider(c)
+					}
+					a.messageView(c, i, message)
 				}
-				a.messageView(c, i, message)
-			}
-			ui.Row(c).Padding(4, 0, 0, 0).Children(func() {
-				ui.PrimaryButton(c, locales.Reply()).OnClick(a.openReply)
+				ui.Row(c).Gap(10).Children(func() {
+					ui.Button(c, locales.Reply()).OnClick(a.openReply)
+					ui.Button(c, locales.Forward()).OnClick(a.openForward)
+				})
 			})
 		})
 	})
@@ -108,7 +112,12 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Avatar(c, addressName(message.From), nil)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Text(c, addressName(message.From)).Bold().SingleLine()
+				ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, addressName(message.From)).Bold().SingleLine()
+					if containsLabel(message.LabelIDs, mail.Important) {
+						ui.Icon(c, iconImportant).Size(13, 13).TextColor(t.Warning).Label(locales.Important())
+					}
+				})
 				ui.Text(c, addressEmail(message.From)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			})
 			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted)
@@ -116,38 +125,21 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		if message.To != "" {
 			ui.Text(c, locales.SendTo(message.To)).FontSize(11).TextColor(t.TextMuted)
 		}
-		body, rich := a.messageBody(message)
-		if rich {
-			markdown.View(c.Key("html-"+message.ID), body, &a.markdown).FontSize(14).LineHeight(1.55)
-		} else if body != "" {
-			ui.Text(c, body).FontSize(14).LineHeight(1.55).Selectable()
-		} else {
-			ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
-		}
-		for _, attachment := range message.Attachments {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, iconLabel).Size(14, 14).TextColor(t.TextMuted)
-				ui.Text(c, attachment.Name).FontSize(12)
-				ui.Text(c, fmt.Sprintf("%d KB", max(attachment.Size/1024, 1))).FontSize(11).TextColor(t.TextMuted)
-			})
-		}
+		ui.Column(c).Padding(20, 24).Radius(12).Background(t.Background).Children(func() {
+			if message.HTML != "" && a.emailDocument(message).hasContent {
+				a.emailView(c, message)
+			} else if message.Text != "" {
+				ui.Text(c, message.Text).FontSize(14).LineHeight(1.55).Selectable()
+			} else {
+				ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
+			}
+			for _, attachment := range message.Attachments {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, iconLabel).Size(14, 14).TextColor(t.TextMuted)
+					ui.Text(c, attachment.Name).FontSize(12)
+					ui.Text(c, fmt.Sprintf("%d KB", max(attachment.Size/1024, 1))).FontSize(11).TextColor(t.TextMuted)
+				})
+			}
+		})
 	})
-}
-
-func (a *App) messageBody(message mail.Message) (string, bool) {
-	if message.HTML == "" {
-		return message.Text, false
-	}
-	if a.bodies == nil {
-		a.bodies = make(map[string]string)
-	}
-	body, ok := a.bodies[message.ID]
-	if !ok {
-		body = richtext.ParseHTML(prepareMessageHTML(message)).Markdown()
-		a.bodies[message.ID] = body
-	}
-	if body == "" {
-		return message.Text, false
-	}
-	return body, true
 }

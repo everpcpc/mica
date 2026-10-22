@@ -65,7 +65,8 @@ func newMessageImages(service mail.Service) func(string) (ui.ImageSource, error)
 }
 
 func (a *App) resetMessageViews() {
-	a.bodies = nil
+	a.documents = nil
+	a.emailOptions = nil
 	a.markdown = markdown.Options{LoadImage: newMessageImages(a.service)}
 }
 
@@ -117,7 +118,7 @@ func normalizeImageNode(node *xhtml.Node) {
 		}
 		if size, ok := cssPixels(value); ok {
 			setImageAttribute(node, dimension, size)
-		} else {
+		} else if dimension != "width" || !strings.HasSuffix(strings.TrimSpace(value), "%") {
 			removeImageAttribute(node, dimension)
 		}
 	}

@@ -13,6 +13,7 @@ func init() {
 		Installed struct {
 			ClientID     string `json:"client_id"`
 			ClientSecret string `json:"client_secret"`
+			ProjectID    string `json:"project_id"`
 		} `json:"installed"`
 	}
 	if err := json.Unmarshal(oauthClientJSON, &config); err != nil {
@@ -23,4 +24,5 @@ func init() {
 	}
 	embeddedClientID = config.Installed.ClientID
 	embeddedClientSecret = config.Installed.ClientSecret
+	embeddedCloudProject = config.Installed.ProjectID
 }

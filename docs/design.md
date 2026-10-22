@@ -9,9 +9,9 @@ The primary tasks are reading conversations, processing the inbox, and replying 
 ## Direction
 
 The current message is the focus. The sidebar and conversation list stay quiet and compact.
-The sidebar is about 200pt, the list about 340pt, and the reader takes the remaining width, capped at 780pt for comfortable line lengths.
+The sidebar is about 200pt, the list about 340pt, and the reader content is centered and capped at 960pt for comfortable line lengths.
 The interface uses the system font, subtle dividers, unread weight and dots, muted avatars, and one blue accent.
-It avoids nested cards, marketing gradients, and decorative illustrations.
+A gray reading surface and a white message body separate content from the surrounding chrome without marketing gradients or decorative illustrations.
 The app icon is a white rounded square with a four-color envelope inspired by Gmail, while the interface keeps its own identity.
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.
 Gmail sign-in uses the embedded OAuth client by default; a custom client is available in a collapsed section.
@@ -22,10 +22,17 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 - Without a Gmail connection, a clearly labeled demo mailbox supports the full workflow.
 - Label switching, global Gmail search, conversation loading, empty results, request failures, and offline states.
 - Gmail mailboxes, categories, label visibility, and user labels share one navigation model; internal system labels stay out of the Labels section.
+- Label details are fetched individually because the label list endpoint omits message counts.
 - Remote, data, and Content-ID inline images load asynchronously. Remote requests never carry Gmail credentials and only connect to public IP addresses.
 - HTML image dimensions and inline pixel sizes are preserved, hidden images are omitted, and narrow readers scale images down proportionally.
+- Hidden inline metadata is removed before HTML-to-Markdown conversion.
+- Common table and MJML layouts, inherited text styles, and inline icons are preserved without treating formatting-only whitespace as content. Only `mj-column-per-*` containers become multi-column rows; ordinary inline-block text stays in reading order.
+- The account name and photo come from Google UserInfo. Existing Gmail-only sessions can request the added OpenID scopes once instead of repeatedly prompting.
+- Gmail-style filled importance markers appear in both the conversation list and reader.
 - Loaded conversations stay in an in-memory cache until an explicit refresh. Label changes update cached state, and account switches clear it.
 - Closing the main window hides it and keeps Mica in the Dock. Dock activation restores the same window, while Quit still exits.
+- Settings opens from the application menu with Cmd+, and the main window is restored when necessary.
+- Gmail watch and Pub/Sub Streaming Pull drive new-mail notifications. The watch renews daily, and an incremental history reconciliation runs hourly. A local history checkpoint catches up after restarts without treating existing unread mail as new.
 - Compose and reply preserve unsent input after a failure.
 - Star, archive, trash, spam, and read/unread changes provide immediate feedback and undo where supported.
 
@@ -40,7 +47,9 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 
 Builds embed `internal/gmail/oauth-client.json` and fail when it is missing or invalid.
 CI writes it from `MICA_OAUTH_CLIENT_JSON` before testing and packaging.
+OAuth requests Gmail, OpenID, and Pub/Sub scopes. The embedded configuration supplies the Cloud project ID, and custom OAuth settings accept one too.
 The OAuth file and the update signing private key are ignored by Git.
+Release signing imports `MACOS_CERTIFICATE` into a temporary keychain; notarization uses `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER_ID` through `notarytool store-credentials`.
 
 ## Verification
 
@@ -55,7 +64,7 @@ Real Gmail acceptance requires a Google test account.
 - The packaged build was exercised with the restored Gmail account: Purchases results, email-sized images, hidden-image suppression, A-B-A cached reopening, and user-only labels all worked.
 - The packaged app kept running after the window closed, restored the same reader state from the Dock, and exited with Cmd+Q. The new icon was checked at 128px and in the Dock.
 - Removing `internal/gmail/oauth-client.json` produces the expected `go:embed` build error.
-- An independent visual review scored 8.5/10 with no blocking issues. Dark secondary text and selected-row snippets were strengthened, and the reader was capped at 780pt.
+- An independent visual review scored 8.5/10 with no blocking issues. Dark secondary text and selected-row snippets were strengthened. The reader is capped at 960pt.
 - The final build was rechecked in English and Simplified Chinese, including the complete demo workflow.
 - The packaged settings UI shows the built-in Gmail connection first and keeps custom OAuth fields collapsed until requested.
 - MyGo's current macOS key mapping does not recognize the shifted punctuation used by `?`, `#`, and `!` as their Gmail key equivalents. No native-menu workaround is included.
@@ -63,4 +72,7 @@ Real Gmail acceptance requires a Google test account.
 - Final screenshots are in `docs/screenshots/`: `reading-light.jpg`, `reading-dark.jpg`, `settings.jpg`, `list-retina.png`, and `message-retina.png`.
 - Motion evidence is in `reader-*.png`, `compose-*.png`, `toast-*.png`, and `motion-sheet.png`, generated by `MICA_CAPTURE=1 go test ./internal/app -run TestCaptureMotion -count=1`.
 - The native updater window was exercised. Its feed returns 404 until a release is published; a real update installation has not been tested.
-- Google OAuth login and real token writes to Keychain have not been retested. The existing Keychain session restored successfully, and real Gmail reads were exercised.
+- Google OAuth incremental authorization and real Keychain writes succeeded. A later launch restored the account name and photo without another authorization prompt.
+- The packaged build displayed Important markers and the real Inoreader newsletter with its centered layout, text styles, inline icons, and 40/60 article columns. Toast notifications expired in the real window. The application menu opened Settings with Cmd+, including while the main window was hidden; no sidebar Settings entry remained. The sidebar title bar contains only Compose, and Gmail-style filled importance markers were checked in normal, selected, and reader states.
+- Notification tests cover the initial baseline, new threads and replies, duplicate delivery, manual read/unread changes, restart catch-up, history reset, badges, and opening conversations. A real Gmail watch and a Pub/Sub test message completed the stream/history/ACK path, including numeric history IDs. macOS displayed a native Dock badge and accepted a test notification; the notification click path was not exercised through the system UI.
+- Notary API access and release workflow lint passed. A signed and notarized build still requires a Developer ID certificate with its matching private key.

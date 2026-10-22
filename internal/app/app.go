@@ -13,12 +13,14 @@ import (
 )
 
 type App struct {
-	service     mail.Service
-	account     mail.Account
-	labels      []mail.Label
-	threads     []mail.ThreadSummary
-	thread      mail.Thread
-	threadCache map[string]mail.Thread
+	service                mail.Service
+	account                mail.Account
+	accountPhoto           *ui.Bitmap
+	labels                 []mail.Label
+	threads                []mail.ThreadSummary
+	thread                 mail.Thread
+	threadCache            map[string]mail.Thread
+	profileReauthAttempted bool
 
 	selectedLabel  string
 	selectedThread string
@@ -27,32 +29,46 @@ type App struct {
 	listWidth      float32
 	query          string
 
-	loading       bool
-	threadLoading bool
-	mutating      bool
-	err           string
-	threadErr     string
-	notice        string
+	loading         bool
+	threadLoading   bool
+	mutating        bool
+	err             string
+	threadErr       string
+	notice          string
+	noticeID        uint64
+	noticeToastID   string
+	expiredNoticeID string
 
-	list             ui.ListState
-	search           ui.Handle
-	markdown         markdown.Options
-	bodies           map[string]string
-	compose          *composer
-	settings         *settingsState
-	appearance       string
-	helpOpen         bool
-	chord            string
-	chordAt          time.Time
-	focusedMessage   int
-	messageScroll    int
-	undo             *undoAction
-	request          int
-	threadCall       int
-	serviceVersion   int
-	restoreAttempted bool
-	update           func(func())
-	schedule         func(func())
+	list                 ui.ListState
+	search               ui.Handle
+	markdown             markdown.Options
+	emailOptions         emailOptionsMap
+	documents            map[string]*emailDocument
+	compose              *composer
+	settings             *settingsState
+	appearance           string
+	helpOpen             bool
+	chord                string
+	chordAt              time.Time
+	focusedMessage       int
+	messageScroll        int
+	undo                 *undoAction
+	request              int
+	threadCall           int
+	serviceVersion       int
+	restoreAttempted     bool
+	update               func(func())
+	schedule             func(func())
+	after                func(time.Duration, func())
+	setBadge             func(int)
+	notify               func(string, string, string)
+	notificationsStarted bool
+	notificationCancel   context.CancelFunc
+	pushReauthAttempted  bool
+	unreadSeen           map[string]time.Time
+	pendingThread        string
+	loadCheckpoint       func(string) (uint64, bool, error)
+	saveCheckpoint       func(string, uint64) error
 }
 
 func New(service mail.Service) *App {
@@ -68,6 +84,9 @@ func New(service mail.Service) *App {
 		focusedMessage: -1,
 		messageScroll:  -1,
 		schedule:       func(fn func()) { go fn() },
+		after:          func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
+		loadCheckpoint: loadHistoryCheckpoint,
+		saveCheckpoint: saveHistoryCheckpoint,
 	}
 	a.resetMessageViews()
 	a.list.Selected = &a.selectedRow
@@ -95,9 +114,15 @@ func (a *App) Start() {
 			}
 			if accountErr == nil {
 				a.account = account
+				a.loadAccountPhoto(account)
+				if account.ProfileUnauthorized && !a.profileReauthAttempted {
+					a.profileReauthAttempted = true
+					a.reauthorizeGmail()
+				}
+				a.startNotifications()
 			}
 			if labelsErr == nil {
-				a.labels = labels
+				a.setLabels(labels)
 			}
 			if accountErr != nil {
 				a.notice = accountErr.Error()
@@ -107,6 +132,26 @@ func (a *App) Start() {
 		})
 	})
 	a.restoreGmail()
+	a.openPendingThread()
+}
+
+func (a *App) loadAccountPhoto(account mail.Account) {
+	a.accountPhoto = nil
+	if account.PhotoURL == "" {
+		return
+	}
+	load, version := newMessageImages(a.service), a.serviceVersion
+	a.schedule(func() {
+		source, err := load(account.PhotoURL)
+		a.publish(func() {
+			if version != a.serviceVersion || err != nil {
+				return
+			}
+			if bitmap, ok := source.(*ui.Bitmap); ok {
+				a.accountPhoto = bitmap
+			}
+		})
+	})
 }
 
 func (a *App) publish(fn func()) {
@@ -253,7 +298,7 @@ func (a *App) reloadLabels() {
 		labels, err := service.Labels(context.Background())
 		a.publish(func() {
 			if version == a.serviceVersion && err == nil {
-				a.labels = labels
+				a.setLabels(labels)
 			}
 		})
 	})

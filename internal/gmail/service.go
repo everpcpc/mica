@@ -17,19 +17,25 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 const (
-	gmailAPIURL    = "https://gmail.googleapis.com/gmail/v1"
-	threadListSize = 50
-	listParallel   = 4
+	gmailAPIURL       = "https://gmail.googleapis.com/gmail/v1"
+	googleUserinfoURL = "https://openidconnect.googleapis.com/v1/userinfo"
+	threadListSize    = 50
+	listParallel      = 4
 )
 
 type Service struct {
 	client      *http.Client
 	baseURL     string
+	userinfoURL string
 	userID      string
 	maxParallel int
+	projectID   string
+	tokenSource oauth2.TokenSource
 }
 
 type APIError struct {
@@ -84,11 +90,24 @@ type apiBody struct {
 	Data         string `json:"data"`
 }
 
+type apiLabel struct {
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Type                string `json:"type"`
+	LabelListVisibility string `json:"labelListVisibility"`
+	MessagesTotal       int    `json:"messagesTotal"`
+	MessagesUnread      int    `json:"messagesUnread"`
+}
+
 func New(client *http.Client) *Service {
+	return NewWithProject(client, EmbeddedProjectID(), nil)
+}
+
+func NewWithProject(client *http.Client, projectID string, source oauth2.TokenSource) *Service {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &Service{client: client, baseURL: gmailAPIURL, userID: "me", maxParallel: listParallel}
+	return &Service{client: client, baseURL: gmailAPIURL, userinfoURL: googleUserinfoURL, userID: "me", maxParallel: listParallel, projectID: projectID, tokenSource: source}
 }
 
 func (s *Service) Account(ctx context.Context) (mail.Account, error) {
@@ -101,32 +120,83 @@ func (s *Service) Account(ctx context.Context) (mail.Account, error) {
 	if profile.EmailAddress == "" {
 		return mail.Account{}, errors.New("gmail: profile has no email address")
 	}
-	return mail.Account{Name: profile.EmailAddress, Email: profile.EmailAddress}, nil
+	account := mail.Account{Name: profile.EmailAddress, Email: profile.EmailAddress}
+	if s.userinfoURL == "" {
+		return account, nil
+	}
+	var userinfo struct {
+		Name    string `json:"name"`
+		Picture string `json:"picture"`
+	}
+	if err := s.doJSON(ctx, http.MethodGet, s.userinfoURL, nil, nil, &userinfo); err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden) {
+			account.ProfileUnauthorized = true
+		}
+		return account, nil
+	}
+	if userinfo.Name != "" {
+		account.Name = userinfo.Name
+	}
+	account.PhotoURL = userinfo.Picture
+	return account, nil
 }
 
 func (s *Service) Labels(ctx context.Context) ([]mail.Label, error) {
 	var response struct {
-		Labels []struct {
-			ID                  string `json:"id"`
-			Name                string `json:"name"`
-			Type                string `json:"type"`
-			LabelListVisibility string `json:"labelListVisibility"`
-			MessagesTotal       int    `json:"messagesTotal"`
-			MessagesUnread      int    `json:"messagesUnread"`
-		} `json:"labels"`
+		Labels []apiLabel `json:"labels"`
 	}
 	if err := s.doJSON(ctx, http.MethodGet, "/labels", nil, nil, &response); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	labels := make([]mail.Label, len(response.Labels))
-	for i, label := range response.Labels {
-		labels[i] = mail.Label{
-			ID: label.ID, Name: label.Name, Messages: label.MessagesTotal, Unread: label.MessagesUnread,
-			System: label.Type == "system", Hide: label.LabelListVisibility == "labelHide",
-			ShowIfUnread: label.LabelListVisibility == "labelShowIfUnread",
-		}
+	semaphore := make(chan struct{}, max(1, s.maxParallel))
+	var wg sync.WaitGroup
+	var errorOnce sync.Once
+	var firstErr error
+	for i, item := range response.Labels {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				return
+			}
+			label, err := s.Label(ctx, item.ID)
+			if err != nil {
+				errorOnce.Do(func() {
+					firstErr = err
+					cancel()
+				})
+				return
+			}
+			labels[i] = label
+		}()
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return labels, nil
+}
+
+func (s *Service) Label(ctx context.Context, id string) (mail.Label, error) {
+	var detail apiLabel
+	if err := s.doJSON(ctx, http.MethodGet, "/labels/"+url.PathEscape(id), nil, nil, &detail); err != nil {
+		return mail.Label{}, err
+	}
+	return mail.Label{
+		ID: detail.ID, Name: detail.Name, Messages: detail.MessagesTotal, Unread: detail.MessagesUnread,
+		System: detail.Type == "system", Hide: detail.LabelListVisibility == "labelHide",
+		ShowIfUnread: detail.LabelListVisibility == "labelShowIfUnread",
+	}, nil
 }
 
 func (s *Service) Attachment(ctx context.Context, messageID, attachmentID string) ([]byte, error) {
@@ -312,7 +382,10 @@ func (s *Service) doJSON(ctx context.Context, method, path string, query url.Val
 		}
 		payload = bytes.NewReader(encoded)
 	}
-	requestURL := strings.TrimRight(s.baseURL, "/") + "/users/" + url.PathEscape(s.userID) + path
+	requestURL := path
+	if !strings.HasPrefix(path, "https://") && !strings.HasPrefix(path, "http://") {
+		requestURL = strings.TrimRight(s.baseURL, "/") + "/users/" + url.PathEscape(s.userID) + path
+	}
 	if len(query) > 0 {
 		requestURL += "?" + query.Encode()
 	}

@@ -2,13 +2,19 @@ package app
 
 import (
 	"fmt"
+	"time"
 
+	"mica/internal/mail"
 	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
 )
 
-const titleBarHeight = 52
+const (
+	titleBarHeight       = 52
+	noticeDuration       = 4 * time.Second
+	actionNoticeDuration = 8 * time.Second
+)
 
 func (a *App) View(c *ui.Context) {
 	theme := *c.Theme()
@@ -40,12 +46,38 @@ func (a *App) View(c *ui.Context) {
 	if a.helpOpen {
 		a.helpView(c)
 	}
+	a.showNotice(c)
+}
+
+func (a *App) showNotice(c *ui.Context) {
+	if a.expiredNoticeID != "" {
+		c.CloseToast(a.expiredNoticeID)
+		a.expiredNoticeID = ""
+	}
 	if a.notice != "" {
-		if a.undo != nil {
-			c.ToastAction(a.notice, locales.Undo(), a.undoLast)
-		} else {
-			c.Toast(a.notice)
+		undo := a.undo
+		if a.noticeToastID != "" {
+			c.CloseToast(a.noticeToastID)
 		}
+		a.undo = undo
+		a.noticeID++
+		id := fmt.Sprintf("mica-notice-%d", a.noticeID)
+		duration := noticeDuration
+		toast := ui.Toast{ID: id, Title: a.notice, Timeout: -1}
+		if undo != nil {
+			duration = actionNoticeDuration
+			toast.Action = locales.Undo()
+			toast.OnAction = a.undoLast
+		}
+		toast.OnClose = func() {
+			a.noticeToastID = ""
+			a.undo = nil
+		}
+		c.AddToast(toast)
+		a.noticeToastID = id
+		a.after(duration, func() {
+			a.publish(func() { a.expiredNoticeID = id })
+		})
 		a.notice = ""
 	}
 }
@@ -54,15 +86,13 @@ func (a *App) sidebar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	ui.Column(c).Fill().Children(func() {
-		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 12, 0, bar.Left+12).Gap(8).AlignItems(ui.Center).DragWindow().Children(func() {
-			ui.Icon(c, iconMail).Size(19, 19).TextColor(t.Accent)
-			ui.Text(c, "Mica").FontSize(16).Bold().Grow(1)
+		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 12, 0, bar.Left+12).AlignItems(ui.Center).Justify(ui.End).DragWindow().Children(func() {
 			ui.PrimaryButton(c, "").Label(locales.Compose()).Tooltip(locales.ComposeTooltip()).Padding(5, 7).Children(func() {
 				ui.Icon(c, iconCompose).Size(16, 16)
 			}).OnClick(func() { a.openCompose(nil) })
 		})
 		ui.Row(c).Padding(8, 14, 14, 14).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Avatar(c, a.account.Name, nil)
+			ui.Avatar(c, a.account.Name, a.accountPhoto)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, a.account.Name).Bold().SingleLine()
@@ -103,13 +133,6 @@ func (a *App) sidebar(c *ui.Context) {
 		if mailboxes.Changed() {
 			a.selectLabel()
 		}
-		ui.Divider(c)
-		ui.Row(c).Padding(8, 10).Children(func() {
-			ui.Button(c, "").Label(locales.Settings()).Children(func() {
-				ui.Icon(c, iconSettings).Size(15, 15)
-				ui.Text(c, locales.Settings())
-			}).OnClick(a.openSettings)
-		})
 	})
 }
 
@@ -175,6 +198,13 @@ func (a *App) threadRow(row ui.ListRow) {
 			subject := ui.Text(c, thread.Subject).Grow(1).MinWidth(0).SingleLine().TextColor(primary)
 			if thread.Unread {
 				subject.Bold()
+			}
+			if containsLabel(thread.LabelIDs, mail.Important) {
+				importantColor := t.Warning
+				if row.Selected() {
+					importantColor = accent
+				}
+				ui.Icon(c, iconImportant).Size(13, 13).TextColor(importantColor).Label(locales.Important())
 			}
 			if thread.Starred {
 				starColor := t.Warning

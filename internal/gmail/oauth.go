@@ -39,6 +39,7 @@ type OAuth struct {
 	openExternal func(string) error
 	httpClient   *http.Client
 	random       io.Reader
+	projectID    string
 	loginMu      sync.Mutex
 }
 
@@ -56,6 +57,12 @@ func NewOAuth(clientID, clientSecret string) *OAuth {
 	return NewOAuthWithStore(clientID, clientSecret, &keychainTokenStore{secrets: mygo.Secrets})
 }
 
+func NewOAuthWithProject(clientID, clientSecret, projectID string) *OAuth {
+	a := NewOAuth(clientID, clientSecret)
+	a.projectID = projectID
+	return a
+}
+
 func NewOAuthWithStore(clientID, clientSecret string, store TokenStore) *OAuth {
 	if store == nil {
 		store = &keychainTokenStore{secrets: mygo.Secrets}
@@ -65,8 +72,12 @@ func NewOAuthWithStore(clientID, clientSecret string, store TokenStore) *OAuth {
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			Scopes: []string{
+				"openid",
+				"profile",
+				"email",
 				"https://www.googleapis.com/auth/gmail.modify",
 				"https://www.googleapis.com/auth/gmail.send",
+				"https://www.googleapis.com/auth/pubsub",
 			},
 			Endpoint: oauth2.Endpoint{AuthURL: googleAuthURL, TokenURL: googleTokenURL},
 		},
@@ -74,6 +85,7 @@ func NewOAuthWithStore(clientID, clientSecret string, store TokenStore) *OAuth {
 		openExternal: mygo.Shell.OpenExternal,
 		httpClient:   http.DefaultClient,
 		random:       rand.Reader,
+		projectID:    EmbeddedProjectID(),
 	}
 }
 
@@ -237,14 +249,36 @@ func (a *OAuth) httpContext(ctx context.Context) context.Context {
 
 func (a *OAuth) authenticatedClient(ctx context.Context, token *oauth2.Token) *http.Client {
 	ctx = context.WithoutCancel(a.httpContext(ctx))
-	source := &savingTokenSource{
+	return oauth2.NewClient(ctx, a.tokenSource(ctx, token))
+}
+
+func (a *OAuth) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+	token, err := a.store.Load()
+	if err != nil {
+		return nil, err
+	}
+	if token == nil || (token.AccessToken == "" && token.RefreshToken == "") {
+		return nil, ErrNoSession
+	}
+	return a.tokenSource(context.WithoutCancel(a.httpContext(ctx)), token), nil
+}
+
+func (a *OAuth) Service(client *http.Client) (*Service, error) {
+	source, err := a.TokenSource(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return NewWithProject(client, a.projectID, source), nil
+}
+
+func (a *OAuth) tokenSource(ctx context.Context, token *oauth2.Token) oauth2.TokenSource {
+	return &savingTokenSource{
 		source:  a.config.TokenSource(ctx, token),
 		store:   a.store,
 		access:  token.AccessToken,
 		refresh: token.RefreshToken,
 		expiry:  token.Expiry,
 	}
-	return oauth2.NewClient(ctx, source)
 }
 
 type savingTokenSource struct {
