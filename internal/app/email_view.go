@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/url"
+	"time"
 
 	"mica/internal/mail"
 
@@ -12,9 +13,14 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+const emailInitialHeight float32 = 24
+
 type emailPage struct {
-	view   *mygo.WebView
-	height float32
+	messageID string
+	view      *mygo.WebView
+	height    float32
+	ready     bool
+	failed    bool
 }
 
 func RegisterEmailRenderer(a *App) error {
@@ -29,12 +35,45 @@ func (a *App) SetEmailViewFactory(factory func() (*mygo.WebView, error)) {
 	a.newEmailView = factory
 }
 
+func (a *App) estimatedEmailHeight(id string) (float32, bool) {
+	if height := a.emailHeights[id]; height > 0 {
+		return height, true
+	}
+	return emailInitialHeight, false
+}
+
+func (a *App) setEmailHeight(page *emailPage, height float32) {
+	page.height = height
+	page.ready = true
+	page.failed = false
+	if a.emailHeights == nil {
+		a.emailHeights = make(map[string]float32)
+	}
+	a.emailHeights[page.messageID] = height
+}
+
 func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 	page := a.emailPage(c, message)
 	if page == nil {
 		return ui.Text(c, a.emailDocument(message).preview).Selectable()
 	}
-	return ui.WebView(c, page.view).Height(page.height)
+	return ui.Column(c.Key("email-body-" + message.ID)).Height(page.height).Transition(ui.ElementTransition{
+		Size: true, Duration: 160 * time.Millisecond,
+	}).Children(func() {
+		if page.failed {
+			ui.Text(c, a.emailDocument(message).preview).Selectable()
+			return
+		}
+		if !page.ready {
+			ui.Column(c).Center().Children(func() {
+				ui.Spinner(c).Size(14, 14)
+			})
+			return
+		}
+		ui.WebView(c, page.view).Height(page.height).Transition(ui.ElementTransition{
+			Enter: &ui.Motion{Opacity: 0}, Duration: 160 * time.Millisecond,
+		})
+	})
 }
 
 func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
@@ -52,7 +91,8 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	if err != nil {
 		return nil
 	}
-	page := &emailPage{view: view, height: 200}
+	height, ready := a.estimatedEmailHeight(message.ID)
+	page := &emailPage{messageID: message.ID, view: view, height: height, ready: ready}
 	if a.emailPages == nil {
 		a.emailPages = make(map[string]*emailPage)
 	}
@@ -60,6 +100,12 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	services := c.Services()
 	view.Page().OnDidFinishLoad(func() {
 		_, _ = view.Page().Eval(emailHeightScript)
+	})
+	view.Page().OnDidFailLoad(func(*mygo.LoadError) {
+		a.publish(func() {
+			page.failed = true
+			page.height = 80
+		})
 	})
 	view.Page().OnWillNavigate(func(event *mygo.NavigateEvent) {
 		if emailFragmentURL(event.URL) {
@@ -90,6 +136,18 @@ func (a *App) closeEmailViews() {
 	}
 }
 
+func (a *App) retainEmailViews(thread mail.Thread) {
+	messages := make(map[string]bool, len(thread.Messages))
+	for _, message := range thread.Messages {
+		messages[message.ID] = true
+	}
+	for id := range a.emailPages {
+		if !messages[id] {
+			a.closeEmailView(id)
+		}
+	}
+}
+
 func emailFragmentURL(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && u.Fragment != "" && (u.Scheme == "" || u.Scheme == "about")
@@ -107,7 +165,7 @@ func (b *emailBridge) Height(ctx context.Context, px int) error {
 	b.app.publish(func() {
 		for _, candidate := range b.app.emailPages {
 			if candidate.view.Page() == page {
-				candidate.height = float32(px)
+				b.app.setEmailHeight(candidate, float32(px))
 				return
 			}
 		}
@@ -157,13 +215,18 @@ const emailHeightScript = `
 (() => {
   const body = document.getElementById("godwit-body");
   if (!body) return;
-  let last = 0;
+  let last = 0, measureQueued = false;
   const measure = () => {
-    const height = Math.ceil(body.getBoundingClientRect().height);
-    if (height > 0 && height !== last) {
-      last = height;
-      mygo.call("MicaMail.Height", height).catch(() => {});
-    }
+    if (measureQueued) return;
+    measureQueued = true;
+    requestAnimationFrame(() => {
+      measureQueued = false;
+      const height = Math.ceil(body.getBoundingClientRect().height);
+      if (height > 0 && height !== last) {
+        last = height;
+        mygo.call("MicaMail.Height", height).catch(() => {});
+      }
+    });
   };
   new ResizeObserver(measure).observe(body);
   addEventListener("resize", measure);

@@ -68,6 +68,7 @@ func newMessageImages(service mail.Service) func(string) (ui.ImageSource, error)
 
 func (a *App) resetMessageViews() {
 	a.closeEmailViews()
+	a.emailHeights = nil
 	a.documents = nil
 	a.expandedMessages = nil
 	if a.emailResources == nil {

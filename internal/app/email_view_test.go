@@ -17,6 +17,29 @@ func TestEmailShortcutBinding(t *testing.T) {
 	}
 }
 
+func TestEmailHeightEstimateAndUpdate(t *testing.T) {
+	a := New(newFakeService())
+	height, ready := a.estimatedEmailHeight("message-1")
+	if height != 24 || ready {
+		t.Fatalf("initial email height = %v, ready=%v, want one-line placeholder", height, ready)
+	}
+	page := &emailPage{messageID: "message-1", height: height, ready: ready, failed: true}
+	a.setEmailHeight(page, 480)
+	if page.height != 480 || !page.ready || page.failed {
+		t.Fatalf("updated page = %+v, want ready 480px page", page)
+	}
+	height, ready = a.estimatedEmailHeight("message-1")
+	if height != 480 || !ready {
+		t.Fatalf("estimated height = %v, ready=%v, want cached 480px", height, ready)
+	}
+}
+
+func TestEmailHeightScriptBatchesMeasurements(t *testing.T) {
+	if !strings.Contains(emailHeightScript, "measureQueued") {
+		t.Fatal("email measurements are not coalesced before reporting height")
+	}
+}
+
 func TestEmailScriptForwardsApplicationShortcuts(t *testing.T) {
 	for _, want := range []string{
 		`addEventListener("keydown"`,
