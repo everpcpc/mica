@@ -47,6 +47,9 @@ type App struct {
 	emailResources       *emailResourceStore
 	emailPages           map[string]*emailPage
 	emailHeights         map[string]float32
+	attachmentDownloads  map[string]attachmentDownload
+	openPath             func(string) error
+	saveDialog           func(mygo.SaveDialogOptions) (string, error)
 	newEmailView         func() (*mygo.WebView, error)
 	documents            map[string]*emailDocument
 	expandedMessages     map[string]bool
@@ -86,6 +89,8 @@ func New(service mail.Service) *App {
 	a := &App{
 		service:        service,
 		emailResources: newEmailResourceStore(service),
+		openPath:       mygo.Shell.OpenPath,
+		saveDialog:     mygo.Dialog.Save,
 		account:        mail.Account{Name: "Mica", Demo: true},
 		threadCache:    make(map[string]mail.Thread),
 		selectedLabel:  mail.Inbox,
