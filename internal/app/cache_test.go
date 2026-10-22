@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"mica/internal/gmail"
 	"mica/internal/mail"
@@ -106,20 +107,34 @@ type cacheThreadKey struct {
 }
 
 type fakeMailStore struct {
-	account       mail.Account
-	accountFound  bool
-	labels        map[string][]mail.Label
-	lists         map[cacheListKey][]mail.ThreadSummary
-	threads       map[cacheThreadKey]mail.Thread
-	saveThreadErr error
+	account          mail.Account
+	accountFound     bool
+	labels           map[string][]mail.Label
+	lists            map[cacheListKey][]mail.ThreadSummary
+	threads          map[cacheThreadKey]mail.Thread
+	preferences      map[string]string
+	preferenceWrites int
+	saveThreadErr    error
 }
 
 func newFakeMailStore() *fakeMailStore {
 	return &fakeMailStore{
-		labels:  make(map[string][]mail.Label),
-		lists:   make(map[cacheListKey][]mail.ThreadSummary),
-		threads: make(map[cacheThreadKey]mail.Thread),
+		labels:      make(map[string][]mail.Label),
+		lists:       make(map[cacheListKey][]mail.ThreadSummary),
+		threads:     make(map[cacheThreadKey]mail.Thread),
+		preferences: make(map[string]string),
 	}
+}
+
+func (s *fakeMailStore) Preference(_ context.Context, key string) (string, bool, error) {
+	value, found := s.preferences[key]
+	return value, found, nil
+}
+
+func (s *fakeMailStore) SavePreference(_ context.Context, key, value string) error {
+	s.preferences[key] = value
+	s.preferenceWrites++
+	return nil
 }
 
 func (s *fakeMailStore) LastAccount(context.Context) (mail.Account, bool, error) {
@@ -282,6 +297,53 @@ func TestCacheWriteFromOldServiceIsDropped(t *testing.T) {
 	jobs[0]()
 	if store.accountFound {
 		t.Fatal("old service updated the last account after an account switch")
+	}
+}
+
+func TestPaneWidthsRestoreAndSave(t *testing.T) {
+	store := newFakeMailStore()
+	store.preferences[sidebarWidthPreference] = "240"
+	store.preferences[listWidthPreference] = "400"
+	a := New(newFakeService())
+	a.SetMailStore(store)
+	a.RestorePaneWidths()
+	if a.sidebarWidth != 240 || a.listWidth != 400 {
+		t.Fatalf("restored widths = %v, %v, want 240 and 400", a.sidebarWidth, a.listWidth)
+	}
+	var delayed []func()
+	a.after = func(duration time.Duration, fn func()) {
+		if duration != paneWidthSaveDelay {
+			t.Fatalf("save delay = %v, want %v", duration, paneWidthSaveDelay)
+		}
+		delayed = append(delayed, fn)
+	}
+	a.sidebarWidth, a.listWidth = 250, 410
+	a.savePaneWidths()
+	a.sidebarWidth, a.listWidth = 260, 420
+	a.savePaneWidths()
+	if len(delayed) != 2 {
+		t.Fatalf("scheduled saves = %d, want 2", len(delayed))
+	}
+	for _, fn := range delayed {
+		fn()
+	}
+	if store.preferenceWrites != 2 {
+		t.Fatalf("preference writes = %d, want only the final width pair", store.preferenceWrites)
+	}
+	if store.preferences[sidebarWidthPreference] != "260" || store.preferences[listWidthPreference] != "420" {
+		t.Fatalf("saved widths = %q, %q", store.preferences[sidebarWidthPreference], store.preferences[listWidthPreference])
+	}
+}
+
+func TestPaneWidthsRejectInvalidValues(t *testing.T) {
+	store := newFakeMailStore()
+	store.preferences[sidebarWidthPreference] = "80"
+	store.preferences[listWidthPreference] = "invalid"
+	a := New(newFakeService())
+	a.SetMailStore(store)
+	a.RestorePaneWidths()
+	if a.sidebarWidth != 204 || a.listWidth != 342 {
+		t.Fatalf("invalid widths replaced defaults: %v, %v", a.sidebarWidth, a.listWidth)
 	}
 }
 

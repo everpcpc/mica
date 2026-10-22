@@ -4,14 +4,17 @@ import (
 	"context"
 	"log"
 	"slices"
+	"strconv"
 	"sync"
+	"time"
 
 	"mica/internal/mail"
 )
 
 type cacheState struct {
-	mu      sync.Mutex
-	version int
+	mu        sync.Mutex
+	version   int
+	widthSave int
 }
 
 type mailStore interface {
@@ -24,6 +27,8 @@ type mailStore interface {
 	Thread(context.Context, string, string) (mail.Thread, bool, error)
 	SaveThread(context.Context, string, mail.Thread) error
 	DeleteThread(context.Context, string, string) error
+	Preference(context.Context, string) (string, bool, error)
+	SavePreference(context.Context, string, string) error
 }
 
 func (a *App) SetMailStore(store mailStore) {
@@ -77,6 +82,65 @@ func (a *App) persist(write func(mailStore, string) error) {
 		}
 		if err := write(store, email); err != nil {
 			log.Printf("mica: write mail cache: %v", err)
+		}
+	})
+}
+
+const (
+	sidebarWidthPreference = "sidebar-width"
+	listWidthPreference    = "list-width"
+	paneWidthSaveDelay     = 400 * time.Millisecond
+)
+
+func (a *App) RestorePaneWidths() {
+	if a.store == nil {
+		return
+	}
+	for _, preference := range []struct {
+		key    string
+		target *float32
+	}{
+		{key: sidebarWidthPreference, target: &a.sidebarWidth},
+		{key: listWidthPreference, target: &a.listWidth},
+	} {
+		value, found, err := a.store.Preference(context.Background(), preference.key)
+		logCacheError(err)
+		if err != nil || !found {
+			continue
+		}
+		width, err := strconv.ParseFloat(value, 32)
+		if err == nil && width >= 160 && width <= 600 {
+			*preference.target = float32(width)
+		}
+	}
+}
+
+func (a *App) savePaneWidths() {
+	a.cacheState.mu.Lock()
+	a.cacheState.widthSave++
+	generation := a.cacheState.widthSave
+	store := a.store
+	sidebarWidth, listWidth := a.sidebarWidth, a.listWidth
+	a.cacheState.mu.Unlock()
+	if store == nil {
+		return
+	}
+	a.after(paneWidthSaveDelay, func() {
+		a.cacheState.mu.Lock()
+		defer a.cacheState.mu.Unlock()
+		if generation != a.cacheState.widthSave {
+			return
+		}
+		for _, preference := range []struct {
+			key   string
+			value string
+		}{
+			{key: sidebarWidthPreference, value: strconv.FormatFloat(float64(sidebarWidth), 'f', -1, 32)},
+			{key: listWidthPreference, value: strconv.FormatFloat(float64(listWidth), 'f', -1, 32)},
+		} {
+			if err := store.SavePreference(context.Background(), preference.key, preference.value); err != nil {
+				log.Printf("mica: save pane width: %v", err)
+			}
 		}
 	})
 }

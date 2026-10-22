@@ -341,6 +341,25 @@ func TestDeleteThreadIsAccountScoped(t *testing.T) {
 	}
 }
 
+func TestPreferencesPersistAcrossReopen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "mail.db")
+	s := openTestStore(t, path)
+	if err := s.SavePreference(ctx, "sidebar-width", "240"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = openTestStore(t, path)
+	value, found, err := s.Preference(ctx, "sidebar-width")
+	if err != nil || !found || value != "240" {
+		t.Fatalf("preference = %q, found=%v, err=%v, want 240", value, found, err)
+	}
+	_, found, err = s.Preference(ctx, "missing")
+	requireMissing(t, found, err)
+}
+
 func TestMissingSnapshots(t *testing.T) {
 	ctx := context.Background()
 	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))

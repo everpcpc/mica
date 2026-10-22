@@ -28,15 +28,21 @@ func (a *App) View(c *ui.Context) {
 	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen {
 		a.shortcuts(c)
 	}
-	ui.Split(c, &a.sidebarWidth, func() {
+	sidebarSplit := ui.Split(c, &a.sidebarWidth, func() {
 		a.sidebar(c)
 	}, func() {
-		ui.Split(c, &a.listWidth, func() {
+		listSplit := ui.Split(c, &a.listWidth, func() {
 			a.threadList(c)
 		}, func() {
 			a.reader(c)
 		}).Fill()
+		if listSplit.Changed() {
+			a.savePaneWidths()
+		}
 	}).Fill()
+	if sidebarSplit.Changed() {
+		a.savePaneWidths()
+	}
 	if a.compose != nil && a.compose.open {
 		a.composeView(c)
 	}
