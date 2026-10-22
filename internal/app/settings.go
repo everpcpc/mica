@@ -267,7 +267,8 @@ func (a *App) useService(service mail.Service) {
 	a.err = ""
 	a.mutating = false
 	a.compose = nil
-	a.bodies = nil
+	a.threadCache = nil
+	a.resetMessageViews()
 	a.clearThread()
 	a.Start()
 }

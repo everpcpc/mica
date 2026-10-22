@@ -6,12 +6,23 @@ import (
 )
 
 const (
-	Inbox   = "INBOX"
-	Starred = "STARRED"
-	Sent    = "SENT"
-	Spam    = "SPAM"
-	Trash   = "TRASH"
-	Unread  = "UNREAD"
+	Inbox     = "INBOX"
+	Starred   = "STARRED"
+	Snoozed   = "SNOOZED"
+	Sent      = "SENT"
+	Draft     = "DRAFT"
+	Important = "IMPORTANT"
+	All       = "ALL"
+	Spam      = "SPAM"
+	Trash     = "TRASH"
+	Unread    = "UNREAD"
+
+	CategorySocial       = "CATEGORY_SOCIAL"
+	CategoryPromotions   = "CATEGORY_PROMOTIONS"
+	CategoryUpdates      = "CATEGORY_UPDATES"
+	CategoryForums       = "CATEGORY_FORUMS"
+	CategoryPurchases    = "CATEGORY_PURCHASES"
+	CategoryReservations = "CATEGORY_RESERVATIONS"
 )
 
 type Account struct {
@@ -21,10 +32,13 @@ type Account struct {
 }
 
 type Label struct {
-	ID       string
-	Name     string
-	Messages int
-	Unread   int
+	ID           string
+	Name         string
+	Messages     int
+	Unread       int
+	System       bool
+	Hide         bool
+	ShowIfUnread bool
 }
 
 type ThreadSummary struct {
@@ -63,10 +77,11 @@ type Message struct {
 }
 
 type Attachment struct {
-	ID       string
-	Name     string
-	MIMEType string
-	Size     int64
+	ID        string
+	Name      string
+	MIMEType  string
+	Size      int64
+	ContentID string
 }
 
 type Query struct {
@@ -95,4 +110,8 @@ type Service interface {
 	ModifyThread(context.Context, string, []string, []string) error
 	TrashThread(context.Context, string) error
 	Send(context.Context, Compose) error
+}
+
+type AttachmentFetcher interface {
+	Attachment(context.Context, string, string) ([]byte, error)
 }

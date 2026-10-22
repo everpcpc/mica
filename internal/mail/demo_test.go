@@ -191,6 +191,27 @@ func TestDemoModifyTrashAndSend(t *testing.T) {
 	}
 }
 
+func TestDemoMailboxSearches(t *testing.T) {
+	thread := Thread{ID: "receipt", Messages: []Message{{
+		Text: "Your receipt", LabelIDs: []string{CategoryPurchases, Snoozed},
+	}}}
+	for _, tc := range []struct {
+		name   string
+		search string
+		want   bool
+	}{
+		{name: "matching category", search: "category:purchases", want: true},
+		{name: "other category", search: "category:social"},
+		{name: "snoozed", search: "in:snoozed", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesDemoSearch(&thread, tc.search); got != tc.want {
+				t.Fatalf("matchesDemoSearch(%q) = %v, want %v", tc.search, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDemoConcurrentSendAndList(t *testing.T) {
 	ctx := context.Background()
 	service := NewDemo()

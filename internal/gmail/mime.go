@@ -47,10 +47,11 @@ func walkParts(part apiPart, text, html *[]string) ([]mail.Attachment, error) {
 	kind := canonicalMIMEType(part.MIMEType)
 	if part.Filename != "" || part.Body.AttachmentID != "" {
 		return []mail.Attachment{{
-			ID:       part.Body.AttachmentID,
-			Name:     part.Filename,
-			MIMEType: kind,
-			Size:     part.Body.Size,
+			ID:        part.Body.AttachmentID,
+			Name:      part.Filename,
+			MIMEType:  kind,
+			Size:      part.Body.Size,
+			ContentID: strings.Trim(strings.TrimSpace(header(part, "Content-ID")), "<>"),
 		}}, nil
 	}
 	var attachments []mail.Attachment
