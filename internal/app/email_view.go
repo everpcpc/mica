@@ -115,6 +115,27 @@ func (b *emailBridge) Height(ctx context.Context, px int) error {
 	return nil
 }
 
+func (b *emailBridge) Shortcut(ctx context.Context, name string, shift bool) error {
+	binding, ok := emailShortcutBinding(name)
+	if !ok {
+		return errors.New("mail: invalid shortcut")
+	}
+	page := mygo.CallerPage(ctx)
+	mods := ui.Modifiers(0)
+	if shift {
+		mods = ui.Shift
+	}
+	b.app.publish(func() {
+		for _, candidate := range b.app.emailPages {
+			if candidate.view.Page() == page {
+				b.app.performShortcut(binding.key, mods)
+				return
+			}
+		}
+	})
+	return nil
+}
+
 func (b *emailBridge) Wheel(ctx context.Context, dy float64) error {
 	if math.IsNaN(dy) || math.IsInf(dy, 0) {
 		return errors.New("mail: invalid wheel delta")
@@ -165,6 +186,20 @@ const emailHeightScript = `
       if (dy) mygo.call("MicaMail.Wheel", dy).catch(() => {});
     });
   }, {passive: false});
+  const keyShortcuts = {
+    c: "compose", j: "next", k: "previous", o: "open", u: "close", e: "archive",
+    s: "star", r: "reply", a: "replyAll", f: "forward", z: "undo",
+    n: "nextMessage", p: "previousMessage", g: "go", i: "inbox", t: "sent"
+  };
+  const namedShortcuts = {Enter: "open", "?": "help", "#": "trash", "!": "spam"};
+  addEventListener("keydown", event => {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target instanceof Element && (event.target.isContentEditable || event.target.closest("input, textarea"))) return;
+    const name = namedShortcuts[event.key] || keyShortcuts[event.key.toLowerCase()];
+    if (!name) return;
+    event.preventDefault();
+    mygo.call("MicaMail.Shortcut", name, event.shiftKey).catch(() => {});
+  });
   measure();
 })()
 `

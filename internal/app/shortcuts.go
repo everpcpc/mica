@@ -8,8 +8,55 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+type shortcutBinding struct {
+	name  string
+	key   ui.Key
+	mods  ui.Modifiers
+	email bool
+}
+
+var applicationShortcuts = []shortcutBinding{
+	{name: "help", key: ui.KeySlash, mods: ui.Shift, email: true},
+	{name: "compose", key: ui.KeyC, email: true},
+	{name: "search", key: ui.KeySlash},
+	{name: "next", key: ui.KeyJ, email: true},
+	{name: "previous", key: ui.KeyK, email: true},
+	{name: "open", key: ui.KeyO, email: true},
+	{name: "open", key: ui.KeyEnter, email: true},
+	{name: "close", key: ui.KeyU, email: true},
+	{name: "archive", key: ui.KeyE, email: true},
+	{name: "star", key: ui.KeyS, email: true},
+	{name: "trash", key: ui.Key3, mods: ui.Shift, email: true},
+	{name: "spam", key: ui.Key1, mods: ui.Shift, email: true},
+	{name: "reply", key: ui.KeyR, email: true},
+	{name: "replyAll", key: ui.KeyA, email: true},
+	{name: "forward", key: ui.KeyF, email: true},
+	{name: "read", key: ui.KeyI, mods: ui.Shift, email: true},
+	{name: "unread", key: ui.KeyU, mods: ui.Shift, email: true},
+	{name: "undo", key: ui.KeyZ, email: true},
+	{name: "nextMessage", key: ui.KeyN, email: true},
+	{name: "previousMessage", key: ui.KeyP, email: true},
+	{name: "go", key: ui.KeyG, email: true},
+	{name: "inbox", key: ui.KeyI, email: true},
+	{name: "sent", key: ui.KeyT, email: true},
+}
+
 func (a *App) shortcuts(c *ui.Context) {
-	if c.Shortcut(ui.Shift, ui.KeySlash) {
+	for _, binding := range applicationShortcuts {
+		if !c.Shortcut(binding.mods, binding.key) {
+			continue
+		}
+		if binding.name == "search" {
+			a.search.Focus(c)
+		} else {
+			a.performShortcut(binding.key, binding.mods)
+		}
+		return
+	}
+}
+
+func (a *App) performShortcut(key ui.Key, mods ui.Modifiers) {
+	if key == ui.KeySlash && mods == ui.Shift {
 		a.helpOpen = true
 		return
 	}
@@ -18,64 +65,71 @@ func (a *App) shortcuts(c *ui.Context) {
 			a.chord = ""
 		} else {
 			switch {
-			case c.Shortcut(0, ui.KeyI):
+			case mods == 0 && key == ui.KeyI:
 				a.chord = ""
 				a.goLabel(mail.Inbox)
-			case c.Shortcut(0, ui.KeyS):
+			case mods == 0 && key == ui.KeyS:
 				a.chord = ""
 				a.goLabel(mail.Starred)
-			case c.Shortcut(0, ui.KeyT):
+			case mods == 0 && key == ui.KeyT:
 				a.chord = ""
 				a.goLabel(mail.Sent)
-			case c.Shortcut(0, ui.KeyG):
+			case mods == 0 && key == ui.KeyG:
 				a.chordAt = time.Now()
 			}
 			return
 		}
 	}
-	if c.Shortcut(0, ui.KeyG) {
+	if mods == 0 && key == ui.KeyG {
 		a.chord = "g"
 		a.chordAt = time.Now()
 		return
 	}
 	switch {
-	case c.Shortcut(0, ui.KeyC):
+	case mods == 0 && key == ui.KeyC:
 		a.openCompose(nil)
-	case c.Shortcut(0, ui.KeySlash):
-		a.search.Focus(c)
-	case c.Shortcut(0, ui.KeyJ):
+	case mods == 0 && key == ui.KeyJ:
 		a.moveSelection(1)
-	case c.Shortcut(0, ui.KeyK):
+	case mods == 0 && key == ui.KeyK:
 		a.moveSelection(-1)
-	case c.Shortcut(0, ui.KeyO), c.Shortcut(0, ui.KeyEnter):
+	case mods == 0 && (key == ui.KeyO || key == ui.KeyEnter):
 		a.openSelected()
-	case c.Shortcut(0, ui.KeyU):
+	case mods == 0 && key == ui.KeyU:
 		a.closeReader()
-	case c.Shortcut(0, ui.KeyE):
+	case mods == 0 && key == ui.KeyE:
 		a.archive()
-	case c.Shortcut(0, ui.KeyS):
+	case mods == 0 && key == ui.KeyS:
 		a.toggleStar()
-	case c.Shortcut(ui.Shift, ui.Key3):
+	case mods == ui.Shift && key == ui.Key3:
 		a.trash()
-	case c.Shortcut(ui.Shift, ui.Key1):
+	case mods == ui.Shift && key == ui.Key1:
 		a.reportSpam()
-	case c.Shortcut(0, ui.KeyR):
+	case mods == 0 && key == ui.KeyR:
 		a.openReply()
-	case c.Shortcut(0, ui.KeyA):
+	case mods == 0 && key == ui.KeyA:
 		a.openReplyAll()
-	case c.Shortcut(0, ui.KeyF):
+	case mods == 0 && key == ui.KeyF:
 		a.openForward()
-	case c.Shortcut(ui.Shift, ui.KeyI):
+	case mods == ui.Shift && key == ui.KeyI:
 		a.setUnread(false)
-	case c.Shortcut(ui.Shift, ui.KeyU):
+	case mods == ui.Shift && key == ui.KeyU:
 		a.setUnread(true)
-	case c.Shortcut(0, ui.KeyZ):
+	case mods == 0 && key == ui.KeyZ:
 		a.undoLast()
-	case c.Shortcut(0, ui.KeyN):
+	case mods == 0 && key == ui.KeyN:
 		a.moveMessage(1)
-	case c.Shortcut(0, ui.KeyP):
+	case mods == 0 && key == ui.KeyP:
 		a.moveMessage(-1)
 	}
+}
+
+func emailShortcutBinding(name string) (shortcutBinding, bool) {
+	for _, binding := range applicationShortcuts {
+		if binding.email && binding.name == name {
+			return binding, true
+		}
+	}
+	return shortcutBinding{}, false
 }
 
 func (a *App) goLabel(id string) {
