@@ -26,9 +26,11 @@ const (
 )
 
 type Account struct {
-	Name  string
-	Email string
-	Demo  bool
+	Name                string
+	Email               string
+	Demo                bool
+	PhotoURL            string
+	ProfileUnauthorized bool
 }
 
 type Label struct {

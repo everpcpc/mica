@@ -33,9 +33,15 @@ func TestAccountAndLabels(t *testing.T) {
 			writeTestJSON(t, w, map[string]string{"emailAddress": "alex@example.com"})
 		case "/users/me/labels":
 			writeTestJSON(t, w, map[string]any{"labels": []map[string]any{
-				{"id": "INBOX", "name": "Inbox", "type": "system", "messagesTotal": 12, "messagesUnread": 3},
-				{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread", "messagesTotal": 4, "messagesUnread": 1},
+				{"id": "INBOX", "name": "Inbox", "type": "system"},
+				{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread"},
 			}})
+		case "/users/me/labels/INBOX":
+			writeTestJSON(t, w, map[string]any{"id": "INBOX", "name": "Inbox", "type": "system", "messagesTotal": 12, "messagesUnread": 3})
+		case "/users/me/labels/Label_7":
+			writeTestJSON(t, w, map[string]any{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread", "messagesTotal": 4, "messagesUnread": 1})
+		case "/userinfo":
+			writeTestJSON(t, w, map[string]string{"name": "Alex Example", "picture": "https://images.example/alex.png"})
 		default:
 			http.NotFound(w, r)
 		}
@@ -43,12 +49,16 @@ func TestAccountAndLabels(t *testing.T) {
 	defer server.Close()
 	service := testService(server)
 
+	service.userinfoURL = server.URL + "/userinfo"
 	account, err := service.Account(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if account.Email != "alex@example.com" || account.Demo {
 		t.Fatalf("unexpected account: %+v", account)
+	}
+	if account.Name != "Alex Example" || account.PhotoURL != "https://images.example/alex.png" || account.ProfileUnauthorized {
+		t.Fatalf("unexpected userinfo: %+v", account)
 	}
 	labels, err := service.Labels(context.Background())
 	if err != nil {
@@ -60,6 +70,34 @@ func TestAccountAndLabels(t *testing.T) {
 	}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatalf("labels = %+v, want %+v", labels, want)
+	}
+}
+
+func TestAccountProfileUnauthorized(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/users/me/profile":
+					writeTestJSON(t, w, map[string]string{"emailAddress": "alex@example.com"})
+				case "/userinfo":
+					w.WriteHeader(status)
+					_, _ = io.WriteString(w, `{"error":{"message":"Insufficient permissions","errors":[{"reason":"insufficientPermissions"}]}}`)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			service := testService(server)
+			service.userinfoURL = server.URL + "/userinfo"
+			account, err := service.Account(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !account.ProfileUnauthorized {
+				t.Fatalf("account = %+v, want ProfileUnauthorized", account)
+			}
+		})
 	}
 }
 

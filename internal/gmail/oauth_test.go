@@ -88,6 +88,12 @@ func TestOAuthLoginLoopbackStateAndPKCE(t *testing.T) {
 		if !strings.Contains(query.Get("scope"), "gmail.modify") || !strings.Contains(query.Get("scope"), "gmail.send") {
 			t.Errorf("scope = %q", query.Get("scope"))
 		}
+		if !strings.Contains(query.Get("scope"), "openid") || !strings.Contains(query.Get("scope"), "profile") || !strings.Contains(query.Get("scope"), "email") {
+			t.Errorf("profile scopes are missing: %q", query.Get("scope"))
+		}
+		if !strings.Contains(query.Get("scope"), "pubsub") {
+			t.Errorf("Pub/Sub scope is missing: %q", query.Get("scope"))
+		}
 		callback := query.Get("redirect_uri") + "?code=offline-code&state=" + url.QueryEscape(query.Get("state"))
 		resp, err := http.Get(callback)
 		if err != nil {

@@ -16,6 +16,7 @@ import (
 const (
 	oauthClientIDKey     = "gmail-oauth-client-id"
 	oauthClientSecretKey = "gmail-oauth-client-secret"
+	oauthProjectIDKey    = "gmail-oauth-project-id"
 )
 
 type settingsState struct {
@@ -23,10 +24,20 @@ type settingsState struct {
 	language     string
 	clientID     string
 	clientSecret string
+	projectID    string
 	customOAuth  bool
 	busy         bool
 	err          string
 	cancel       context.CancelFunc
+}
+
+func (a *App) OpenSettings() {
+	a.publish(func() {
+		if a.settings != nil && a.settings.open {
+			return
+		}
+		a.openSettings()
+	})
 }
 
 func (a *App) openSettings() {
@@ -34,12 +45,17 @@ func (a *App) openSettings() {
 	a.settings = s
 	a.schedule(func() {
 		clientID, clientSecret, err := loadCustomOAuthCredentials()
+		projectID, projectErr := oauthSecret(oauthProjectIDKey)
+		if err == nil {
+			err = projectErr
+		}
 		a.publish(func() {
 			if a.settings != s {
 				return
 			}
 			s.clientID = clientID
 			s.clientSecret = clientSecret
+			s.projectID = projectID
 			if err != nil {
 				s.err = locales.OauthConfigReadFailed(err.Error())
 			}
@@ -80,13 +96,14 @@ func (a *App) settingsView(c *ui.Context) {
 					ui.Link(c, locales.GmailCloudCredentials(), "https://console.cloud.google.com/apis/credentials")
 					settingsField(c, "Client ID", &s.clientID, "…apps.googleusercontent.com", false, s.busy)
 					settingsField(c, "Client Secret", &s.clientSecret, locales.ClientSecretPlaceholder(), true, s.busy)
+					settingsField(c, "Project ID", &s.projectID, "my-project", false, s.busy)
 					ui.Row(c).Justify(ui.End).Children(func() {
 						ui.Button(c, locales.ConnectGmail()).Disabled(s.busy).OnClick(a.connectCustomGmail)
 					})
 				})
 			} else {
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Avatar(c, a.account.Name, nil)
+					ui.Avatar(c, a.account.Name, a.accountPhoto)
 					ui.Column(c).Grow(1).Children(func() {
 						ui.Text(c, a.account.Email).Bold()
 						ui.Text(c, locales.Connected()).FontSize(12).TextColor(t.Success)
@@ -137,17 +154,17 @@ func (a *App) closeSettings() {
 
 func (a *App) connectGmail() {
 	clientID, clientSecret := gmail.EmbeddedCredentials()
-	a.connectGmailWith(clientID, clientSecret, false)
+	a.connectGmailWith(clientID, clientSecret, gmail.EmbeddedProjectID(), false)
 }
 
 func (a *App) connectCustomGmail() {
 	if a.settings == nil {
 		return
 	}
-	a.connectGmailWith(strings.TrimSpace(a.settings.clientID), strings.TrimSpace(a.settings.clientSecret), true)
+	a.connectGmailWith(strings.TrimSpace(a.settings.clientID), strings.TrimSpace(a.settings.clientSecret), strings.TrimSpace(a.settings.projectID), true)
 }
 
-func (a *App) connectGmailWith(clientID, clientSecret string, custom bool) {
+func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom bool) {
 	s := a.settings
 	if s == nil || s.busy {
 		return
@@ -162,7 +179,7 @@ func (a *App) connectGmailWith(clientID, clientSecret string, custom bool) {
 	s.cancel = cancel
 	a.schedule(func() {
 		if custom {
-			if err := saveOAuthCredentials(clientID, clientSecret); err != nil {
+			if err := saveOAuthCredentials(clientID, clientSecret, projectID); err != nil {
 				a.publish(func() {
 					if a.settings == s {
 						s.busy = false
@@ -173,7 +190,12 @@ func (a *App) connectGmailWith(clientID, clientSecret string, custom bool) {
 				return
 			}
 		}
-		client, err := gmail.NewOAuth(clientID, clientSecret).Login(ctx)
+		oauth := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
+		client, err := oauth.Login(ctx)
+		var service mail.Service
+		if err == nil {
+			service, err = oauth.Service(client)
+		}
 		a.publish(func() {
 			if a.settings != s {
 				return
@@ -184,7 +206,7 @@ func (a *App) connectGmailWith(clientID, clientSecret string, custom bool) {
 				s.err = locales.GmailConnectFailed(err.Error())
 				return
 			}
-			a.useService(gmail.New(client))
+			a.useService(service)
 			a.settings = nil
 			a.notice = locales.GmailConnected()
 		})
@@ -202,7 +224,12 @@ func (a *App) restoreGmail() {
 		if err != nil || clientID == "" || clientSecret == "" {
 			return
 		}
-		client, err := gmail.NewOAuth(clientID, clientSecret).Restore(context.Background())
+		projectID, err := loadOAuthProjectID()
+		if err != nil {
+			return
+		}
+		oauth := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
+		client, err := oauth.Restore(context.Background())
 		if err != nil {
 			if !errors.Is(err, gmail.ErrNoSession) {
 				a.publish(func() {
@@ -213,10 +240,45 @@ func (a *App) restoreGmail() {
 			}
 			return
 		}
+		service, err := oauth.Service(client)
 		a.publish(func() {
 			if version == a.serviceVersion {
-				a.useService(gmail.New(client))
+				if err != nil {
+					a.notice = locales.OauthRestoreFailed(err.Error())
+					return
+				}
+				a.useService(service)
 			}
+		})
+	})
+}
+
+func (a *App) reauthorizeGmail() {
+	clientID, clientSecret, err := loadOAuthCredentials()
+	if err != nil || clientID == "" || clientSecret == "" {
+		return
+	}
+	projectID, err := loadOAuthProjectID()
+	if err != nil {
+		return
+	}
+	version := a.serviceVersion
+	a.schedule(func() {
+		oauth := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
+		client, err := oauth.Login(context.Background())
+		var service mail.Service
+		if err == nil {
+			service, err = oauth.Service(client)
+		}
+		a.publish(func() {
+			if version != a.serviceVersion {
+				return
+			}
+			if err != nil {
+				a.notice = locales.GmailConnectFailed(err.Error())
+				return
+			}
+			a.useService(service)
 		})
 	})
 }
@@ -257,8 +319,14 @@ func (a *App) logoutGmail() {
 func (a *App) useService(service mail.Service) {
 	a.serviceVersion++
 	a.service = service
+	a.stopNotifications()
+	a.unreadSeen = nil
+	if a.setBadge != nil {
+		a.setBadge(0)
+	}
 	_, connected := service.(*gmail.Service)
 	a.account = mail.Account{Name: "Mica", Demo: !connected}
+	a.accountPhoto = nil
 	a.labels = nil
 	a.threads = nil
 	a.thread = mail.Thread{}
@@ -300,6 +368,17 @@ func loadOAuthCredentials() (string, string, error) {
 	return clientID, clientSecret, nil
 }
 
+func loadOAuthProjectID() (string, error) {
+	clientID, _, err := loadCustomOAuthCredentials()
+	if err != nil {
+		return "", err
+	}
+	if clientID == "" {
+		return gmail.EmbeddedProjectID(), nil
+	}
+	return oauthSecret(oauthProjectIDKey)
+}
+
 func oauthSecret(key string) (string, error) {
 	value, err := mygo.Secrets.Get(key)
 	if errors.Is(err, mygo.ErrSecretNotFound) {
@@ -311,18 +390,24 @@ func oauthSecret(key string) (string, error) {
 	return string(value), nil
 }
 
-func saveOAuthCredentials(clientID, clientSecret string) error {
+func saveOAuthCredentials(clientID, clientSecret, projectID string) error {
 	if err := mygo.Secrets.Set(oauthClientIDKey, []byte(clientID)); err != nil {
 		return err
 	}
-	return mygo.Secrets.Set(oauthClientSecretKey, []byte(clientSecret))
+	if err := mygo.Secrets.Set(oauthClientSecretKey, []byte(clientSecret)); err != nil {
+		return err
+	}
+	return mygo.Secrets.Set(oauthProjectIDKey, []byte(projectID))
 }
 
 func deleteOAuthCredentials() error {
 	if err := mygo.Secrets.Delete(oauthClientIDKey); err != nil {
 		return err
 	}
-	return mygo.Secrets.Delete(oauthClientSecretKey)
+	if err := mygo.Secrets.Delete(oauthClientSecretKey); err != nil {
+		return err
+	}
+	return mygo.Secrets.Delete(oauthProjectIDKey)
 }
 
 func (a *App) appearanceLabel() string {

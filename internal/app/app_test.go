@@ -13,15 +13,18 @@ import (
 )
 
 type fakeService struct {
-	account mail.Account
-	labels  []mail.Label
-	threads []mail.ThreadSummary
-	thread  mail.Thread
-	add     []string
-	remove  []string
-	trashed string
-	sent    mail.Compose
-	sendErr error
+	account     mail.Account
+	labels      []mail.Label
+	threads     []mail.ThreadSummary
+	thread      mail.Thread
+	add         []string
+	remove      []string
+	trashed     string
+	sent        mail.Compose
+	sendErr     error
+	watchID     uint64
+	historyFunc func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
+	stream      func(context.Context, func(uint64) error) error
 }
 
 func newFakeService() *fakeService {
