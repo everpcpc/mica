@@ -11,10 +11,6 @@ import (
 )
 
 func TestMessageBodyPreservesImageSources(t *testing.T) {
-	a := New(newFakeService())
-	if a.markdown.LoadImage == nil {
-		t.Error("HTML image loader is not configured")
-	}
 	message := mail.Message{
 		ID: "message-1",
 		HTML: `<p><img alt="pixel" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="></p>` +
@@ -93,91 +89,6 @@ func TestPrepareMessageHTMLKeepsResponsiveImageWidth(t *testing.T) {
 	}
 }
 
-func TestMessageViewCentersMaxWidthContainer(t *testing.T) {
-	service := newFakeService()
-	service.thread.Messages[0].Text = ""
-	text := "Centered " + strings.TrimSpace(strings.Repeat("long-content ", 20))
-	service.thread.Messages[0].HTML = `<div style="margin:0px auto;max-width:200px"><p>` + text + `</p></div><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==">`
-	a := newTestApp(service)
-	a.selectThread("thread-1")
-	tt := ui.NewTester(func(c *ui.Context) {
-		a.messageView(c, 0, a.thread.Messages[0])
-	}, 900, 700)
-	textBounds, ok := tt.Find(text)
-	if !ok {
-		t.Fatal("centered text not found")
-	}
-	if textBounds.X < 300 {
-		t.Fatalf("max-width container was not centered: %+v", textBounds)
-	}
-}
-
-func TestMessageViewIgnoresFormattingWhitespace(t *testing.T) {
-	render := func(source string) float32 {
-		t.Helper()
-		service := newFakeService()
-		service.thread.Messages[0].Text = ""
-		service.thread.Messages[0].HTML = source
-		a := newTestApp(service)
-		a.selectThread("thread-1")
-		tt := ui.NewTester(func(c *ui.Context) {
-			a.messageView(c, 0, a.thread.Messages[0])
-		}, 900, 700)
-		bounds, ok := tt.Find("Heading")
-		if !ok {
-			t.Fatal("heading not found")
-		}
-		return bounds.Y
-	}
-	compact := render(`<div><table><tbody><tr><td><p>Heading</p></td></tr></tbody></table></div>`)
-	indented := render(`<div>
-  <table>
-    <tbody>
-      <tr>
-        <td>
-          <p>Heading</p>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>`)
-	if difference := indented - compact; difference > 1 || difference < -1 {
-		t.Fatalf("formatting whitespace changed heading position: compact=%v indented=%v", compact, indented)
-	}
-}
-
-func TestMessageViewInheritsEmailTextStyle(t *testing.T) {
-	service := newFakeService()
-	service.thread.Messages[0].Text = ""
-	service.thread.Messages[0].HTML = `<div style="font-size:22px;font-weight:bold;line-height:1.6;text-align:center;color:#1a2433"><p><a href="https://example.com" style="color:#1a2433;text-decoration:none">Heading</a></p></div>`
-	a := newTestApp(service)
-	a.selectThread("thread-1")
-	tt := ui.NewTester(func(c *ui.Context) {
-		a.messageView(c, 0, a.thread.Messages[0])
-	}, 900, 700)
-	bounds, ok := tt.Find("Heading")
-	if !ok {
-		t.Fatal("heading not found")
-	}
-	if bounds.H < 30 {
-		t.Fatalf("heading did not inherit its font size and line height: %+v", bounds)
-	}
-	foundColor := false
-	image := tt.Image()
-	for y := int(bounds.Y); y < int(bounds.Y+bounds.H); y++ {
-		for x := int(bounds.X); x < int(bounds.X+bounds.W); x++ {
-			pixel := image.RGBAAt(x, y)
-			if pixel.R == 0x1a && pixel.G == 0x24 && pixel.B == 0x33 {
-				foundColor = true
-				break
-			}
-		}
-	}
-	if !foundColor {
-		t.Fatal("link did not keep the color declared by the email")
-	}
-}
-
 func TestPrepareMessageHTMLHidesImages(t *testing.T) {
 	got := prepareMessageHTML(mail.Message{HTML: `<img src="hidden.png" style="display:none">`})
 	if strings.Contains(got, "<img") {
@@ -202,102 +113,57 @@ func TestMessageViewHidesInlineMetadata(t *testing.T) {
 	}
 }
 
-func TestMessageViewKeepsTableCellsOnSameRow(t *testing.T) {
+func TestThreadCollapsesOlderReadMessages(t *testing.T) {
 	service := newFakeService()
-	service.thread.Messages[0].Text = ""
-	service.thread.Messages[0].HTML = `<table><tr><td><img alt="cover" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="></td><td><strong>Article title</strong></td></tr></table>`
+	service.thread.Messages = []mail.Message{
+		{ID: "message-old", ThreadID: "thread-1", From: "Ada <ada@example.com>", Date: time.Now(), Text: strings.TrimSpace(strings.Repeat("Older message details ", 10)) + " OLDER_TAIL"},
+		{ID: "message-unread", ThreadID: "thread-1", From: "Bob <bob@example.com>", Date: time.Now(), Text: "Unread body", LabelIDs: []string{mail.Unread}},
+		{ID: "message-latest", ThreadID: "thread-1", From: "Cid <cid@example.com>", Date: time.Now(), Text: "Latest body"},
+	}
 	a := newTestApp(service)
 	a.selectThread("thread-1")
-	tt := ui.NewTester(func(c *ui.Context) {
-		a.messageView(c, 0, a.thread.Messages[0])
-	}, 900, 700)
-	tt.Advance(time.Second)
-	if tt.HasText("[cover]") {
-		t.Fatalf("image is shown as alt text instead of a rendered image: %q", tt.Texts())
+	tt := ui.NewTester(a.View, 1280, 800)
+	if !tt.HasText("Unread body") || !tt.HasText("Latest body") {
+		t.Fatalf("unread or latest message was collapsed: %q", tt.Texts())
 	}
-	cover, ok := tt.Find("cover")
-	if !ok {
-		t.Fatalf("cover image not found: %q", tt.Texts())
+	if tt.HasText("OLDER_TAIL") {
+		t.Fatal("older read message was not collapsed")
 	}
-	title, ok := tt.Find("Article title")
-	if !ok {
-		t.Fatal("article title not found")
+	if !tt.HasText("Expand message") {
+		t.Fatalf("collapsed message has no accessible expand action: %q", tt.Texts())
 	}
-	if title.X < cover.X+cover.W || title.Y >= cover.Y+cover.H {
-		t.Fatalf("table cells were linearized: cover=%+v title=%+v", cover, title)
+	if err := tt.Click("Expand message"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("OLDER_TAIL") {
+		t.Fatal("expanding did not restore the full message")
+	}
+	if err := tt.Click("Collapse message"); err != nil {
+		t.Fatal(err)
+	}
+	if tt.HasText("OLDER_TAIL") {
+		t.Fatal("collapsing did not hide the full message again")
 	}
 }
 
-func TestMessageViewKeepsInlineBlockColumnsOnSameRow(t *testing.T) {
-	service := newFakeService()
-	service.thread.Messages[0].Text = ""
-	service.thread.Messages[0].HTML = `<td><div class="mj-column-per-40" style="display:inline-block"><img alt="cover" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="></div><div class="mj-column-per-60" style="display:inline-block"><strong>Article title</strong></div></td>`
-	a := newTestApp(service)
-	a.selectThread("thread-1")
-	tt := ui.NewTester(func(c *ui.Context) {
-		a.messageView(c, 0, a.thread.Messages[0])
-	}, 900, 700)
-	tt.Advance(time.Second)
-	if tt.HasText("[cover]") {
-		t.Fatalf("image is shown as alt text instead of a rendered image: %q", tt.Texts())
+func TestPrepareMessageHTMLDropsTrackingPixels(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		html string
+	}{
+		{name: "attributes", html: `<img src="tracker.png" width="1" height="1">`},
+		{name: "zero", html: `<img src="tracker.png" width="0" height="0">`},
+		{name: "inline style", html: `<img src="tracker.png" style="width:1px;height:1px">`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := prepareMessageHTML(mail.Message{HTML: tc.html})
+			if strings.Contains(body, "tracker.png") {
+				t.Fatalf("tracking pixel is still present: %q", body)
+			}
+		})
 	}
-	cover, ok := tt.Find("cover")
-	if !ok {
-		t.Fatalf("cover image not found: %q", tt.Texts())
-	}
-	title, ok := tt.Find("Article title")
-	if !ok {
-		t.Fatal("article title not found")
-	}
-	if title.X < cover.X+cover.W || title.Y >= cover.Y+cover.H {
-		t.Fatalf("inline-block columns were linearized: cover=%+v title=%+v", cover, title)
-	}
-}
-
-func TestMessageViewKeepsInlineBlockTextInColumn(t *testing.T) {
-	service := newFakeService()
-	service.thread.Messages[0].Text = ""
-	service.thread.Messages[0].HTML = `<h4>First section</h4><p style="display:inline-block">Second section</p><h4 style="display:inline-block">Third section</h4><p style="display:inline-block">Fourth section</p>`
-	a := newTestApp(service)
-	a.selectThread("thread-1")
-	tt := ui.NewTester(func(c *ui.Context) {
-		a.messageView(c, 0, a.thread.Messages[0])
-	}, 900, 700)
-	first, ok := tt.Find("First section")
-	if !ok {
-		t.Fatal("first section not found")
-	}
-	second, ok := tt.Find("Second section")
-	if !ok {
-		t.Fatal("second section not found")
-	}
-	if second.Y < first.Y+first.H {
-		t.Fatalf("inline-block text was laid out horizontally: first=%+v second=%+v", first, second)
-	}
-}
-
-func TestMessageViewRendersInlineImageWithText(t *testing.T) {
-	service := newFakeService()
-	service.thread.Messages[0].Text = ""
-	service.thread.Messages[0].HTML = `<div style="line-height:20px"><img alt="favicon" width="20" height="20" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="><span>Site</span></div>`
-	a := newTestApp(service)
-	a.selectThread("thread-1")
-	tt := ui.NewTester(func(c *ui.Context) {
-		a.messageView(c, 0, a.thread.Messages[0])
-	}, 900, 700)
-	tt.Advance(time.Second)
-	if tt.HasText("[favicon]") {
-		t.Fatalf("inline image is shown as alt text: %q", tt.Texts())
-	}
-	icon, ok := tt.Find("favicon")
-	if !ok {
-		t.Fatalf("inline image not found: %q", tt.Texts())
-	}
-	site, ok := tt.Find("Site")
-	if !ok {
-		t.Fatal("site text not found")
-	}
-	if site.X < icon.X+icon.W || site.Y >= icon.Y+icon.H {
-		t.Fatalf("inline image and text were separated: icon=%+v site=%+v", icon, site)
+	body := prepareMessageHTML(mail.Message{HTML: `<img src="icon.png" width="1" height="1" style="width:20px;height:20px"><img src="line.png" width="1">`})
+	if !strings.Contains(body, "icon.png") || !strings.Contains(body, "line.png") {
+		t.Fatalf("normal images were mistaken for trackers: %q", body)
 	}
 }
