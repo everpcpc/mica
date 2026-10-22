@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"mica/internal/mail"
@@ -66,7 +67,7 @@ func (a *App) emptyReader(c *ui.Context) {
 func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
-	ui.Scroll(c.Key("read-" + thread.ID)).Grow(1).Background(t.Surface).Transition(ui.ElementTransition{
+	ui.Scroll(c.Key("read-" + thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Surface).Transition(ui.ElementTransition{
 		Enter:    &ui.Motion{Y: 6},
 		Duration: 180 * time.Millisecond,
 	}).Children(func() {
@@ -109,6 +110,10 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		a.messageScroll = -1
 	}
 	container.Children(func() {
+		if !a.messageExpanded(index, message) {
+			a.collapsedMessageView(c, message)
+			return
+		}
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Avatar(c, addressName(message.From), nil)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
@@ -121,6 +126,7 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 				ui.Text(c, addressEmail(message.From)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			})
 			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted)
+			iconButton(c, locales.CollapseMessage(), iconChevronDown, func() { a.setMessageExpanded(message.ID, false) })
 		})
 		if message.To != "" {
 			ui.Text(c, locales.SendTo(message.To)).FontSize(11).TextColor(t.TextMuted)
@@ -142,4 +148,55 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 			}
 		})
 	})
+}
+
+func (a *App) collapsedMessageView(c *ui.Context, message mail.Message) {
+	t := c.Theme()
+	ui.Button(c, "").Label(locales.ExpandMessage()).WidthPercent(100).Padding(8, 10).Radius(8).Background(t.Background).OnClick(func() {
+		a.setMessageExpanded(message.ID, true)
+	}).Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Avatar(c, addressName(message.From), nil)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, addressName(message.From)).Bold().SingleLine()
+				ui.Text(c, a.messagePreview(message)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			})
+			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted)
+			ui.Icon(c, iconChevronRight).Size(12, 12).TextColor(t.TextMuted)
+		})
+	})
+}
+
+func (a *App) messageExpanded(index int, message mail.Message) bool {
+	if expanded, ok := a.expandedMessages[message.ID]; ok {
+		return expanded
+	}
+	return index == len(a.thread.Messages)-1 || containsLabel(message.LabelIDs, mail.Unread)
+}
+
+func (a *App) setMessageExpanded(id string, expanded bool) {
+	if a.expandedMessages == nil {
+		a.expandedMessages = make(map[string]bool)
+	}
+	a.expandedMessages[id] = expanded
+	if !expanded {
+		a.closeEmailView(id)
+	}
+}
+
+func (a *App) messagePreview(message mail.Message) string {
+	preview := strings.TrimSpace(message.Text)
+	if preview == "" {
+		preview = a.emailDocument(message).preview
+	}
+	preview = strings.Join(strings.Fields(preview), " ")
+	if preview == "" {
+		return locales.NoBody()
+	}
+	const limit = 120
+	runes := []rune(preview)
+	if len(runes) > limit {
+		return string(runes[:limit-1]) + "…"
+	}
+	return preview
 }

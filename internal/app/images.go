@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 	_ "golang.org/x/image/bmp"
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -45,8 +44,8 @@ type messageImages struct {
 	client  *http.Client
 }
 
-func newMessageImages(service mail.Service) func(string) (ui.ImageSource, error) {
-	loader := &messageImages{
+func newMessageImageLoader(service mail.Service) *messageImages {
+	return &messageImages{
 		service: service,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
@@ -61,13 +60,21 @@ func newMessageImages(service mail.Service) func(string) (ui.ImageSource, error)
 			},
 		},
 	}
-	return loader.load
+}
+
+func newMessageImages(service mail.Service) func(string) (ui.ImageSource, error) {
+	return newMessageImageLoader(service).load
 }
 
 func (a *App) resetMessageViews() {
+	a.closeEmailViews()
 	a.documents = nil
-	a.emailOptions = nil
-	a.markdown = markdown.Options{LoadImage: newMessageImages(a.service)}
+	a.expandedMessages = nil
+	if a.emailResources == nil {
+		a.emailResources = newEmailResourceStore(a.service)
+	} else {
+		a.emailResources.loader = newMessageImageLoader(a.service)
+	}
 }
 
 func prepareMessageHTML(message mail.Message) string {
@@ -100,13 +107,11 @@ func prepareMessageHTML(message mail.Message) string {
 }
 
 func normalizeImageNode(node *xhtml.Node) {
-	style := map[string]string{}
-	for _, declaration := range strings.Split(imageAttribute(node, "style"), ";") {
-		name, value, ok := strings.Cut(declaration, ":")
-		if ok {
-			style[strings.ToLower(strings.TrimSpace(name))] = strings.ToLower(strings.TrimSpace(value))
-		}
+	if trackingImageNode(node) {
+		node.Data, node.DataAtom, node.Attr = "span", atom.Span, nil
+		return
 	}
+	style := imageStyle(node)
 	if style["display"] == "none" {
 		node.Data, node.DataAtom, node.Attr = "span", atom.Span, nil
 		return
@@ -122,6 +127,36 @@ func normalizeImageNode(node *xhtml.Node) {
 			removeImageAttribute(node, dimension)
 		}
 	}
+}
+
+func trackingImageNode(node *xhtml.Node) bool {
+	style := imageStyle(node)
+	width, hasWidth := imageNodeDimension(node, "width", style)
+	height, hasHeight := imageNodeDimension(node, "height", style)
+	return hasWidth && hasHeight && width <= 1 && height <= 1
+}
+
+func imageNodeDimension(node *xhtml.Node, key string, style map[string]string) (float64, bool) {
+	value, ok := style[key]
+	if !ok {
+		value = imageAttribute(node, key)
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimSpace(strings.TrimSuffix(value, "!important"))
+	value = strings.TrimSpace(strings.TrimSuffix(value, "px"))
+	pixels, err := strconv.ParseFloat(value, 64)
+	return pixels, err == nil && pixels >= 0
+}
+
+func imageStyle(node *xhtml.Node) map[string]string {
+	style := map[string]string{}
+	for _, declaration := range strings.Split(imageAttribute(node, "style"), ";") {
+		name, value, ok := strings.Cut(declaration, ":")
+		if ok {
+			style[strings.ToLower(strings.TrimSpace(name))] = strings.ToLower(strings.TrimSpace(value))
+		}
+	}
+	return style
 }
 
 func messageImageNodeURL(message mail.Message, node *xhtml.Node) string {

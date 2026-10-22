@@ -23,10 +23,10 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 - Label switching, global Gmail search, conversation loading, empty results, request failures, and offline states.
 - Gmail mailboxes, categories, label visibility, and user labels share one navigation model; internal system labels stay out of the Labels section.
 - Label details are fetched individually because the label list endpoint omits message counts.
-- Remote, data, and Content-ID inline images load asynchronously. Remote requests never carry Gmail credentials and only connect to public IP addresses.
-- HTML image dimensions and inline pixel sizes are preserved, hidden images are omitted, and narrow readers scale images down proportionally.
-- Hidden inline metadata is removed before HTML-to-Markdown conversion.
-- Common table and MJML layouts, inherited text styles, and inline icons are preserved without treating formatting-only whitespace as content. Only `mj-column-per-*` containers become multi-column rows; ordinary inline-block text stays in reading order.
+- Remote, data, and Content-ID inline images load through the `mica-img` protocol with per-message tokens. Remote requests never carry Gmail credentials and only connect to public IP addresses; closing a message revokes its tokens.
+- HTML email is sanitized with a provider-independent mail sanitizer and rendered in per-message sandboxed WebViews. CSP disables scripts and unproxied subresources, while tables, inline styles, and scoped stylesheets use the browser's real CSS layout.
+- Hidden images and tracking images with both dimensions at most 1px are omitted, and narrow readers scale images down proportionally. Hidden inline metadata is removed before document generation and text previews.
+- Older read messages in a thread collapse to an accessible sender, preview, and date row; unread and latest messages stay expanded, and manual expansion state follows message IDs.
 - The account name and photo come from Google UserInfo. Existing Gmail-only sessions can request the added OpenID scopes once instead of repeatedly prompting.
 - Gmail-style filled importance markers appear in both the conversation list and reader.
 - Loaded conversations stay in an in-memory cache until an explicit refresh. Label changes update cached state, and account switches clear it.

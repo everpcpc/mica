@@ -31,6 +31,8 @@
   "sync": "同步",
   "conversationCount": "{count, plural, other {{count} 个会话}}",
   "messageCount": "{count, plural, other {{count} 封邮件}}",
+  "expandMessage": "展开这封邮件",
+  "collapseMessage": "收起这封邮件",
   "loadingMail": "正在同步邮件…",
   "loadMailFailed": "邮件加载失败",
   "retry": "重试",

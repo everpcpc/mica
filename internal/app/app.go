@@ -8,8 +8,8 @@ import (
 	"mica/internal/mail"
 	"mica/locales"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 )
 
 type App struct {
@@ -41,9 +41,11 @@ type App struct {
 
 	list                 ui.ListState
 	search               ui.Handle
-	markdown             markdown.Options
-	emailOptions         emailOptionsMap
+	emailResources       *emailResourceStore
+	emailPages           map[string]*emailPage
+	newEmailView         func() (*mygo.WebView, error)
 	documents            map[string]*emailDocument
+	expandedMessages     map[string]bool
 	compose              *composer
 	settings             *settingsState
 	appearance           string
@@ -52,6 +54,7 @@ type App struct {
 	chordAt              time.Time
 	focusedMessage       int
 	messageScroll        int
+	readerScroll         ui.ScrollState
 	undo                 *undoAction
 	request              int
 	threadCall           int
@@ -74,6 +77,7 @@ type App struct {
 func New(service mail.Service) *App {
 	a := &App{
 		service:        service,
+		emailResources: newEmailResourceStore(service),
 		account:        mail.Account{Name: "Mica", Demo: true},
 		threadCache:    make(map[string]mail.Thread),
 		selectedLabel:  mail.Inbox,
@@ -208,6 +212,7 @@ func (a *App) selectLabel() {
 }
 
 func (a *App) clearThread() {
+	a.closeEmailViews()
 	a.threadCall++
 	a.selectedRow = -1
 	a.selectedThread = ""
@@ -252,10 +257,13 @@ func (a *App) selectThread(id string) {
 }
 
 func (a *App) showThread(id string, thread mail.Thread) {
+	a.closeEmailViews()
 	a.thread = thread
 	a.threadLoading = false
 	a.focusedMessage = len(thread.Messages) - 1
 	a.messageScroll = -1
+	a.readerScroll.Y = 0
+	a.readerScroll.MaxY = 0
 	for i := range a.threads {
 		if a.threads[i].ID == id && a.threads[i].Unread {
 			a.threads[i].Unread = false

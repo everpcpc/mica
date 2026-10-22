@@ -33,6 +33,9 @@ func appMenu(openSettings func()) *mygo.Menu {
 func main() {
 	mygo.Use(native.Plugin)
 	a := app.New(mail.NewDemo())
+	if err := app.RegisterEmailRenderer(a); err != nil {
+		log.Fatal(err)
+	}
 	var win *mygo.Window
 	openSettings := func() {
 		if win != nil {
@@ -81,6 +84,9 @@ func main() {
 				event.PreventDefault()
 				win.Hide()
 			}
+		})
+		a.SetEmailViewFactory(func() (*mygo.WebView, error) {
+			return win.NewWebView(mygo.WebViewOptions{})
 		})
 		a.SetUpdate(win.Update)
 		a.Start()

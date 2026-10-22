@@ -324,6 +324,26 @@ func (msgs Messages) MessageCount(count int) string {
 	return Catalog.Format(msgs.locale, "messageCount", map[string]any{"count": count})
 }
 
+// ExpandMessage says "Expand message"
+// in the language the app shows.
+func ExpandMessage() string { return In(i18n.Locale()).ExpandMessage() }
+
+// ExpandMessage says "Expand message"
+// in the language of msgs.
+func (msgs Messages) ExpandMessage() string {
+	return Catalog.Format(msgs.locale, "expandMessage", nil)
+}
+
+// CollapseMessage says "Collapse message"
+// in the language the app shows.
+func CollapseMessage() string { return In(i18n.Locale()).CollapseMessage() }
+
+// CollapseMessage says "Collapse message"
+// in the language of msgs.
+func (msgs Messages) CollapseMessage() string {
+	return Catalog.Format(msgs.locale, "collapseMessage", nil)
+}
+
 // LoadingMail says "Syncing mail…"
 // in the language the app shows.
 func LoadingMail() string { return In(i18n.Locale()).LoadingMail() }

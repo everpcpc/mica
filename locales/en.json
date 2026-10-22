@@ -33,6 +33,8 @@
   "@conversationCount": {"placeholders": {"count": {"type": "int", "example": "5"}}},
   "messageCount": "{count, plural, one {# message} other {# messages}}",
   "@messageCount": {"placeholders": {"count": {"type": "int", "example": "4"}}},
+  "expandMessage": "Expand message",
+  "collapseMessage": "Collapse message",
   "loadingMail": "Syncing mail…",
   "loadMailFailed": "Couldn't load mail",
   "retry": "Retry",
