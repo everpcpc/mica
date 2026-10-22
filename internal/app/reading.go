@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -140,11 +139,7 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 				ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
 			}
 			for _, attachment := range message.Attachments {
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, iconLabel).Size(14, 14).TextColor(t.TextMuted)
-					ui.Text(c, attachment.Name).FontSize(12)
-					ui.Text(c, fmt.Sprintf("%d KB", max(attachment.Size/1024, 1))).FontSize(11).TextColor(t.TextMuted)
-				})
+				a.attachmentView(c, message, attachment)
 			}
 		})
 	})

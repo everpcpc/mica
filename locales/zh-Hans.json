@@ -135,5 +135,9 @@
   "discardDraft": "丢弃草稿",
   "helpShortcut": "打开快捷键帮助",
   "forwardedMessage": "---------- 转发的邮件 ----------",
-  "actionUndone": "已撤销操作"
+  "actionUndone": "已撤销操作",
+  "openAttachment": "打开",
+  "saveAttachment": "保存",
+  "saveAttachmentDialog": "存储附件",
+  "attachmentUnavailable": "附件不可用"
 }

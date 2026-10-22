@@ -1377,3 +1377,43 @@ func ActionUndone() string { return In(i18n.Locale()).ActionUndone() }
 func (msgs Messages) ActionUndone() string {
 	return Catalog.Format(msgs.locale, "actionUndone", nil)
 }
+
+// OpenAttachment says "Open"
+// in the language the app shows.
+func OpenAttachment() string { return In(i18n.Locale()).OpenAttachment() }
+
+// OpenAttachment says "Open"
+// in the language of msgs.
+func (msgs Messages) OpenAttachment() string {
+	return Catalog.Format(msgs.locale, "openAttachment", nil)
+}
+
+// SaveAttachment says "Save"
+// in the language the app shows.
+func SaveAttachment() string { return In(i18n.Locale()).SaveAttachment() }
+
+// SaveAttachment says "Save"
+// in the language of msgs.
+func (msgs Messages) SaveAttachment() string {
+	return Catalog.Format(msgs.locale, "saveAttachment", nil)
+}
+
+// SaveAttachmentDialog says "Save attachment"
+// in the language the app shows.
+func SaveAttachmentDialog() string { return In(i18n.Locale()).SaveAttachmentDialog() }
+
+// SaveAttachmentDialog says "Save attachment"
+// in the language of msgs.
+func (msgs Messages) SaveAttachmentDialog() string {
+	return Catalog.Format(msgs.locale, "saveAttachmentDialog", nil)
+}
+
+// AttachmentUnavailable says "Attachments are unavailable"
+// in the language the app shows.
+func AttachmentUnavailable() string { return In(i18n.Locale()).AttachmentUnavailable() }
+
+// AttachmentUnavailable says "Attachments are unavailable"
+// in the language of msgs.
+func (msgs Messages) AttachmentUnavailable() string {
+	return Catalog.Format(msgs.locale, "attachmentUnavailable", nil)
+}
