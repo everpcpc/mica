@@ -46,6 +46,7 @@ type App struct {
 	search               ui.Handle
 	emailResources       *emailResourceStore
 	emailPages           map[string]*emailPage
+	emailHeights         map[string]float32
 	newEmailView         func() (*mygo.WebView, error)
 	documents            map[string]*emailDocument
 	expandedMessages     map[string]bool
@@ -355,7 +356,11 @@ func (a *App) selectThread(id string) {
 
 func (a *App) showThread(id string, thread mail.Thread) {
 	sameThread := a.thread.ID == id
-	a.closeEmailViews()
+	if sameThread {
+		a.retainEmailViews(thread)
+	} else {
+		a.closeEmailViews()
+	}
 	a.thread = thread
 	a.threadLoading = false
 	if !sameThread {
