@@ -465,7 +465,7 @@ func matchesDemoSearch(thread *Thread, search string) bool {
 					continue
 				}
 			case "in":
-				label := map[string]string{"inbox": Inbox, "sent": Sent, "trash": Trash, "starred": Starred}[value]
+				label := map[string]string{"inbox": Inbox, "sent": Sent, "trash": Trash, "starred": Starred, "snoozed": Snoozed}[value]
 				if label != "" {
 					if !hasString(labels, label) {
 						return false
@@ -473,6 +473,17 @@ func matchesDemoSearch(thread *Thread, search string) bool {
 					continue
 				}
 				if value == "anywhere" {
+					continue
+				}
+			case "category":
+				label := map[string]string{
+					"primary": "CATEGORY_PERSONAL", "social": CategorySocial, "promotions": CategoryPromotions,
+					"updates": CategoryUpdates, "forums": CategoryForums, "purchases": CategoryPurchases, "reservations": CategoryReservations,
+				}[value]
+				if label != "" {
+					if !hasString(labels, label) {
+						return false
+					}
 					continue
 				}
 			case "label":

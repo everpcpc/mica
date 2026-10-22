@@ -84,6 +84,116 @@ func (msgs Messages) Trash() string {
 	return Catalog.Format(msgs.locale, "trash", nil)
 }
 
+// Snoozed says "Snoozed"
+// in the language the app shows.
+func Snoozed() string { return In(i18n.Locale()).Snoozed() }
+
+// Snoozed says "Snoozed"
+// in the language of msgs.
+func (msgs Messages) Snoozed() string {
+	return Catalog.Format(msgs.locale, "snoozed", nil)
+}
+
+// Drafts says "Drafts"
+// in the language the app shows.
+func Drafts() string { return In(i18n.Locale()).Drafts() }
+
+// Drafts says "Drafts"
+// in the language of msgs.
+func (msgs Messages) Drafts() string {
+	return Catalog.Format(msgs.locale, "drafts", nil)
+}
+
+// Important says "Important"
+// in the language the app shows.
+func Important() string { return In(i18n.Locale()).Important() }
+
+// Important says "Important"
+// in the language of msgs.
+func (msgs Messages) Important() string {
+	return Catalog.Format(msgs.locale, "important", nil)
+}
+
+// AllMail says "All Mail"
+// in the language the app shows.
+func AllMail() string { return In(i18n.Locale()).AllMail() }
+
+// AllMail says "All Mail"
+// in the language of msgs.
+func (msgs Messages) AllMail() string {
+	return Catalog.Format(msgs.locale, "allMail", nil)
+}
+
+// Categories says "Categories"
+// in the language the app shows.
+func Categories() string { return In(i18n.Locale()).Categories() }
+
+// Categories says "Categories"
+// in the language of msgs.
+func (msgs Messages) Categories() string {
+	return Catalog.Format(msgs.locale, "categories", nil)
+}
+
+// CategorySocial says "Social"
+// in the language the app shows.
+func CategorySocial() string { return In(i18n.Locale()).CategorySocial() }
+
+// CategorySocial says "Social"
+// in the language of msgs.
+func (msgs Messages) CategorySocial() string {
+	return Catalog.Format(msgs.locale, "categorySocial", nil)
+}
+
+// CategoryPromotions says "Promotions"
+// in the language the app shows.
+func CategoryPromotions() string { return In(i18n.Locale()).CategoryPromotions() }
+
+// CategoryPromotions says "Promotions"
+// in the language of msgs.
+func (msgs Messages) CategoryPromotions() string {
+	return Catalog.Format(msgs.locale, "categoryPromotions", nil)
+}
+
+// CategoryUpdates says "Updates"
+// in the language the app shows.
+func CategoryUpdates() string { return In(i18n.Locale()).CategoryUpdates() }
+
+// CategoryUpdates says "Updates"
+// in the language of msgs.
+func (msgs Messages) CategoryUpdates() string {
+	return Catalog.Format(msgs.locale, "categoryUpdates", nil)
+}
+
+// CategoryForums says "Forums"
+// in the language the app shows.
+func CategoryForums() string { return In(i18n.Locale()).CategoryForums() }
+
+// CategoryForums says "Forums"
+// in the language of msgs.
+func (msgs Messages) CategoryForums() string {
+	return Catalog.Format(msgs.locale, "categoryForums", nil)
+}
+
+// CategoryPurchases says "Purchases"
+// in the language the app shows.
+func CategoryPurchases() string { return In(i18n.Locale()).CategoryPurchases() }
+
+// CategoryPurchases says "Purchases"
+// in the language of msgs.
+func (msgs Messages) CategoryPurchases() string {
+	return Catalog.Format(msgs.locale, "categoryPurchases", nil)
+}
+
+// CategoryReservations says "Reservations"
+// in the language the app shows.
+func CategoryReservations() string { return In(i18n.Locale()).CategoryReservations() }
+
+// CategoryReservations says "Reservations"
+// in the language of msgs.
+func (msgs Messages) CategoryReservations() string {
+	return Catalog.Format(msgs.locale, "categoryReservations", nil)
+}
+
 // Mailboxes says "Mailboxes"
 // in the language the app shows.
 func Mailboxes() string { return In(i18n.Locale()).Mailboxes() }

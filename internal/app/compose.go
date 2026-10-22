@@ -164,10 +164,6 @@ func (a *App) sendCompose() {
 			}
 			a.notice = locales.SendSucceeded()
 			a.refresh()
-			if out.ThreadID != "" {
-				a.selectedThread = ""
-				a.selectThread(out.ThreadID)
-			}
 		})
 	})
 }

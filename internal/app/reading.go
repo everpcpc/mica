@@ -143,7 +143,7 @@ func (a *App) messageBody(message mail.Message) (string, bool) {
 	}
 	body, ok := a.bodies[message.ID]
 	if !ok {
-		body = richtext.ParseHTML(message.HTML).Markdown()
+		body = richtext.ParseHTML(prepareMessageHTML(message)).Markdown()
 		a.bodies[message.ID] = body
 	}
 	if body == "" {

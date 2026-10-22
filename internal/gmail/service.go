@@ -107,10 +107,12 @@ func (s *Service) Account(ctx context.Context) (mail.Account, error) {
 func (s *Service) Labels(ctx context.Context) ([]mail.Label, error) {
 	var response struct {
 		Labels []struct {
-			ID             string `json:"id"`
-			Name           string `json:"name"`
-			MessagesTotal  int    `json:"messagesTotal"`
-			MessagesUnread int    `json:"messagesUnread"`
+			ID                  string `json:"id"`
+			Name                string `json:"name"`
+			Type                string `json:"type"`
+			LabelListVisibility string `json:"labelListVisibility"`
+			MessagesTotal       int    `json:"messagesTotal"`
+			MessagesUnread      int    `json:"messagesUnread"`
 		} `json:"labels"`
 	}
 	if err := s.doJSON(ctx, http.MethodGet, "/labels", nil, nil, &response); err != nil {
@@ -118,9 +120,29 @@ func (s *Service) Labels(ctx context.Context) ([]mail.Label, error) {
 	}
 	labels := make([]mail.Label, len(response.Labels))
 	for i, label := range response.Labels {
-		labels[i] = mail.Label{ID: label.ID, Name: label.Name, Messages: label.MessagesTotal, Unread: label.MessagesUnread}
+		labels[i] = mail.Label{
+			ID: label.ID, Name: label.Name, Messages: label.MessagesTotal, Unread: label.MessagesUnread,
+			System: label.Type == "system", Hide: label.LabelListVisibility == "labelHide",
+			ShowIfUnread: label.LabelListVisibility == "labelShowIfUnread",
+		}
 	}
 	return labels, nil
+}
+
+func (s *Service) Attachment(ctx context.Context, messageID, attachmentID string) ([]byte, error) {
+	if messageID == "" || attachmentID == "" {
+		return nil, errors.New("gmail: empty message or attachment ID")
+	}
+	var response apiBody
+	path := "/messages/" + url.PathEscape(messageID) + "/attachments/" + url.PathEscape(attachmentID)
+	if err := s.doJSON(ctx, http.MethodGet, path, nil, nil, &response); err != nil {
+		return nil, err
+	}
+	data, err := decodeBase64URL(response.Data)
+	if err != nil {
+		return nil, fmt.Errorf("gmail: decode attachment: %w", err)
+	}
+	return data, nil
 }
 
 func (s *Service) ListThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {

@@ -45,3 +45,30 @@ func TestEscapeClearsSearchAndRestoresMailbox(t *testing.T) {
 		t.Fatalf("mailbox after Escape = %q, want INBOX", got)
 	}
 }
+
+func TestMailboxQueriesMatchGmail(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		mailbox string
+		search  string
+	}{
+		{name: "snoozed", mailbox: "SNOOZED", search: "in:snoozed"},
+		{name: "purchases", mailbox: "CATEGORY_PURCHASES", search: "category:purchases"},
+		{name: "reservations", mailbox: "CATEGORY_RESERVATIONS", search: "category:reservations"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := &searchService{fakeService: newFakeService()}
+			a := New(service)
+			a.schedule = func(fn func()) { fn() }
+			a.selectedLabel = tc.mailbox
+			a.refresh()
+			if len(service.queries) != 1 {
+				t.Fatalf("queries = %d, want 1", len(service.queries))
+			}
+			query := service.queries[0]
+			if query.LabelID != "" || query.Search != tc.search {
+				t.Fatalf("query = %+v, want global %q", query, tc.search)
+			}
+		})
+	}
+}

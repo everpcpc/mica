@@ -13,11 +13,12 @@ import (
 )
 
 type App struct {
-	service mail.Service
-	account mail.Account
-	labels  []mail.Label
-	threads []mail.ThreadSummary
-	thread  mail.Thread
+	service     mail.Service
+	account     mail.Account
+	labels      []mail.Label
+	threads     []mail.ThreadSummary
+	thread      mail.Thread
+	threadCache map[string]mail.Thread
 
 	selectedLabel  string
 	selectedThread string
@@ -58,6 +59,7 @@ func New(service mail.Service) *App {
 	a := &App{
 		service:        service,
 		account:        mail.Account{Name: "Mica", Demo: true},
+		threadCache:    make(map[string]mail.Thread),
 		selectedLabel:  mail.Inbox,
 		selectedRow:    -1,
 		sidebarWidth:   204,
@@ -67,6 +69,7 @@ func New(service mail.Service) *App {
 		messageScroll:  -1,
 		schedule:       func(fn func()) { go fn() },
 	}
+	a.resetMessageViews()
 	a.list.Selected = &a.selectedRow
 	a.list.Key = func(i int) any { return a.threads[i].ID }
 	a.list.Label = func(i int) string {
@@ -115,15 +118,20 @@ func (a *App) publish(fn func()) {
 }
 
 func (a *App) refresh() {
+	a.threadCache = make(map[string]mail.Thread)
+	if a.selectedThread != "" {
+		id := a.selectedThread
+		a.selectedThread = ""
+		a.selectThread(id)
+	}
 	a.request++
 	request := a.request
 	a.loading = true
 	a.err = ""
 	service, version := a.service, a.serviceVersion
-	search := strings.TrimSpace(a.query)
-	labelID := a.selectedLabel
-	if search != "" {
-		labelID = ""
+	labelID, search := mailboxQuery(a.selectedLabel)
+	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
+		labelID, search = "", userSearch
 	}
 	query := mail.Query{LabelID: labelID, Search: search, Limit: 100}
 	a.schedule(func() {
@@ -170,8 +178,12 @@ func (a *App) selectThread(id string) {
 	a.threadCall++
 	call := a.threadCall
 	a.selectedThread = id
-	a.thread = mail.Thread{}
 	a.threadErr = ""
+	if thread, ok := a.threadCache[id]; ok {
+		a.showThread(id, thread)
+		return
+	}
+	a.thread = mail.Thread{}
 	a.threadLoading = true
 	service, version := a.service, a.serviceVersion
 	a.schedule(func() {
@@ -185,18 +197,27 @@ func (a *App) selectThread(id string) {
 				a.threadErr = err.Error()
 				return
 			}
-			a.thread = thread
-			a.focusedMessage = len(thread.Messages) - 1
-			a.messageScroll = -1
-			for i := range a.threads {
-				if a.threads[i].ID == id && a.threads[i].Unread {
-					a.threads[i].Unread = false
-					a.markRead(id)
-					break
-				}
+			if a.threadCache == nil {
+				a.threadCache = make(map[string]mail.Thread)
 			}
+			a.threadCache[id] = thread
+			a.showThread(id, thread)
 		})
 	})
+}
+
+func (a *App) showThread(id string, thread mail.Thread) {
+	a.thread = thread
+	a.threadLoading = false
+	a.focusedMessage = len(thread.Messages) - 1
+	a.messageScroll = -1
+	for i := range a.threads {
+		if a.threads[i].ID == id && a.threads[i].Unread {
+			a.threads[i].Unread = false
+			a.markRead(id)
+			break
+		}
+	}
 }
 
 func (a *App) selectedSummary() *mail.ThreadSummary {
@@ -220,6 +241,7 @@ func (a *App) markRead(id string) {
 				a.notice = locales.ReadStatusFailed(err.Error())
 				return
 			}
+			a.updateThreadLabels(id, nil, []string{mail.Unread})
 			a.reloadLabels()
 		})
 	})
@@ -334,6 +356,7 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 				a.refresh()
 				return
 			}
+			a.updateThreadLabels(id, add, remove)
 			if removeFromList {
 				a.removeThread(id)
 			}
@@ -344,6 +367,7 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 }
 
 func (a *App) removeThread(id string) {
+	delete(a.threadCache, id)
 	for i := range a.threads {
 		if a.threads[i].ID == id {
 			a.threads = append(a.threads[:i], a.threads[i+1:]...)
@@ -355,18 +379,78 @@ func (a *App) removeThread(id string) {
 	}
 }
 
+func (a *App) updateThreadLabels(id string, add, remove []string) {
+	if thread, ok := a.threadCache[id]; ok {
+		thread.LabelIDs = modifyLabelIDs(thread.LabelIDs, add, remove)
+		for i := range thread.Messages {
+			thread.Messages[i].LabelIDs = modifyLabelIDs(thread.Messages[i].LabelIDs, add, remove)
+		}
+		a.threadCache[id] = thread
+	}
+	if a.thread.ID == id {
+		a.thread.LabelIDs = modifyLabelIDs(a.thread.LabelIDs, add, remove)
+		for i := range a.thread.Messages {
+			a.thread.Messages[i].LabelIDs = modifyLabelIDs(a.thread.Messages[i].LabelIDs, add, remove)
+		}
+	}
+}
+
+func modifyLabelIDs(labels, add, remove []string) []string {
+	updated := make([]string, 0, len(labels)+len(add))
+	for _, label := range labels {
+		if !containsLabel(remove, label) {
+			updated = append(updated, label)
+		}
+	}
+	for _, label := range add {
+		if !containsLabel(updated, label) {
+			updated = append(updated, label)
+		}
+	}
+	return updated
+}
+
+func containsLabel(labels []string, target string) bool {
+	for _, label := range labels {
+		if label == target {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) labelName(id string) string {
 	switch id {
 	case mail.Inbox:
 		return locales.Inbox()
 	case mail.Starred:
 		return locales.Starred()
+	case mail.Snoozed:
+		return locales.Snoozed()
 	case mail.Sent:
 		return locales.Sent()
+	case mail.Draft:
+		return locales.Drafts()
+	case mail.Important:
+		return locales.Important()
+	case mail.All:
+		return locales.AllMail()
 	case mail.Spam:
 		return locales.Spam()
 	case mail.Trash:
 		return locales.Trash()
+	case mail.CategorySocial:
+		return locales.CategorySocial()
+	case mail.CategoryPromotions:
+		return locales.CategoryPromotions()
+	case mail.CategoryUpdates:
+		return locales.CategoryUpdates()
+	case mail.CategoryForums:
+		return locales.CategoryForums()
+	case mail.CategoryPurchases:
+		return locales.CategoryPurchases()
+	case mail.CategoryReservations:
+		return locales.CategoryReservations()
 	}
 	for _, label := range a.labels {
 		if label.ID == id {

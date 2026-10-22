@@ -32,9 +32,17 @@ func main() {
 	mygo.Use(native.Plugin)
 	mygo.App.OnLocaleChanged(func(string) { mygo.App.SetMenu(appMenu()) })
 	a := app.New(mail.NewDemo())
+	var win *mygo.Window
+	quitting := false
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
+	mygo.App.OnActivate(func(hasVisibleWindows bool) {
+		if !hasVisibleWindows && win != nil {
+			win.Show()
+		}
+	})
 	mygo.App.WhenReady(func() {
 		mygo.App.SetMenu(appMenu())
-		win := mygo.NewWindow(mygo.WindowOptions{
+		win = mygo.NewWindow(mygo.WindowOptions{
 			Title:          "Mica",
 			Width:          1280,
 			Height:         800,
@@ -45,6 +53,12 @@ func main() {
 			TitleBarHeight: 52,
 			Vibrancy:       mygo.VibrancySidebar,
 			Content:        ui.View(a.View),
+		})
+		win.OnClose(func(event *mygo.CloseEvent) {
+			if !quitting {
+				event.PreventDefault()
+				win.Hide()
+			}
 		})
 		a.SetUpdate(win.Update)
 		a.Start()

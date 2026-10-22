@@ -143,3 +143,69 @@ func TestReplyHeadersComeFromLatestMessage(t *testing.T) {
 		t.Fatalf("reply references = %q", a.compose.references)
 	}
 }
+
+type countingThreadService struct {
+	*fakeService
+	threadCalls int
+}
+
+func (s *countingThreadService) Thread(_ context.Context, id string) (mail.Thread, error) {
+	s.threadCalls++
+	return s.fakeService.Thread(context.Background(), id)
+}
+
+func TestSelectThreadUsesCache(t *testing.T) {
+	service := &countingThreadService{fakeService: newFakeService()}
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.Start()
+	a.selectThread("thread-1")
+	a.closeReader()
+	a.selectThread("thread-1")
+	if service.threadCalls != 1 {
+		t.Fatalf("thread requests = %d, want 1 for a cached conversation", service.threadCalls)
+	}
+	if a.threadLoading || len(a.thread.Messages) != 1 {
+		t.Fatalf("cached thread was not restored immediately: %+v", a.thread)
+	}
+}
+
+func TestRefreshReloadsThreadOnceAndRestoresCache(t *testing.T) {
+	service := &countingThreadService{fakeService: newFakeService()}
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.Start()
+	a.selectThread("thread-1")
+	a.refresh()
+	if service.threadCalls != 2 {
+		t.Fatalf("thread requests after refresh = %d, want 2", service.threadCalls)
+	}
+	a.closeReader()
+	a.selectThread("thread-1")
+	if service.threadCalls != 2 {
+		t.Fatalf("refreshed thread was not cached: %d requests", service.threadCalls)
+	}
+}
+
+func TestThreadCacheTracksLabelChanges(t *testing.T) {
+	service := &countingThreadService{fakeService: newFakeService()}
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.Start()
+	a.selectThread("thread-1")
+	a.toggleStar()
+	a.closeReader()
+	a.selectThread("thread-1")
+	if service.threadCalls != 1 {
+		t.Fatalf("label change invalidated the cached body: %d requests", service.threadCalls)
+	}
+	for _, id := range a.thread.LabelIDs {
+		if id == mail.Starred {
+			return
+		}
+	}
+	t.Fatalf("cached labels = %v, want STARRED", a.thread.LabelIDs)
+}

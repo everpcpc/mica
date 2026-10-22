@@ -33,8 +33,8 @@ func TestAccountAndLabels(t *testing.T) {
 			writeTestJSON(t, w, map[string]string{"emailAddress": "alex@example.com"})
 		case "/users/me/labels":
 			writeTestJSON(t, w, map[string]any{"labels": []map[string]any{
-				{"id": "INBOX", "name": "Inbox", "messagesTotal": 12, "messagesUnread": 3},
-				{"id": "Label_7", "name": "Launch", "messagesTotal": 4, "messagesUnread": 1},
+				{"id": "INBOX", "name": "Inbox", "type": "system", "messagesTotal": 12, "messagesUnread": 3},
+				{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread", "messagesTotal": 4, "messagesUnread": 1},
 			}})
 		default:
 			http.NotFound(w, r)
@@ -54,9 +54,31 @@ func TestAccountAndLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []mail.Label{{ID: "INBOX", Name: "Inbox", Messages: 12, Unread: 3}, {ID: "Label_7", Name: "Launch", Messages: 4, Unread: 1}}
+	want := []mail.Label{
+		{ID: "INBOX", Name: "Inbox", Messages: 12, Unread: 3, System: true},
+		{ID: "Label_7", Name: "Launch", Messages: 4, Unread: 1, ShowIfUnread: true},
+	}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatalf("labels = %+v, want %+v", labels, want)
+	}
+}
+
+func TestAttachment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/me/messages/message-1/attachments/attachment-1" {
+			http.NotFound(w, r)
+			return
+		}
+		writeTestJSON(t, w, apiBody{Data: base64.RawURLEncoding.EncodeToString([]byte("image data"))})
+	}))
+	defer server.Close()
+	service := testService(server)
+	data, err := service.Attachment(context.Background(), "message-1", "attachment-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "image data" {
+		t.Fatalf("attachment = %q", data)
 	}
 }
 
@@ -186,7 +208,11 @@ func TestThreadParsesNestedMIME(t *testing.T) {
 								{MIMEType: "text/html", Body: apiBody{Data: base64.URLEncoding.EncodeToString([]byte("<p>HTML body</p>"))}},
 							},
 						},
-						{MIMEType: "application/pdf", Filename: "launch-plan.pdf", Body: apiBody{AttachmentID: "attachment-1", Size: 2048}},
+						{
+							MIMEType: "application/pdf", Filename: "launch-plan.pdf",
+							Headers: []apiHeader{{Name: "Content-ID", Value: "<launch-plan>"}},
+							Body:    apiBody{AttachmentID: "attachment-1", Size: 2048},
+						},
 					},
 				},
 			}},
@@ -212,7 +238,7 @@ func TestThreadParsesNestedMIME(t *testing.T) {
 	if message.MessageID != "<message-2@example.com>" || message.References != "<message-1@example.com>" {
 		t.Errorf("threading headers were not parsed: %+v", message)
 	}
-	wantAttachments := []mail.Attachment{{ID: "attachment-1", Name: "launch-plan.pdf", MIMEType: "application/pdf", Size: 2048}}
+	wantAttachments := []mail.Attachment{{ID: "attachment-1", Name: "launch-plan.pdf", MIMEType: "application/pdf", Size: 2048, ContentID: "launch-plan"}}
 	if !reflect.DeepEqual(message.Attachments, wantAttachments) {
 		t.Errorf("attachments = %+v, want %+v", message.Attachments, wantAttachments)
 	}

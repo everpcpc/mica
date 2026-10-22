@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 
-	"mica/internal/mail"
 	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
@@ -76,38 +75,27 @@ func (a *App) sidebar(c *ui.Context) {
 		})
 		mailboxes := ui.Sidebar(c, &a.selectedLabel, func() {
 			ui.SidebarSection(c, locales.Mailboxes(), nil, func() {
-				for _, item := range []struct {
-					id   string
-					icon *ui.SVG
-				}{
-					{mail.Inbox, iconInbox},
-					{mail.Starred, iconStar},
-					{mail.Sent, iconSent},
-					{mail.Spam, iconTrash},
-					{mail.Trash, iconTrash},
-				} {
-					mailbox := item
+				for _, mailbox := range visibleSidebarLabels(a.labels, mailboxLabels) {
 					item := ui.SidebarItem(c.Key(mailbox.id), mailbox.id, mailbox.icon, a.labelName(mailbox.id))
-					if mailbox.id == mail.Inbox {
-						unread := 0
-						for _, label := range a.labels {
-							if label.ID == mail.Inbox {
-								unread = label.Unread
-							}
-						}
-						if unread > 0 {
-							item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
-						}
+					if unread := labelUnread(a.labels, mailbox.id); unread > 0 {
+						item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
 					}
 				}
 			})
-			if len(a.labels) > 0 {
+			if categories := visibleSidebarLabels(a.labels, categoryLabels); len(categories) > 0 {
+				ui.SidebarSection(c, locales.Categories(), nil, func() {
+					for _, category := range categories {
+						ui.SidebarItem(c.Key(category.id), category.id, category.icon, a.labelName(category.id))
+					}
+				})
+			}
+			if labels := customSidebarLabels(a.labels); len(labels) > 0 {
 				ui.SidebarSection(c, locales.Labels(), nil, func() {
-					for _, label := range a.labels {
-						if hiddenSystemLabel(label.ID) {
-							continue
+					for _, label := range labels {
+						item := ui.SidebarItem(c.Key(label.ID), label.ID, iconLabel, label.Name)
+						if label.Unread > 0 {
+							item.Children(func() { ui.Badge(c, fmt.Sprint(label.Unread)) })
 						}
-						ui.SidebarItem(c.Key(label.ID), label.ID, iconLabel, label.Name)
 					}
 				})
 			}
