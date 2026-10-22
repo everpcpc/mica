@@ -147,6 +147,7 @@
   "discardDraft": "Discard draft",
   "helpShortcut": "Open shortcut help",
   "forwardedMessage": "---------- Forwarded message ----------",
+  "originalMessage": "---------- Original message ----------",
   "actionUndone": "Action undone",
   "openAttachment": "Open",
   "saveAttachment": "Save",

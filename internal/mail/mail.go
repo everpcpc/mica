@@ -66,6 +66,7 @@ type Message struct {
 	ID          string
 	ThreadID    string
 	From        string
+	ReplyTo     string
 	To          string
 	Cc          string
 	Subject     string
