@@ -99,6 +99,7 @@ func main() {
 			log.Printf("open mail cache: %v", err)
 		} else {
 			a.SetMailStore(store)
+			a.RestorePaneWidths()
 			mygo.App.OnQuit(func() {
 				if err := store.Close(); err != nil {
 					log.Printf("close mail cache: %v", err)

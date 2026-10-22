@@ -41,6 +41,11 @@ var migrations = [][]string{{
 		data BLOB NOT NULL,
 		PRIMARY KEY (account_email, thread_id)
 	)`,
+}, {
+	`CREATE TABLE preferences (
+		key TEXT PRIMARY KEY,
+		data TEXT NOT NULL
+	)`,
 }}
 
 type Store struct {
@@ -205,6 +210,33 @@ func (s *Store) DeleteThread(ctx context.Context, email, id string) error {
 	_, err := s.db.Execute(ctx, "DELETE FROM threads WHERE account_email = ? AND thread_id = ?", email, id)
 	if err != nil {
 		return fmt.Errorf("store: delete thread: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) Preference(ctx context.Context, key string) (string, bool, error) {
+	rows, err := s.db.Query(ctx, "SELECT data FROM preferences WHERE key = ?", key)
+	if err != nil {
+		return "", false, err
+	}
+	if len(rows.Values) == 0 {
+		return "", false, nil
+	}
+	if len(rows.Values) != 1 || len(rows.Values[0]) != 1 {
+		return "", false, errors.New("store: invalid preference result")
+	}
+	value, ok := rows.Values[0][0].(string)
+	if !ok {
+		return "", false, errors.New("store: invalid preference type")
+	}
+	return value, true, nil
+}
+
+func (s *Store) SavePreference(ctx context.Context, key, value string) error {
+	_, err := s.db.Execute(ctx, `INSERT INTO preferences(key, data) VALUES(?, ?)
+		ON CONFLICT(key) DO UPDATE SET data = excluded.data`, key, value)
+	if err != nil {
+		return fmt.Errorf("store: save preference: %w", err)
 	}
 	return nil
 }
