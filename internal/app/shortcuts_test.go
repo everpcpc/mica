@@ -46,6 +46,35 @@ func TestGmailShortcutsNavigateStarArchiveAndUndo(t *testing.T) {
 	}
 }
 
+func TestArchiveShortcutTwiceAdvancesSelection(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads,
+		mail.ThreadSummary{ID: "thread-2", Subject: "Second", Senders: "Bob", LabelIDs: []string{mail.Inbox}},
+		mail.ThreadSummary{ID: "thread-3", Subject: "Third", Senders: "Cid", LabelIDs: []string{mail.Inbox}},
+	)
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Subject: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	tt.Key(0, ui.KeyJ)
+	tt.Frame()
+	service.modified = nil
+	tt.Key(0, ui.KeyE)
+	tt.Frame()
+	if a.selectedThread != "thread-2" || a.thread.ID != "thread-2" {
+		t.Fatalf("first archive selected %q and loaded %q, want thread-2", a.selectedThread, a.thread.ID)
+	}
+	tt.Key(0, ui.KeyE)
+	tt.Frame()
+	if len(service.modified) != 2 || service.modified[0] != "thread-1" || service.modified[1] != "thread-2" {
+		t.Fatalf("archived IDs = %v, want thread-1 then thread-2", service.modified)
+	}
+	if a.selectedThread != "thread-3" || a.thread.ID != "thread-3" || a.selectedRow != 0 {
+		t.Fatalf("second archive left thread=%q loaded=%q row=%d, want thread-3 at row 0", a.selectedThread, a.thread.ID, a.selectedRow)
+	}
+}
+
 func TestReportSpamAndUndo(t *testing.T) {
 	service := newFakeService()
 	a := newTestApp(service)

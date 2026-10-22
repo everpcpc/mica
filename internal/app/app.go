@@ -526,17 +526,39 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 
 func (a *App) removeThread(id string) {
 	delete(a.threadCache, id)
+	removed := -1
 	for i := range a.threads {
 		if a.threads[i].ID == id {
+			removed = i
 			a.threads = append(a.threads[:i], a.threads[i+1:]...)
-			if a.accountVerified {
-				a.persistList(a.currentQuery(), a.threads)
-			}
 			break
 		}
 	}
+	if removed < 0 {
+		return
+	}
+	if a.accountVerified {
+		a.persistList(a.currentQuery(), a.threads)
+	}
 	if a.selectedThread == id {
-		a.clearThread()
+		a.selectedThread = ""
+		if len(a.threads) == 0 {
+			a.clearThread()
+			return
+		}
+		a.selectedRow = min(removed, len(a.threads)-1)
+		a.selectThread(a.threads[a.selectedRow].ID)
+		return
+	}
+	if a.selectedThread != "" {
+		for i := range a.threads {
+			if a.threads[i].ID == a.selectedThread {
+				a.selectedRow = i
+				break
+			}
+		}
+	} else if a.selectedRow >= len(a.threads) {
+		a.selectedRow = -1
 	}
 }
 
