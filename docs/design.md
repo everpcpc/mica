@@ -29,10 +29,11 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 - Older read messages in a thread collapse to an accessible sender, preview, and date row; unread and latest messages stay expanded, and manual expansion state follows message IDs.
 - The account name and photo come from Google UserInfo. Existing Gmail-only sessions can request the added OpenID scopes once instead of repeatedly prompting.
 - Gmail-style filled importance markers appear in both the conversation list and reader.
-- Loaded conversations stay in an in-memory cache until an explicit refresh. Label changes update cached state, and account switches clear it.
+- Account metadata, labels, exact query snapshots, and loaded conversations are stored in `~/Library/Application Support/Mica/mail.db` through MyGo's SQLite plugin, with account-scoped records and transactional writes.
+- Cached content appears before network revalidation, while fresh in-memory conversations still avoid duplicate requests during the same session. Network failures leave cached content visible, and background body updates preserve the reading position. Attachment binaries and remote images remain on demand; only attachment metadata is persisted.
 - Closing the main window hides it and keeps Mica in the Dock. Dock activation restores the same window, while Quit still exits.
 - Settings opens from the application menu with Cmd+, and the main window is restored when necessary.
-- Gmail watch and Pub/Sub Streaming Pull drive new-mail notifications. The watch renews daily, and an incremental history reconciliation runs hourly. A local history checkpoint catches up after restarts without treating existing unread mail as new.
+- Gmail watch and Pub/Sub Streaming Pull cover account changes, while notifications remain limited to unread INBOX activity. The watch renews daily, and an incremental history reconciliation runs hourly. A local history checkpoint catches up after restarts without treating existing unread mail as new. History additions, deletions, and label changes refresh complete conversations in SQLite before the checkpoint advances. The visible thread list updates without invalidating opened conversations, and selection follows the thread ID when rows move.
 - Compose and reply preserve unsent input after a failure.
 - Star, archive, trash, spam, and read/unread changes provide immediate feedback and undo where supported.
 

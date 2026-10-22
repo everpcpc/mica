@@ -160,9 +160,7 @@ func TestWatch(t *testing.T) {
 			t.Error(err)
 		}
 		want := map[string]any{
-			"labelFilterBehavior": "include",
-			"labelIds":            []any{"INBOX"},
-			"topicName":           "projects/project-1/topics/mica-gmail",
+			"topicName": "projects/project-1/topics/mica-gmail",
 		}
 		if !reflect.DeepEqual(body, want) {
 			t.Errorf("watch body = %#v, want %#v", body, want)
@@ -197,12 +195,14 @@ func TestHistoryPaginationAndMetadata(t *testing.T) {
 			query := r.URL.Query()
 			for key, want := range map[string]string{
 				"startHistoryId": "100",
-				"labelId":        "INBOX",
 				"maxResults":     "500",
 			} {
 				if got := query.Get(key); got != want {
 					t.Errorf("%s = %q, want %q", key, got, want)
 				}
+			}
+			if got := query.Get("labelId"); got != "" {
+				t.Errorf("labelId = %q, want all labels", got)
 			}
 			if historyCalls == 1 {
 				if got := query.Get("pageToken"); got != "" {
@@ -262,9 +262,11 @@ func TestHistoryPaginationAndMetadata(t *testing.T) {
 	service := NewWithProject(server.Client(), "project-1", nil)
 	service.baseURL = server.URL
 
-	var pages [][]mail.ThreadSummary
-	latest, err := service.History(context.Background(), 100, func(summaries []mail.ThreadSummary) error {
-		pages = append(pages, append([]mail.ThreadSummary(nil), summaries...))
+	var pages []HistoryPage
+	latest, err := service.History(context.Background(), 100, func(page HistoryPage) error {
+		page.Added = append([]mail.ThreadSummary(nil), page.Added...)
+		page.ChangedThreadIDs = append([]string(nil), page.ChangedThreadIDs...)
+		pages = append(pages, page)
 		return nil
 	})
 	if err != nil {
@@ -284,16 +286,81 @@ func TestHistoryPaginationAndMetadata(t *testing.T) {
 			Updated: updated, MessageCount: 1, LabelIDs: []string{"INBOX", "UNREAD"}, Unread: true,
 		}},
 	}
+	var added [][]mail.ThreadSummary
+	var changed [][]string
 	for i := range pages {
-		for j := range pages[i] {
-			pages[i][j].Updated = pages[i][j].Updated.UTC()
+		added = append(added, pages[i].Added)
+		changed = append(changed, pages[i].ChangedThreadIDs)
+		for j := range pages[i].Added {
+			added[i][j].Updated = added[i][j].Updated.UTC()
 		}
 	}
-	if !reflect.DeepEqual(pages, want) {
-		t.Fatalf("pages = %+v, want %+v", pages, want)
+	if !reflect.DeepEqual(added, want) {
+		t.Fatalf("pages = %+v, want %+v", added, want)
+	}
+	if wantChanged := [][]string{{"thread-1"}, {"thread-2"}}; !reflect.DeepEqual(changed, wantChanged) {
+		t.Fatalf("changed thread IDs = %v, want %v", changed, wantChanged)
 	}
 	if historyCalls != 2 {
 		t.Errorf("history calls = %d, want 2", historyCalls)
+	}
+}
+
+func TestHistoryChangedThreads(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/users/me/history":
+			writeTestJSON(t, w, map[string]any{
+				"historyId": "101",
+				"history": []map[string]any{
+					{
+						"messagesAdded": []map[string]any{{
+							"message": map[string]string{"id": "added", "threadId": "thread-1"},
+						}},
+						"messagesDeleted": []map[string]any{{
+							"message": map[string]string{"id": "deleted", "threadId": "thread-3"},
+						}},
+						"labelsAdded": []map[string]any{{
+							"message": map[string]string{"id": "labeled", "threadId": "thread-2"},
+						}},
+						"labelsRemoved": []map[string]any{{
+							"message": map[string]string{"id": "unlabeled", "threadId": "thread-2"},
+						}},
+					},
+					{
+						"labelsAdded": []map[string]any{{
+							"message": map[string]string{"id": "another", "threadId": "thread-1"},
+						}},
+					},
+				},
+			})
+		case "/users/me/messages/added":
+			writeTestJSON(t, w, apiMessage{ID: "added", ThreadID: "thread-1"})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	service := NewWithProject(server.Client(), "project-1", nil)
+	service.baseURL = server.URL
+
+	var page HistoryPage
+	latest, err := service.History(context.Background(), 100, func(got HistoryPage) error {
+		page = got
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest != 101 {
+		t.Fatalf("latest history ID = %d, want 101", latest)
+	}
+	if want := []string{"thread-1", "thread-3", "thread-2"}; !reflect.DeepEqual(page.ChangedThreadIDs, want) {
+		t.Fatalf("changed thread IDs = %v, want %v", page.ChangedThreadIDs, want)
+	}
+	if len(page.Added) != 1 || page.Added[0].ID != "thread-1" {
+		t.Fatalf("added summaries = %+v, want thread-1", page.Added)
 	}
 }
 
@@ -323,7 +390,7 @@ func TestHistoryCallbackError(t *testing.T) {
 	service := NewWithProject(server.Client(), "project-1", nil)
 	service.baseURL = server.URL
 
-	_, err := service.History(context.Background(), 100, func([]mail.ThreadSummary) error {
+	_, err := service.History(context.Background(), 100, func(HistoryPage) error {
 		return callbackErr
 	})
 	if !errors.Is(err, callbackErr) {
@@ -337,7 +404,7 @@ func TestHistoryCallbackError(t *testing.T) {
 func TestHistoryRequiresStart(t *testing.T) {
 	service := New(nil)
 	called := false
-	_, err := service.History(context.Background(), 0, func([]mail.ThreadSummary) error {
+	_, err := service.History(context.Background(), 0, func(HistoryPage) error {
 		called = true
 		return nil
 	})

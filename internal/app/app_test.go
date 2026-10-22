@@ -17,6 +17,7 @@ type fakeService struct {
 	labels      []mail.Label
 	threads     []mail.ThreadSummary
 	thread      mail.Thread
+	threadFunc  func(string) (mail.Thread, error)
 	add         []string
 	remove      []string
 	trashed     string
@@ -47,7 +48,12 @@ func (f *fakeService) Labels(context.Context) ([]mail.Label, error)  { return f.
 func (f *fakeService) ListThreads(context.Context, mail.Query) ([]mail.ThreadSummary, error) {
 	return append([]mail.ThreadSummary(nil), f.threads...), nil
 }
-func (f *fakeService) Thread(context.Context, string) (mail.Thread, error) { return f.thread, nil }
+func (f *fakeService) Thread(_ context.Context, id string) (mail.Thread, error) {
+	if f.threadFunc != nil {
+		return f.threadFunc(id)
+	}
+	return f.thread, nil
+}
 func (f *fakeService) ModifyThread(_ context.Context, _ string, add, remove []string) error {
 	f.add, f.remove = add, remove
 	return nil

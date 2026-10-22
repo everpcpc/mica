@@ -22,9 +22,10 @@ const (
 type pushService interface {
 	EnsurePush(context.Context) error
 	Watch(context.Context) (gmail.WatchState, error)
-	History(context.Context, uint64, func([]mail.ThreadSummary) error) (uint64, error)
+	History(context.Context, uint64, func(gmail.HistoryPage) error) (uint64, error)
 	Stream(context.Context, func(uint64) error) error
 	Label(context.Context, string) (mail.Label, error)
+	Thread(context.Context, string) (mail.Thread, error)
 }
 
 func (a *App) SetNotificationHandlers(badge func(int), notify func(string, string, string)) {
@@ -84,7 +85,9 @@ func (a *App) runNotifications(ctx context.Context, service pushService, version
 	a.after(historyReconcileInterval, func() { a.reconcileHistory(ctx, synchronizer) })
 	backoff := time.Second
 	for {
-		err := service.Stream(ctx, synchronizer.sync)
+		err := service.Stream(ctx, func(uint64) error {
+			return synchronizer.sync(synchronizer.current())
+		})
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil || version != a.serviceVersion {
 			return
 		}
@@ -193,12 +196,22 @@ func (s *historySynchronizer) sync(start uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if start > s.historyID {
-		return nil
+		start = s.historyID
 	}
-	latest, err := s.service.History(s.ctx, start, func(threads []mail.ThreadSummary) error {
+	changed := make(map[string]bool)
+	latest, err := s.service.History(s.ctx, start, func(page gmail.HistoryPage) error {
+		for _, id := range page.ChangedThreadIDs {
+			if changed[id] {
+				continue
+			}
+			changed[id] = true
+			if err := s.cacheThread(id); err != nil {
+				return err
+			}
+		}
 		s.app.publish(func() {
 			if s.version == s.app.serviceVersion {
-				s.app.updateUnread(threads)
+				s.app.updateUnread(page.Added)
 			}
 		})
 		return nil
@@ -230,7 +243,28 @@ func (s *historySynchronizer) sync(start uint64) error {
 			}
 		})
 	}
+	s.app.publish(func() {
+		if s.version == s.app.serviceVersion {
+			s.app.refreshList()
+		}
+	})
 	return nil
+}
+
+func (s *historySynchronizer) cacheThread(id string) error {
+	store := s.app.store
+	if store == nil || s.email == "" {
+		return nil
+	}
+	thread, err := s.service.Thread(s.ctx, id)
+	if err != nil {
+		var apiErr *gmail.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+			return store.DeleteThread(s.ctx, s.email, id)
+		}
+		return err
+	}
+	return store.SaveThread(s.ctx, s.email, thread)
 }
 
 func (a *App) refreshUnreadVersion(version int) {
@@ -260,11 +294,17 @@ func (a *App) setLabel(label mail.Label) {
 		if a.labels[i].ID == label.ID {
 			a.labels[i] = label
 			a.updateBadge()
+			if a.accountVerified {
+				a.persistLabels(a.labels)
+			}
 			return
 		}
 	}
 	a.labels = append(a.labels, label)
 	a.updateBadge()
+	if a.accountVerified {
+		a.persistLabels(a.labels)
+	}
 }
 
 func (a *App) updateBadge() {
@@ -282,14 +322,14 @@ func (a *App) updateUnread(threads []mail.ThreadSummary) {
 	if a.unreadSeen == nil {
 		a.unreadSeen = make(map[string]time.Time)
 		for _, thread := range threads {
-			if thread.Unread {
+			if thread.Unread && containsLabel(thread.LabelIDs, mail.Inbox) {
 				a.unreadSeen[thread.ID] = thread.Updated
 			}
 		}
 		return
 	}
 	for _, thread := range threads {
-		if !thread.Unread {
+		if !thread.Unread || !containsLabel(thread.LabelIDs, mail.Inbox) {
 			continue
 		}
 		updated, seen := a.unreadSeen[thread.ID]

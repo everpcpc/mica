@@ -219,6 +219,7 @@ func (a *App) restoreGmail() {
 	}
 	a.restoreAttempted = true
 	version := a.serviceVersion
+	store := a.store
 	a.schedule(func() {
 		clientID, clientSecret, err := loadOAuthCredentials()
 		if err != nil || clientID == "" || clientSecret == "" {
@@ -241,13 +242,21 @@ func (a *App) restoreGmail() {
 			return
 		}
 		service, err := oauth.Service(client)
+		cachedEmail := ""
+		if err == nil && store != nil {
+			account, found, cacheErr := store.LastAccount(context.Background())
+			logCacheError(cacheErr)
+			if cacheErr == nil && found {
+				cachedEmail = account.Email
+			}
+		}
 		a.publish(func() {
 			if version == a.serviceVersion {
 				if err != nil {
 					a.notice = locales.OauthRestoreFailed(err.Error())
 					return
 				}
-				a.useService(service)
+				a.useService(service, cachedEmail)
 			}
 		})
 	})
@@ -316,8 +325,11 @@ func (a *App) logoutGmail() {
 	})
 }
 
-func (a *App) useService(service mail.Service) {
+func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.serviceVersion++
+	a.cacheState.mu.Lock()
+	a.cacheState.version = a.serviceVersion
+	a.cacheState.mu.Unlock()
 	a.service = service
 	a.stopNotifications()
 	a.unreadSeen = nil
@@ -325,6 +337,12 @@ func (a *App) useService(service mail.Service) {
 		a.setBadge(0)
 	}
 	_, connected := service.(*gmail.Service)
+	a.storeAccount = ""
+	if connected && len(cachedAccount) > 0 {
+		a.storeAccount = cachedAccount[0]
+	}
+	a.accountVerified = false
+	a.labelsSynced = false
 	a.account = mail.Account{Name: "Mica", Demo: !connected}
 	a.accountPhoto = nil
 	a.labels = nil
