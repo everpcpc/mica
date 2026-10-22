@@ -1368,6 +1368,16 @@ func (msgs Messages) ForwardedMessage() string {
 	return Catalog.Format(msgs.locale, "forwardedMessage", nil)
 }
 
+// OriginalMessage says "---------- Original message ----------"
+// in the language the app shows.
+func OriginalMessage() string { return In(i18n.Locale()).OriginalMessage() }
+
+// OriginalMessage says "---------- Original message ----------"
+// in the language of msgs.
+func (msgs Messages) OriginalMessage() string {
+	return Catalog.Format(msgs.locale, "originalMessage", nil)
+}
+
 // ActionUndone says "Action undone"
 // in the language the app shows.
 func ActionUndone() string { return In(i18n.Locale()).ActionUndone() }

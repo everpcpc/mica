@@ -24,6 +24,7 @@ func makeMessage(threadID string, message apiMessage) (mail.Message, error) {
 		ID:         message.ID,
 		ThreadID:   threadID,
 		From:       decodedHeader(message.Payload, "From"),
+		ReplyTo:    decodedHeader(message.Payload, "Reply-To"),
 		To:         decodedHeader(message.Payload, "To"),
 		Cc:         decodedHeader(message.Payload, "Cc"),
 		Subject:    decodedHeader(message.Payload, "Subject"),

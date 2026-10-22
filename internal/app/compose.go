@@ -22,6 +22,8 @@ type composer struct {
 	bcc        string
 	subject    string
 	doc        *richtext.Document
+	quote      *mailmodel.Message
+	quoteOpen  bool
 	threadID   string
 	inReplyTo  string
 	references string
@@ -32,8 +34,9 @@ type composer struct {
 func (a *App) openCompose(reply *mailmodel.Message) {
 	m := &composer{open: true, doc: richtext.NewDocument(richtext.NewText(""))}
 	if reply != nil {
-		m.to = reply.From
+		m.to = replyAddress(*reply)
 		m.subject = replySubject(reply.Subject)
+		m.quote = reply
 		m.threadID = reply.ThreadID
 		m.inReplyTo = reply.MessageID
 		m.references = strings.TrimSpace(reply.References + " " + reply.MessageID)
@@ -92,6 +95,11 @@ func (a *App) composeView(c *ui.Context) {
 				Label:       locales.Body(),
 				Placeholder: locales.BodyPlaceholder(),
 			}).Height(250)
+			if m.quote != nil {
+				ui.Collapsible(c, locales.OriginalMessage(), &m.quoteOpen, func() {
+					ui.Text(c, replyQuoteText(*m.quote)).FontSize(12).TextColor(t.TextMuted).MaxLines(8).Selectable()
+				})
+			}
 			if m.err != "" {
 				ui.Text(c, m.err).FontSize(12).TextColor(t.Danger)
 			}
@@ -136,13 +144,19 @@ func (a *App) sendCompose() {
 	}
 	m.err = ""
 	m.sending = true
+	text := m.doc.Text().PlainText()
+	htmlContent := m.doc.Text().HTML()
+	if m.quote != nil {
+		text += "\n\n" + replyQuoteText(*m.quote)
+		htmlContent += replyQuoteHTML(*m.quote)
+	}
 	out := mailmodel.Compose{
 		To:         m.to,
 		Cc:         m.cc,
 		Bcc:        m.bcc,
 		Subject:    m.subject,
-		Text:       m.doc.Text().PlainText(),
-		HTML:       m.doc.Text().HTML(),
+		Text:       text,
+		HTML:       htmlContent,
 		ThreadID:   m.threadID,
 		InReplyTo:  m.inReplyTo,
 		References: m.references,

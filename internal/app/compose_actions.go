@@ -1,6 +1,7 @@
 package app
 
 import (
+	"html"
 	"net/mail"
 	"strings"
 	"time"
@@ -21,6 +22,13 @@ func (a *App) openReplyAll() {
 	a.compose.to, a.compose.cc = replyAllRecipients(message, a.account.Email)
 }
 
+func replyAddress(message mailmodel.Message) string {
+	if replyTo := strings.TrimSpace(message.ReplyTo); replyTo != "" {
+		return replyTo
+	}
+	return message.From
+}
+
 func replyAllRecipients(message mailmodel.Message, own string) (string, string) {
 	own = strings.ToLower(strings.TrimSpace(own))
 	seen := map[string]bool{}
@@ -33,7 +41,7 @@ func replyAllRecipients(message mailmodel.Message, own string) (string, string) 
 		seen[email] = true
 		*list = append(*list, address.String())
 	}
-	if from, err := mail.ParseAddress(message.From); err == nil {
+	if from, err := mail.ParseAddress(replyAddress(message)); err == nil {
 		add(&to, from)
 	}
 	for _, list := range []struct {
@@ -53,6 +61,24 @@ func replyAllRecipients(message mailmodel.Message, own string) (string, string) 
 		}
 	}
 	return strings.Join(to, ", "), strings.Join(cc, ", ")
+}
+
+func replyQuoteText(message mailmodel.Message) string {
+	body := message.Text
+	if body == "" && message.HTML != "" {
+		body = richtext.ParseHTML(message.HTML).PlainText()
+	}
+	return locales.OriginalMessage() + "\n" +
+		"From: " + replyAddress(message) + "\n" +
+		"Date: " + message.Date.Format(time.RFC1123Z) + "\n" +
+		"Subject: " + message.Subject + "\n" +
+		"To: " + message.To + "\n\n" + body
+}
+
+func replyQuoteHTML(message mailmodel.Message) string {
+	quoted := html.EscapeString(replyQuoteText(message))
+	quoted = strings.ReplaceAll(quoted, "\n", "<br>")
+	return `<blockquote style="margin:12px 0;padding-left:12px;border-left:3px solid #ccc">` + quoted + `</blockquote>`
 }
 
 func (a *App) openForward() {
