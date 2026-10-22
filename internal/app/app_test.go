@@ -18,6 +18,7 @@ type fakeService struct {
 	threads     []mail.ThreadSummary
 	thread      mail.Thread
 	threadFunc  func(string) (mail.Thread, error)
+	modified    []string
 	add         []string
 	remove      []string
 	trashed     string
@@ -54,7 +55,8 @@ func (f *fakeService) Thread(_ context.Context, id string) (mail.Thread, error) 
 	}
 	return f.thread, nil
 }
-func (f *fakeService) ModifyThread(_ context.Context, _ string, add, remove []string) error {
+func (f *fakeService) ModifyThread(_ context.Context, id string, add, remove []string) error {
+	f.modified = append(f.modified, id)
 	f.add, f.remove = add, remove
 	return nil
 }
@@ -101,6 +103,34 @@ func TestArchiveOnlyRemovesThreadFromInboxView(t *testing.T) {
 	}
 	if len(service.remove) != 1 || service.remove[0] != mail.Inbox {
 		t.Fatalf("removed labels = %v, want INBOX", service.remove)
+	}
+}
+
+func TestArchiveSelectsAdjacentThread(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		archiveIndex int
+		wantID       string
+		wantRow      int
+	}{
+		{name: "next", archiveIndex: 0, wantID: "thread-2", wantRow: 0},
+		{name: "previous after last", archiveIndex: 2, wantID: "thread-2", wantRow: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.threads = append(service.threads,
+				mail.ThreadSummary{ID: "thread-2", Subject: "Second", Senders: "Bob", LabelIDs: []string{mail.Inbox}},
+				mail.ThreadSummary{ID: "thread-3", Subject: "Third", Senders: "Cid", LabelIDs: []string{mail.Inbox}},
+			)
+			service.thread = mail.Thread{ID: "thread-2", Subject: "Second", Messages: []mail.Message{{ID: "message-2", ThreadID: "thread-2", Text: "Second body"}}}
+			a := newTestApp(service)
+			a.selectedRow = tc.archiveIndex
+			a.selectThread(service.threads[tc.archiveIndex].ID)
+			a.archive()
+			if a.selectedThread != tc.wantID || a.selectedRow != tc.wantRow || a.thread.ID != tc.wantID {
+				t.Fatalf("selection after archive: thread=%q row=%d loaded=%q, want %q at %d", a.selectedThread, a.selectedRow, a.thread.ID, tc.wantID, tc.wantRow)
+			}
+		})
 	}
 }
 

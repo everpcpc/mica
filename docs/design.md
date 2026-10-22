@@ -35,7 +35,7 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 - Settings opens from the application menu with Cmd+, and the main window is restored when necessary.
 - Gmail watch and Pub/Sub Streaming Pull cover account changes, while notifications remain limited to unread INBOX activity. The watch renews daily, and an incremental history reconciliation runs hourly. A local history checkpoint catches up after restarts without treating existing unread mail as new. History additions, deletions, and label changes refresh complete conversations in SQLite before the checkpoint advances. The visible thread list updates without invalidating opened conversations, and selection follows the thread ID when rows move.
 - Compose and reply preserve unsent input after a failure.
-- Star, archive, trash, spam, and read/unread changes provide immediate feedback and undo where supported.
+- Star, archive, trash, spam, and read/unread changes provide immediate feedback and undo where supported. Removing the current conversation opens the next one at the same position, or the previous one at the end; the reader clears only when no conversations remain.
 
 ## Motion
 
