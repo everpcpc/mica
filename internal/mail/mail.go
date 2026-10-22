@@ -1,0 +1,98 @@
+package mail
+
+import (
+	"context"
+	"time"
+)
+
+const (
+	Inbox   = "INBOX"
+	Starred = "STARRED"
+	Sent    = "SENT"
+	Spam    = "SPAM"
+	Trash   = "TRASH"
+	Unread  = "UNREAD"
+)
+
+type Account struct {
+	Name  string
+	Email string
+	Demo  bool
+}
+
+type Label struct {
+	ID       string
+	Name     string
+	Messages int
+	Unread   int
+}
+
+type ThreadSummary struct {
+	ID           string
+	Subject      string
+	Snippet      string
+	Senders      string
+	Updated      time.Time
+	MessageCount int
+	LabelIDs     []string
+	Unread       bool
+	Starred      bool
+}
+
+type Thread struct {
+	ID       string
+	Subject  string
+	LabelIDs []string
+	Messages []Message
+}
+
+type Message struct {
+	ID          string
+	ThreadID    string
+	From        string
+	To          string
+	Cc          string
+	Subject     string
+	MessageID   string
+	References  string
+	Date        time.Time
+	Text        string
+	HTML        string
+	LabelIDs    []string
+	Attachments []Attachment
+}
+
+type Attachment struct {
+	ID       string
+	Name     string
+	MIMEType string
+	Size     int64
+}
+
+type Query struct {
+	LabelID string
+	Search  string
+	Limit   int
+}
+
+type Compose struct {
+	To         string
+	Cc         string
+	Bcc        string
+	Subject    string
+	Text       string
+	HTML       string
+	ThreadID   string
+	InReplyTo  string
+	References string
+}
+
+type Service interface {
+	Account(context.Context) (Account, error)
+	Labels(context.Context) ([]Label, error)
+	ListThreads(context.Context, Query) ([]ThreadSummary, error)
+	Thread(context.Context, string) (Thread, error)
+	ModifyThread(context.Context, string, []string, []string) error
+	TrashThread(context.Context, string) error
+	Send(context.Context, Compose) error
+}

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Write the OAuth client configuration
+        env:
+          MICA_OAUTH_CLIENT_JSON: ${{ secrets.MICA_OAUTH_CLIENT_JSON }}
+        run: |
+          if [ -z "$MICA_OAUTH_CLIENT_JSON" ]; then
+            echo "::error::MICA_OAUTH_CLIENT_JSON is required for CI."
+            exit 1
+          fi
+          mkdir -p internal/gmail
+          umask 077
+          printf '%s\n' "$MICA_OAUTH_CLIENT_JSON" > internal/gmail/oauth-client.json
+          jq empty internal/gmail/oauth-client.json
+      - name: Check generated files
+        run: |
+          go tool mygo generate
+          git diff --exit-code
+      - name: Test
+        run: CGO_ENABLED=0 go test ./...
+      - name: Test with race detector
+        run: go test -race ./...
+      - name: Vet Go packages
+        run: go vet ./...
+      - name: Vet MyGo views
+        run: go tool mygo vet .

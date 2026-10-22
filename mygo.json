@@ -1,0 +1,14 @@
+{
+  "name": "Mica",
+  "identifier": "dev.mica.mail",
+  "version": "0.1.0",
+  "out": "build",
+  "i18n": {
+    "dir": "locales",
+    "source": "en"
+  },
+  "updates": {
+    "publicKey": "TvGHBEd/vLVBuJESydAqevGnwCNJ3PisCxqNgQ2j8V8=",
+    "github": "everpcpc/mica"
+  }
+}
