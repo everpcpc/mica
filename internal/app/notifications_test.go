@@ -70,7 +70,7 @@ func TestMailNotificationsOnlyForNewActivity(t *testing.T) {
 		t.Fatalf("badge = %d, want 1", got)
 	}
 
-	second := mail.ThreadSummary{ID: "thread-2", Subject: "New mail", Senders: "Bob", Updated: first.Updated.Add(time.Minute), Unread: true}
+	second := mail.ThreadSummary{ID: "thread-2", Subject: "New mail", Senders: "Bob", Updated: first.Updated.Add(time.Minute), Unread: true, LabelIDs: []string{mail.Inbox, mail.Unread}}
 	h.service.threads = append(h.service.threads, second)
 	h.service.labels[0].Unread = 2
 	h.syncNow(t)
@@ -101,10 +101,30 @@ func TestMailNotificationsOnlyForNewActivity(t *testing.T) {
 	}
 }
 
+func TestHistorySyncRefreshesVisibleListAndKeepsSelection(t *testing.T) {
+	h := newNotificationHarness()
+	h.app.Start()
+	h.app.selectedRow = 0
+	h.app.selectThread("thread-1")
+	cached := h.app.thread
+	second := mail.ThreadSummary{ID: "thread-2", Subject: "New mail", Senders: "Bob", Updated: cached.Messages[0].Date.Add(time.Minute), Unread: true, LabelIDs: []string{mail.Inbox, mail.Unread}}
+	h.service.threads = append([]mail.ThreadSummary{second}, h.service.threads...)
+	h.syncNow(t)
+	if len(h.app.threads) != 2 || h.app.threads[0].ID != "thread-2" {
+		t.Fatalf("new mail was not inserted into the visible inbox: %+v", h.app.threads)
+	}
+	if h.app.selectedThread != "thread-1" || h.app.selectedRow != 1 {
+		t.Fatalf("selection moved after the list update: thread=%q row=%d", h.app.selectedThread, h.app.selectedRow)
+	}
+	if got := h.app.threadCache["thread-1"]; !reflect.DeepEqual(got, cached) {
+		t.Fatal("background list refresh discarded the opened conversation")
+	}
+}
+
 func TestHistorySyncAfterRestart(t *testing.T) {
 	h := newNotificationHarness()
 	first := h.service.threads[0]
-	missed := mail.ThreadSummary{ID: "thread-2", Subject: "Missed while closed", Senders: "Bob", Updated: first.Updated.Add(time.Minute), Unread: true}
+	missed := mail.ThreadSummary{ID: "thread-2", Subject: "Missed while closed", Senders: "Bob", Updated: first.Updated.Add(time.Minute), Unread: true, LabelIDs: []string{mail.Inbox, mail.Unread}}
 	h.service.threads = append(h.service.threads, missed)
 	h.checkpoint = 3
 	h.service.watchID = 5
@@ -127,6 +147,25 @@ func TestHistorySyncAfterRestart(t *testing.T) {
 	}
 }
 
+func TestHistorySyncPushIDUsesCurrentCheckpoint(t *testing.T) {
+	h := newNotificationHarness()
+	var starts []uint64
+	h.service.historyFunc = func(start uint64, _ func([]mail.ThreadSummary) error) (uint64, error) {
+		starts = append(starts, start)
+		return 6, nil
+	}
+	synchronizer := &historySynchronizer{
+		app: h.app, service: h.service, ctx: context.Background(),
+		version: h.app.serviceVersion, email: "alex@example.com", historyID: 5,
+	}
+	if err := synchronizer.sync(6); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(starts, []uint64{5}) {
+		t.Fatalf("history start IDs = %v, want current checkpoint 5", starts)
+	}
+}
+
 func TestHistory404RebuildsBaseline(t *testing.T) {
 	h := newNotificationHarness()
 	h.checkpoint = 3
@@ -142,7 +181,7 @@ func TestHistory404RebuildsBaseline(t *testing.T) {
 		t.Fatalf("checkpoint after reset = %d, want 5", h.saved)
 	}
 
-	second := mail.ThreadSummary{ID: "thread-2", Subject: "After reset", Senders: "Bob", Updated: time.Now(), Unread: true}
+	second := mail.ThreadSummary{ID: "thread-2", Subject: "After reset", Senders: "Bob", Updated: time.Now(), Unread: true, LabelIDs: []string{mail.Inbox, mail.Unread}}
 	h.service.threads = append(h.service.threads, second)
 	h.service.historyFunc = func(_ uint64, fn func([]mail.ThreadSummary) error) (uint64, error) {
 		if err := fn([]mail.ThreadSummary{second}); err != nil {
@@ -208,12 +247,14 @@ func (f *fakeService) Watch(context.Context) (gmail.WatchState, error) {
 	return gmail.WatchState{HistoryID: id, Expiration: time.Now().Add(time.Hour)}, nil
 }
 
-func (f *fakeService) History(_ context.Context, start uint64, fn func([]mail.ThreadSummary) error) (uint64, error) {
+func (f *fakeService) History(_ context.Context, start uint64, fn func(gmail.HistoryPage) error) (uint64, error) {
 	if f.historyFunc != nil {
-		return f.historyFunc(start, fn)
+		return f.historyFunc(start, func(summaries []mail.ThreadSummary) error {
+			return fn(gmail.HistoryPage{Added: summaries})
+		})
 	}
 	if len(f.threads) > 0 {
-		if err := fn(append([]mail.ThreadSummary(nil), f.threads...)); err != nil {
+		if err := fn(gmail.HistoryPage{Added: append([]mail.ThreadSummary(nil), f.threads...)}); err != nil {
 			return 0, err
 		}
 	}

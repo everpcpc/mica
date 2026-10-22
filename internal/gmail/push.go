@@ -80,14 +80,8 @@ func (s *Service) Watch(ctx context.Context) (WatchState, error) {
 		return WatchState{}, err
 	}
 	body := struct {
-		LabelFilterBehavior string   `json:"labelFilterBehavior"`
-		LabelIDs            []string `json:"labelIds"`
-		TopicName           string   `json:"topicName"`
-	}{
-		LabelFilterBehavior: "include",
-		LabelIDs:            []string{mail.Inbox},
-		TopicName:           topicName,
-	}
+		TopicName string `json:"topicName"`
+	}{TopicName: topicName}
 	var response struct {
 		HistoryID  string `json:"historyId"`
 		Expiration string `json:"expiration"`
@@ -106,7 +100,23 @@ func (s *Service) Watch(ctx context.Context) (WatchState, error) {
 	return WatchState{HistoryID: historyID, Expiration: time.UnixMilli(expiration)}, nil
 }
 
-func (s *Service) History(ctx context.Context, start uint64, fn func([]mail.ThreadSummary) error) (uint64, error) {
+type HistoryPage struct {
+	Added            []mail.ThreadSummary
+	ChangedThreadIDs []string
+}
+
+type historyMessage struct {
+	Message apiMessage `json:"message"`
+}
+
+type historyEntry struct {
+	MessagesAdded   []historyMessage `json:"messagesAdded"`
+	MessagesDeleted []historyMessage `json:"messagesDeleted"`
+	LabelsAdded     []historyMessage `json:"labelsAdded"`
+	LabelsRemoved   []historyMessage `json:"labelsRemoved"`
+}
+
+func (s *Service) History(ctx context.Context, start uint64, fn func(HistoryPage) error) (uint64, error) {
 	if start == 0 {
 		return 0, errors.New("gmail: start history id is required")
 	}
@@ -115,20 +125,15 @@ func (s *Service) History(ctx context.Context, start uint64, fn func([]mail.Thre
 	for {
 		values := url.Values{
 			"startHistoryId": []string{strconv.FormatUint(start, 10)},
-			"labelId":        []string{mail.Inbox},
 			"maxResults":     []string{"500"},
 		}
 		if pageToken != "" {
 			values.Set("pageToken", pageToken)
 		}
 		var page struct {
-			HistoryID     string `json:"historyId"`
-			NextPageToken string `json:"nextPageToken"`
-			History       []struct {
-				MessagesAdded []struct {
-					Message apiMessage `json:"message"`
-				} `json:"messagesAdded"`
-			} `json:"history"`
+			HistoryID     string         `json:"historyId"`
+			NextPageToken string         `json:"nextPageToken"`
+			History       []historyEntry `json:"history"`
 		}
 		if err := s.doJSON(ctx, http.MethodGet, "/history", values, nil, &page); err != nil {
 			return 0, err
@@ -139,7 +144,18 @@ func (s *Service) History(ctx context.Context, start uint64, fn func([]mail.Thre
 		}
 		latest = historyID
 		summaries := make([]mail.ThreadSummary, 0)
+		changed := make([]string, 0)
+		seen := make(map[string]bool)
 		for _, entry := range page.History {
+			for _, changes := range [][]historyMessage{entry.MessagesAdded, entry.MessagesDeleted, entry.LabelsAdded, entry.LabelsRemoved} {
+				for _, change := range changes {
+					id := change.Message.ThreadID
+					if id != "" && !seen[id] {
+						seen[id] = true
+						changed = append(changed, id)
+					}
+				}
+			}
 			for _, added := range entry.MessagesAdded {
 				if added.Message.ID == "" {
 					continue
@@ -155,7 +171,7 @@ func (s *Service) History(ctx context.Context, start uint64, fn func([]mail.Thre
 				summaries = append(summaries, makeSummary(thread))
 			}
 		}
-		if err := fn(summaries); err != nil {
+		if err := fn(HistoryPage{Added: summaries, ChangedThreadIDs: changed}); err != nil {
 			return 0, err
 		}
 		if page.NextPageToken == "" || page.NextPageToken == pageToken {

@@ -14,6 +14,9 @@ import (
 
 type App struct {
 	service                mail.Service
+	store                  mailStore
+	cacheState             cacheState
+	storeAccount           string
 	account                mail.Account
 	accountPhoto           *ui.Bitmap
 	labels                 []mail.Label
@@ -58,6 +61,10 @@ type App struct {
 	undo                 *undoAction
 	request              int
 	threadCall           int
+	listFreshRequest     int
+	threadFreshCall      int
+	accountVerified      bool
+	labelsSynced         bool
 	serviceVersion       int
 	restoreAttempted     bool
 	update               func(func())
@@ -109,7 +116,26 @@ func (a *App) SetUpdate(update func(func())) {
 func (a *App) Start() {
 	a.refresh()
 	service, version := a.service, a.serviceVersion
+	store, email := a.store, a.storeAccount
 	a.schedule(func() {
+		if store != nil && email != "" {
+			cachedAccount, accountFound, accountCacheErr := store.LastAccount(context.Background())
+			cachedLabels, labelsFound, labelsCacheErr := store.Labels(context.Background(), email)
+			logCacheError(accountCacheErr)
+			logCacheError(labelsCacheErr)
+			a.publish(func() {
+				if version != a.serviceVersion || email != a.storeAccount {
+					return
+				}
+				if accountCacheErr == nil && accountFound && cachedAccount.Email == email && !a.accountVerified {
+					a.account = cachedAccount
+					a.loadAccountPhoto(cachedAccount)
+				}
+				if labelsCacheErr == nil && labelsFound && !a.labelsSynced {
+					a.setLabels(cachedLabels)
+				}
+			})
+		}
 		account, accountErr := service.Account(context.Background())
 		labels, labelsErr := service.Labels(context.Background())
 		a.publish(func() {
@@ -117,7 +143,15 @@ func (a *App) Start() {
 				return
 			}
 			if accountErr == nil {
+				a.accountVerified = true
 				a.account = account
+				a.persistAccount(account)
+				if a.labelsSynced {
+					a.persistLabels(a.labels)
+				}
+				if a.listFreshRequest == a.request {
+					a.persistList(a.currentQuery(), a.threads)
+				}
 				a.loadAccountPhoto(account)
 				if account.ProfileUnauthorized && !a.profileReauthAttempted {
 					a.profileReauthAttempted = true
@@ -126,7 +160,11 @@ func (a *App) Start() {
 				a.startNotifications()
 			}
 			if labelsErr == nil {
+				a.labelsSynced = true
 				a.setLabels(labels)
+				if a.accountVerified {
+					a.persistLabels(labels)
+				}
 			}
 			if accountErr != nil {
 				a.notice = accountErr.Error()
@@ -173,17 +211,38 @@ func (a *App) refresh() {
 		a.selectedThread = ""
 		a.selectThread(id)
 	}
+	a.refreshList()
+}
+
+func (a *App) currentQuery() mail.Query {
+	labelID, search := mailboxQuery(a.selectedLabel)
+	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
+		labelID, search = "", userSearch
+	}
+	return mail.Query{LabelID: labelID, Search: search, Limit: 100}
+}
+
+func (a *App) refreshList() {
 	a.request++
 	request := a.request
 	a.loading = true
 	a.err = ""
 	service, version := a.service, a.serviceVersion
-	labelID, search := mailboxQuery(a.selectedLabel)
-	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
-		labelID, search = "", userSearch
-	}
-	query := mail.Query{LabelID: labelID, Search: search, Limit: 100}
+	store, email := a.store, a.storeAccount
+	query := a.currentQuery()
 	a.schedule(func() {
+		if store != nil && email != "" {
+			cached, found, cacheErr := store.ThreadList(context.Background(), email, query)
+			logCacheError(cacheErr)
+			a.publish(func() {
+				if version != a.serviceVersion || request != a.request || email != a.storeAccount || a.listFreshRequest >= request {
+					return
+				}
+				if cacheErr == nil && found {
+					a.applyThreadList(cached, false)
+				}
+			})
+		}
 		threads, err := service.ListThreads(context.Background(), query)
 		a.publish(func() {
 			if version != a.serviceVersion || request != a.request {
@@ -194,15 +253,34 @@ func (a *App) refresh() {
 				a.err = err.Error()
 				return
 			}
-			a.threads = threads
-			if a.selectedRow >= len(threads) {
-				a.selectedRow = -1
-			}
-			if a.selectedThread != "" && !hasThread(threads, a.selectedThread) {
-				a.clearThread()
+			a.listFreshRequest = request
+			a.applyThreadList(threads, true)
+			if a.accountVerified {
+				a.persistList(query, threads)
 			}
 		})
 	})
+}
+
+func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
+	a.threads = threads
+	if a.selectedThread == "" {
+		if a.selectedRow >= len(threads) {
+			a.selectedRow = -1
+		}
+		return
+	}
+	for i := range threads {
+		if threads[i].ID == a.selectedThread {
+			a.selectedRow = i
+			return
+		}
+	}
+	if clearMissing {
+		a.clearThread()
+	} else {
+		a.selectedRow = -1
+	}
 }
 
 func (a *App) selectLabel() {
@@ -236,7 +314,20 @@ func (a *App) selectThread(id string) {
 	a.thread = mail.Thread{}
 	a.threadLoading = true
 	service, version := a.service, a.serviceVersion
+	store, email := a.store, a.storeAccount
 	a.schedule(func() {
+		if store != nil && email != "" {
+			cached, found, cacheErr := store.Thread(context.Background(), email, id)
+			logCacheError(cacheErr)
+			a.publish(func() {
+				if version != a.serviceVersion || call != a.threadCall || email != a.storeAccount || a.threadFreshCall >= call {
+					return
+				}
+				if cacheErr == nil && found {
+					a.showThread(id, cached)
+				}
+			})
+		}
 		thread, err := service.Thread(context.Background(), id)
 		a.publish(func() {
 			if version != a.serviceVersion || call != a.threadCall {
@@ -244,26 +335,35 @@ func (a *App) selectThread(id string) {
 			}
 			a.threadLoading = false
 			if err != nil {
-				a.threadErr = err.Error()
+				if a.thread.ID != id {
+					a.threadErr = err.Error()
+				}
 				return
 			}
 			if a.threadCache == nil {
 				a.threadCache = make(map[string]mail.Thread)
 			}
+			a.threadFreshCall = call
 			a.threadCache[id] = thread
+			if a.accountVerified {
+				a.persistThread(thread)
+			}
 			a.showThread(id, thread)
 		})
 	})
 }
 
 func (a *App) showThread(id string, thread mail.Thread) {
+	sameThread := a.thread.ID == id
 	a.closeEmailViews()
 	a.thread = thread
 	a.threadLoading = false
-	a.focusedMessage = len(thread.Messages) - 1
-	a.messageScroll = -1
-	a.readerScroll.Y = 0
-	a.readerScroll.MaxY = 0
+	if !sameThread {
+		a.focusedMessage = len(thread.Messages) - 1
+		a.messageScroll = -1
+		a.readerScroll.Y = 0
+		a.readerScroll.MaxY = 0
+	}
 	for i := range a.threads {
 		if a.threads[i].ID == id && a.threads[i].Unread {
 			a.threads[i].Unread = false
@@ -306,7 +406,11 @@ func (a *App) reloadLabels() {
 		labels, err := service.Labels(context.Background())
 		a.publish(func() {
 			if version == a.serviceVersion && err == nil {
+				a.labelsSynced = true
 				a.setLabels(labels)
+				if a.accountVerified {
+					a.persistLabels(labels)
+				}
 			}
 		})
 	})
@@ -384,6 +488,7 @@ func (a *App) trash() {
 				a.notice = locales.TrashFailed(err.Error())
 				return
 			}
+			a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
 			a.removeThread(id)
 			a.reloadLabels()
 			a.notice = locales.Trashed()
@@ -424,6 +529,9 @@ func (a *App) removeThread(id string) {
 	for i := range a.threads {
 		if a.threads[i].ID == id {
 			a.threads = append(a.threads[:i], a.threads[i+1:]...)
+			if a.accountVerified {
+				a.persistList(a.currentQuery(), a.threads)
+			}
 			break
 		}
 	}
@@ -433,6 +541,14 @@ func (a *App) removeThread(id string) {
 }
 
 func (a *App) updateThreadLabels(id string, add, remove []string) {
+	for i := range a.threads {
+		if a.threads[i].ID == id {
+			a.threads[i].LabelIDs = modifyLabelIDs(a.threads[i].LabelIDs, add, remove)
+			a.threads[i].Unread = containsLabel(a.threads[i].LabelIDs, mail.Unread)
+			a.threads[i].Starred = containsLabel(a.threads[i].LabelIDs, mail.Starred)
+			break
+		}
+	}
 	if thread, ok := a.threadCache[id]; ok {
 		thread.LabelIDs = modifyLabelIDs(thread.LabelIDs, add, remove)
 		for i := range thread.Messages {
@@ -445,6 +561,15 @@ func (a *App) updateThreadLabels(id string, add, remove []string) {
 		for i := range a.thread.Messages {
 			a.thread.Messages[i].LabelIDs = modifyLabelIDs(a.thread.Messages[i].LabelIDs, add, remove)
 		}
+	}
+	if !a.accountVerified {
+		return
+	}
+	a.persistList(a.currentQuery(), a.threads)
+	if thread, ok := a.threadCache[id]; ok {
+		a.persistThread(thread)
+	} else if a.thread.ID == id {
+		a.persistThread(a.thread)
 	}
 }
 
@@ -511,15 +636,6 @@ func (a *App) labelName(id string) string {
 		}
 	}
 	return id
-}
-
-func hasThread(threads []mail.ThreadSummary, id string) bool {
-	for _, thread := range threads {
-		if thread.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 func (a *App) errorText() string {

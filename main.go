@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
+	"path/filepath"
 
 	"mica/internal/app"
 	"mica/internal/mail"
+	mailstore "mica/internal/mail/store"
 	"mica/locales"
 
 	"github.com/egoist/mygo"
@@ -89,6 +92,19 @@ func main() {
 			return win.NewWebView(mygo.WebViewOptions{})
 		})
 		a.SetUpdate(win.Update)
+		dir, err := mygo.App.Path(mygo.PathUserData)
+		if err != nil {
+			log.Printf("locate mail cache: %v", err)
+		} else if store, err := mailstore.Open(context.Background(), filepath.Join(dir, "mail.db")); err != nil {
+			log.Printf("open mail cache: %v", err)
+		} else {
+			a.SetMailStore(store)
+			mygo.App.OnQuit(func() {
+				if err := store.Close(); err != nil {
+					log.Printf("close mail cache: %v", err)
+				}
+			})
+		}
 		a.Start()
 	})
 	if err := mygo.App.Run(); err != nil {
