@@ -18,6 +18,9 @@ func (a *App) reader(c *ui.Context) {
 			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "")
 			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "")
+			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Padding(5, 6).Children(func() {
+				ui.Icon(c, iconLabel).Size(16, 16)
+			}).Menu(a.labelMenu)
 			starLabel := locales.AddStar()
 			if summary := a.selectedSummary(); summary != nil && summary.Starred {
 				starLabel = locales.RemoveStar()
@@ -63,6 +66,20 @@ func (a *App) emptyReader(c *ui.Context) {
 	})
 }
 
+func (a *App) labelMenu(m *ui.Menu) {
+	labels := assignableLabels(a.labels)
+	summary := a.selectedSummary()
+	if len(labels) == 0 {
+		m.Item(locales.NoCustomLabels()).Disabled(true)
+	}
+	for _, label := range labels {
+		checked := summary != nil && containsLabel(summary.LabelIDs, label.ID)
+		if m.Item(label.Name).Checked(checked).Disabled(summary == nil).Chosen() {
+			a.toggleThreadLabel(label)
+		}
+	}
+}
+
 func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
@@ -81,6 +98,11 @@ func (a *App) threadContent(c *ui.Context) {
 						for _, id := range thread.LabelIDs {
 							if id == mail.Inbox || id == mail.Sent {
 								ui.Badge(c, a.labelName(id))
+							}
+						}
+						for _, label := range assignableLabels(a.labels) {
+							if containsLabel(thread.LabelIDs, label.ID) {
+								ui.Badge(c, label.Name)
 							}
 						}
 						ui.Text(c, locales.MessageCount(len(thread.Messages))).FontSize(11).TextColor(t.TextMuted)

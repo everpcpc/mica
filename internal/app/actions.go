@@ -160,6 +160,25 @@ func (a *App) reportSpam() {
 	a.mutate(summary.ID, []string{mail.Spam}, []string{mail.Inbox}, true, locales.SpamReported)
 }
 
+func (a *App) toggleThreadLabel(label mail.Label) {
+	summary := a.selectedSummary()
+	if summary == nil {
+		return
+	}
+	added := !containsLabel(summary.LabelIDs, label.ID)
+	add, remove := []string{label.ID}, []string(nil)
+	if !added {
+		add, remove = remove, add
+	}
+	a.recordUndo(summary.ID, remove, add)
+	a.mutate(summary.ID, add, remove, !added && a.selectedLabel == label.ID, func() string {
+		if added {
+			return locales.LabelAdded(label.Name)
+		}
+		return locales.LabelRemoved(label.Name)
+	})
+}
+
 func (a *App) setUnread(unread bool) {
 	summary := a.selectedSummary()
 	if summary == nil || summary.Unread == unread {
