@@ -163,6 +163,29 @@ func TestSidebarCreatesCustomLabel(t *testing.T) {
 	t.Fatalf("created label missing from app state: %+v", a.labels)
 }
 
+func TestSidebarEditsLabelColor(t *testing.T) {
+	service := newFakeService()
+	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.RightClick("Receipts"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Label color", "Blue"); err != nil {
+		t.Fatal(err)
+	}
+	want := mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}
+	if got := service.labelColors["Label_9"]; got != want {
+		t.Fatalf("label color = %+v, want %+v", got, want)
+	}
+	for _, label := range a.labels {
+		if label.ID == "Label_9" && label.Color == want {
+			return
+		}
+	}
+	t.Fatalf("updated color is missing from app state: %+v", a.labels)
+}
+
 func TestSidebarDeletesCustomLabelAfterConfirmation(t *testing.T) {
 	service := newFakeService()
 	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
@@ -171,7 +194,10 @@ func TestSidebarDeletesCustomLabelAfterConfirmation(t *testing.T) {
 	a := newTestApp(service)
 	a.selectThread("thread-1")
 	tt := ui.NewTester(a.View, 1280, 800)
-	if err := tt.Click("Delete label"); err != nil {
+	if err := tt.RightClick("Receipts"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Delete label"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Delete label?") {

@@ -94,13 +94,19 @@ type apiBody struct {
 	Data         string `json:"data"`
 }
 
+type apiLabelColor struct {
+	BackgroundColor string `json:"backgroundColor"`
+	TextColor       string `json:"textColor"`
+}
+
 type apiLabel struct {
-	ID                  string `json:"id"`
-	Name                string `json:"name"`
-	Type                string `json:"type"`
-	LabelListVisibility string `json:"labelListVisibility"`
-	MessagesTotal       int    `json:"messagesTotal"`
-	MessagesUnread      int    `json:"messagesUnread"`
+	ID                  string         `json:"id"`
+	Name                string         `json:"name"`
+	Type                string         `json:"type"`
+	LabelListVisibility string         `json:"labelListVisibility"`
+	MessagesTotal       int            `json:"messagesTotal"`
+	MessagesUnread      int            `json:"messagesUnread"`
+	Color               *apiLabelColor `json:"color"`
 }
 
 func New(client *http.Client) *Service {
@@ -199,12 +205,26 @@ func (s *Service) DeleteLabel(ctx context.Context, id string) error {
 	return s.doJSON(ctx, http.MethodDelete, "/labels/"+url.PathEscape(id), nil, nil, nil)
 }
 
+func (s *Service) UpdateLabelColor(ctx context.Context, id string, color mail.LabelColor) error {
+	if id == "" {
+		return errors.New("gmail: empty label ID")
+	}
+	body := struct {
+		Color apiLabelColor `json:"color"`
+	}{Color: apiLabelColor{BackgroundColor: color.Background, TextColor: color.Text}}
+	return s.doJSON(ctx, http.MethodPatch, "/labels/"+url.PathEscape(id), nil, body, nil)
+}
+
 func makeLabel(detail apiLabel) mail.Label {
-	return mail.Label{
+	label := mail.Label{
 		ID: detail.ID, Name: detail.Name, Messages: detail.MessagesTotal, Unread: detail.MessagesUnread,
 		System: detail.Type == "system", Hide: detail.LabelListVisibility == "labelHide",
 		ShowIfUnread: detail.LabelListVisibility == "labelShowIfUnread",
 	}
+	if detail.Color != nil {
+		label.Color = mail.LabelColor{Background: detail.Color.BackgroundColor, Text: detail.Color.TextColor}
+	}
+	return label
 }
 
 func (s *Service) Attachment(ctx context.Context, messageID, attachmentID string) ([]byte, error) {

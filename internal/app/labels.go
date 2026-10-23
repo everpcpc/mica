@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"mica/internal/mail"
+	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -12,6 +13,23 @@ import (
 type sidebarLabel struct {
 	id   string
 	icon *ui.SVG
+}
+
+type labelColorOption struct {
+	name  func() string
+	color mail.LabelColor
+}
+
+var labelColorOptions = []labelColorOption{
+	{name: locales.ColorRed, color: mail.LabelColor{Background: "#fb4c2f", Text: "#ffffff"}},
+	{name: locales.ColorOrange, color: mail.LabelColor{Background: "#ffad47", Text: "#000000"}},
+	{name: locales.ColorYellow, color: mail.LabelColor{Background: "#fad165", Text: "#000000"}},
+	{name: locales.ColorGreen, color: mail.LabelColor{Background: "#16a766", Text: "#ffffff"}},
+	{name: locales.ColorTeal, color: mail.LabelColor{Background: "#43d692", Text: "#000000"}},
+	{name: locales.ColorBlue, color: mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}},
+	{name: locales.ColorPurple, color: mail.LabelColor{Background: "#a479e2", Text: "#ffffff"}},
+	{name: locales.ColorPink, color: mail.LabelColor{Background: "#f691b3", Text: "#000000"}},
+	{name: locales.ColorGray, color: mail.LabelColor{Background: "#666666", Text: "#ffffff"}},
 }
 
 var mailboxLabels = []sidebarLabel{
@@ -47,6 +65,20 @@ func mailboxQuery(id string) (labelID, search string) {
 		return "", "category:reservations"
 	default:
 		return id, ""
+	}
+}
+
+func (a *App) labelContextMenu(m *ui.Menu, label mail.Label) {
+	m.Submenu(locales.LabelColor(), func(m *ui.Menu) {
+		for _, option := range labelColorOptions {
+			if m.Item(option.name()).Checked(label.Color == option.color).Chosen() {
+				a.updateLabelColor(label, option.color)
+			}
+		}
+	})
+	m.Separator()
+	if m.Item(locales.DeleteLabel()).Chosen() {
+		a.openLabelDelete(label)
 	}
 }
 

@@ -107,6 +107,45 @@ func TestCreateAndDeleteLabel(t *testing.T) {
 	}
 }
 
+func TestUpdateLabelColor(t *testing.T) {
+	want := mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/me/labels/Label_9" {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodPatch:
+			var body struct {
+				Color apiLabelColor `json:"color"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Color.BackgroundColor != want.Background || body.Color.TextColor != want.Text {
+				t.Fatalf("color body = %+v, want %+v", body.Color, want)
+			}
+		case http.MethodGet:
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		writeTestJSON(t, w, apiLabel{ID: "Label_9", Name: "Receipts", Type: "user", Color: &apiLabelColor{BackgroundColor: want.Background, TextColor: want.Text}})
+	}))
+	defer server.Close()
+	service := testService(server)
+	if err := service.UpdateLabelColor(context.Background(), "Label_9", want); err != nil {
+		t.Fatal(err)
+	}
+	label, err := service.Label(context.Background(), "Label_9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if label.Color != want {
+		t.Fatalf("label color = %+v, want %+v", label.Color, want)
+	}
+}
+
 func TestAccountProfileUnauthorized(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {

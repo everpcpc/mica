@@ -1619,3 +1619,113 @@ func AttachmentUnavailable() string { return In(i18n.Locale()).AttachmentUnavail
 func (msgs Messages) AttachmentUnavailable() string {
 	return Catalog.Format(msgs.locale, "attachmentUnavailable", nil)
 }
+
+// LabelColor says "Label color"
+// in the language the app shows.
+func LabelColor() string { return In(i18n.Locale()).LabelColor() }
+
+// LabelColor says "Label color"
+// in the language of msgs.
+func (msgs Messages) LabelColor() string {
+	return Catalog.Format(msgs.locale, "labelColor", nil)
+}
+
+// LabelColorUpdated says "Updated color for {label}"
+// in the language the app shows.
+func LabelColorUpdated(label string) string { return In(i18n.Locale()).LabelColorUpdated(label) }
+
+// LabelColorUpdated says "Updated color for {label}"
+// in the language of msgs.
+func (msgs Messages) LabelColorUpdated(label string) string {
+	return Catalog.Format(msgs.locale, "labelColorUpdated", map[string]any{"label": label})
+}
+
+// ColorRed says "Red"
+// in the language the app shows.
+func ColorRed() string { return In(i18n.Locale()).ColorRed() }
+
+// ColorRed says "Red"
+// in the language of msgs.
+func (msgs Messages) ColorRed() string {
+	return Catalog.Format(msgs.locale, "colorRed", nil)
+}
+
+// ColorOrange says "Orange"
+// in the language the app shows.
+func ColorOrange() string { return In(i18n.Locale()).ColorOrange() }
+
+// ColorOrange says "Orange"
+// in the language of msgs.
+func (msgs Messages) ColorOrange() string {
+	return Catalog.Format(msgs.locale, "colorOrange", nil)
+}
+
+// ColorYellow says "Yellow"
+// in the language the app shows.
+func ColorYellow() string { return In(i18n.Locale()).ColorYellow() }
+
+// ColorYellow says "Yellow"
+// in the language of msgs.
+func (msgs Messages) ColorYellow() string {
+	return Catalog.Format(msgs.locale, "colorYellow", nil)
+}
+
+// ColorGreen says "Green"
+// in the language the app shows.
+func ColorGreen() string { return In(i18n.Locale()).ColorGreen() }
+
+// ColorGreen says "Green"
+// in the language of msgs.
+func (msgs Messages) ColorGreen() string {
+	return Catalog.Format(msgs.locale, "colorGreen", nil)
+}
+
+// ColorTeal says "Teal"
+// in the language the app shows.
+func ColorTeal() string { return In(i18n.Locale()).ColorTeal() }
+
+// ColorTeal says "Teal"
+// in the language of msgs.
+func (msgs Messages) ColorTeal() string {
+	return Catalog.Format(msgs.locale, "colorTeal", nil)
+}
+
+// ColorBlue says "Blue"
+// in the language the app shows.
+func ColorBlue() string { return In(i18n.Locale()).ColorBlue() }
+
+// ColorBlue says "Blue"
+// in the language of msgs.
+func (msgs Messages) ColorBlue() string {
+	return Catalog.Format(msgs.locale, "colorBlue", nil)
+}
+
+// ColorPurple says "Purple"
+// in the language the app shows.
+func ColorPurple() string { return In(i18n.Locale()).ColorPurple() }
+
+// ColorPurple says "Purple"
+// in the language of msgs.
+func (msgs Messages) ColorPurple() string {
+	return Catalog.Format(msgs.locale, "colorPurple", nil)
+}
+
+// ColorPink says "Pink"
+// in the language the app shows.
+func ColorPink() string { return In(i18n.Locale()).ColorPink() }
+
+// ColorPink says "Pink"
+// in the language of msgs.
+func (msgs Messages) ColorPink() string {
+	return Catalog.Format(msgs.locale, "colorPink", nil)
+}
+
+// ColorGray says "Gray"
+// in the language the app shows.
+func ColorGray() string { return In(i18n.Locale()).ColorGray() }
+
+// ColorGray says "Gray"
+// in the language of msgs.
+func (msgs Messages) ColorGray() string {
+	return Catalog.Format(msgs.locale, "colorGray", nil)
+}

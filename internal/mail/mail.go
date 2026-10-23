@@ -33,6 +33,11 @@ type Account struct {
 	ProfileUnauthorized bool
 }
 
+type LabelColor struct {
+	Background string
+	Text       string
+}
+
 type Label struct {
 	ID           string
 	Name         string
@@ -41,6 +46,7 @@ type Label struct {
 	System       bool
 	Hide         bool
 	ShowIfUnread bool
+	Color        LabelColor
 }
 
 type ThreadSummary struct {
@@ -128,6 +134,7 @@ type ThreadPager interface {
 type LabelManager interface {
 	CreateLabel(context.Context, string) (Label, error)
 	DeleteLabel(context.Context, string) error
+	UpdateLabelColor(context.Context, string, LabelColor) error
 }
 
 type AttachmentFetcher interface {

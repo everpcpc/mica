@@ -136,11 +136,14 @@ func (a *App) sidebar(c *ui.Context) {
 				for _, label := range customSidebarLabels(a.labels) {
 					item := ui.SidebarItem(c.Key(label.ID), label.ID, iconLabel, label.Name)
 					item.Children(func() {
+						if label.Color.Background != "" {
+							ui.Box(c).Size(8, 8).Radius(4).Background(ui.Hex(label.Color.Background))
+						}
 						if label.Unread > 0 {
 							ui.Badge(c, fmt.Sprint(label.Unread))
 						}
-						iconButton(c, locales.DeleteLabel(), iconTrash, func() { a.openLabelDelete(label) }).Padding(2, 3).TextColor(t.TextMuted)
 					})
+					item.ContextMenu(func(m *ui.Menu) { a.labelContextMenu(m, label) })
 				}
 				ui.Button(c, locales.NewLabel()).WidthPercent(100).OnClick(a.openLabelCreate)
 			})

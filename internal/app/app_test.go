@@ -26,6 +26,7 @@ type fakeService struct {
 	sendErr       error
 	createdLabels []string
 	deletedLabels []string
+	labelColors   map[string]mail.LabelColor
 	watchID       uint64
 	historyFunc   func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
 	stream        func(context.Context, func(uint64) error) error
@@ -90,6 +91,19 @@ func (f *fakeService) DeleteLabel(_ context.Context, id string) error {
 	for i := range f.labels {
 		if f.labels[i].ID == id {
 			f.labels = append(f.labels[:i], f.labels[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+func (f *fakeService) UpdateLabelColor(_ context.Context, id string, color mail.LabelColor) error {
+	if f.labelColors == nil {
+		f.labelColors = make(map[string]mail.LabelColor)
+	}
+	f.labelColors[id] = color
+	for i := range f.labels {
+		if f.labels[i].ID == id {
+			f.labels[i].Color = color
 			break
 		}
 	}

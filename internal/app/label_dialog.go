@@ -167,6 +167,30 @@ func (a *App) deleteLabel() {
 	})
 }
 
+func (a *App) updateLabelColor(label mail.Label, color mail.LabelColor) {
+	if label.Color == color {
+		return
+	}
+	if _, err := a.labelManager(); err != nil {
+		a.notice = locales.LabelActionFailed(err.Error())
+		return
+	}
+	a.enqueueMutation(mutationJob{
+		service:    a.service,
+		id:         label.ID,
+		labelColor: &color,
+		failure:    locales.ActionFailed,
+		done: func(err error) {
+			if err != nil {
+				return
+			}
+			label.Color = color
+			a.setLabel(label)
+			a.notice = locales.LabelColorUpdated(label.Name)
+		},
+	})
+}
+
 func (a *App) removeLabelDefinition(id string) {
 	a.undo = nil
 	labels := make([]mail.Label, 0, len(a.labels))
