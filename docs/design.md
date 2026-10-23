@@ -16,7 +16,8 @@ Email documents follow live appearance changes through `prefers-color-scheme`, k
 HTML and plain-text bodies have a 24px horizontal reading inset. Root email styles and top-level inline padding take precedence over the HTML default.
 Subjects, sender metadata, and recipients use a compact Gmail-style hierarchy, with Reply, Reply all, and Forward after the conversation.
 The reader toolbar floats above the conversation with a lightly tinted Liquid Glass material and a subtle shadow. Primary actions share a blue-indigo gradient and restrained shadow.
-Grouped dialog content uses 12pt-radius bordered panels with consistent padding. Conversation rows use rounded selection with a small inset, and secondary actions use light borders and shadows.
+Grouped dialog content uses 12pt-radius bordered panels with consistent padding. Conversation rows use rounded selection with a small inset.
+Reader reply actions use interactive Liquid Glass, and other secondary actions use light borders and shadows.
 The app icon is a white rounded square with a four-color envelope inspired by Gmail, while the interface keeps its own identity.
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.
 Gmail sign-in uses the embedded OAuth client by default; a custom client is available in a collapsed section.

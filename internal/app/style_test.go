@@ -10,18 +10,19 @@ func TestPrimaryActionsUseGradient(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		label string
-		open  func(*App)
+		open  func(*App, *ui.Tester)
 	}{
-		{name: "compose", label: "Compose", open: func(a *App) {}},
-		{name: "send", label: "Send", open: func(a *App) { a.openCompose(nil) }},
+		{name: "compose", label: "Compose", open: func(a *App, _ *ui.Tester) {}},
+		{name: "send", label: "Send", open: func(a *App, _ *ui.Tester) { a.openCompose(nil) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := newTestApp(newFakeService())
-			tc.open(a)
 			tt := ui.NewTester(a.View, 1280, 800)
+			tc.open(a, tt)
+			tt.Frame()
 			r, ok := tt.Find(tc.label)
 			if !ok {
-				t.Fatalf("primary action %q not found", tc.label)
+				t.Fatalf("primary action %q not found: %q", tc.label, tt.Texts())
 			}
 			y := int(r.Y + r.H/4)
 			left := tt.Image().RGBAAt(int(r.X+r.W/3), y)

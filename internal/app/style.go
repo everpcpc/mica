@@ -2,10 +2,12 @@ package app
 
 import "github.com/egoist/mygo/ui"
 
+func primaryGradient() ui.LinearGradient {
+	return ui.LinearGradient{From: ui.Hex("#3b82f6"), To: ui.Hex("#6366f1"), Angle: 135, Oklab: true}
+}
+
 func primaryAction(c *ui.Context, label string) ui.Element {
-	return ui.PrimaryButton(c, label).LinearGradient(ui.LinearGradient{
-		From: ui.Hex("#3b82f6"), To: ui.Hex("#6366f1"), Angle: 135, Oklab: true,
-	}).Shadow(0, 2, 8, 0, ui.RGBA(37, 99, 235, 0.22))
+	return ui.PrimaryButton(c, label).LinearGradient(primaryGradient()).Shadow(0, 2, 8, 0, ui.RGBA(37, 99, 235, 0.22))
 }
 
 func sectionPanel(c *ui.Context) ui.Element {

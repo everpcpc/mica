@@ -128,7 +128,7 @@ func (a *App) threadContent(c *ui.Context) {
 
 func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func()) {
 	t := c.Theme()
-	ui.Button(c, "").Label(label).Padding(7, 12).Radius(16).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
+	ui.Button(c, "").Label(label).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph).Size(15, 15)
 			ui.Text(c, label)

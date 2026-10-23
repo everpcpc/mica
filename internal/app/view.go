@@ -104,7 +104,7 @@ func (a *App) sidebar(c *ui.Context) {
 				ui.Icon(c, iconCompose).Size(16, 16)
 			}).OnClick(func() { a.openCompose(nil) })
 		})
-		ui.Row(c).Margin(6, 8, 4, 8).Padding(8, 8).Gap(10).AlignItems(ui.Center).Radius(10).Background(t.Background).Border(1, t.Border).Children(func() {
+		ui.Row(c).Margin(6, 8, 4, 8).Padding(8, 8).Gap(10).AlignItems(ui.Center).Radius(10).Background(t.Background).Border(1, t.Border).Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.05)).Children(func() {
 			ui.Avatar(c, a.account.Name, a.accountPhoto)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
