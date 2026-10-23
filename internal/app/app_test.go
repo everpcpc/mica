@@ -383,3 +383,17 @@ func TestTrashUndoMatchesQueuedLabels(t *testing.T) {
 		t.Fatalf("trash requests = %q, undo removals = %v", service.trashed, service.remove)
 	}
 }
+
+type pagingService struct {
+	*fakeService
+	pages   []mail.ThreadPage
+	queries []mail.Query
+}
+
+func (s *pagingService) ListThreadPage(_ context.Context, query mail.Query) (mail.ThreadPage, error) {
+	s.queries = append(s.queries, query)
+	if query.PageToken == "next" {
+		return s.pages[1], nil
+	}
+	return s.pages[0], nil
+}

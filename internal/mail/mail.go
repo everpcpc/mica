@@ -88,9 +88,15 @@ type Attachment struct {
 }
 
 type Query struct {
-	LabelID string
-	Search  string
-	Limit   int
+	LabelID   string
+	Search    string
+	Limit     int
+	PageToken string `json:",omitempty"`
+}
+
+type ThreadPage struct {
+	Threads       []ThreadSummary
+	NextPageToken string
 }
 
 type Compose struct {
@@ -113,6 +119,10 @@ type Service interface {
 	ModifyThread(context.Context, string, []string, []string) error
 	TrashThread(context.Context, string) error
 	Send(context.Context, Compose) error
+}
+
+type ThreadPager interface {
+	ListThreadPage(context.Context, Query) (ThreadPage, error)
 }
 
 type LabelManager interface {

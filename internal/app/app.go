@@ -13,6 +13,8 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+const threadPageSize = 25
+
 type App struct {
 	service                mail.Service
 	store                  mailStore
@@ -35,6 +37,8 @@ type App struct {
 	unreadOnly     bool
 
 	loading         bool
+	loadingMore     bool
+	nextPageToken   string
 	threadLoading   bool
 	mutationQueue   []mutationJob
 	mutationRunning bool
@@ -230,12 +234,25 @@ func (a *App) currentQuery() mail.Query {
 	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
 		labelID, search = "", userSearch
 	}
-	return mail.Query{LabelID: labelID, Search: search, Limit: 100}
+	return mail.Query{LabelID: labelID, Search: search, Limit: threadPageSize}
+}
+
+func listThreadPage(ctx context.Context, service mail.Service, query mail.Query) (mail.ThreadPage, error) {
+	if pager, ok := service.(mail.ThreadPager); ok {
+		return pager.ListThreadPage(ctx, query)
+	}
+	threads, err := service.ListThreads(ctx, query)
+	if err != nil {
+		return mail.ThreadPage{}, err
+	}
+	return mail.ThreadPage{Threads: threads}, nil
 }
 
 func (a *App) refreshList() {
 	a.request++
 	request := a.request
+	a.nextPageToken = ""
+	a.loadingMore = false
 	a.loading = true
 	a.err = ""
 	service, version := a.service, a.serviceVersion
@@ -254,7 +271,7 @@ func (a *App) refreshList() {
 				}
 			})
 		}
-		threads, err := service.ListThreads(context.Background(), query)
+		page, err := listThreadPage(context.Background(), service, query)
 		a.publish(func() {
 			if version != a.serviceVersion || request != a.request {
 				return
@@ -265,10 +282,37 @@ func (a *App) refreshList() {
 				return
 			}
 			a.listFreshRequest = request
-			a.applyThreadList(threads, true)
+			a.nextPageToken = page.NextPageToken
+			a.applyThreadList(page.Threads, true)
 			if a.accountVerified {
-				a.persistList(query, threads)
+				a.persistList(query, page.Threads)
 			}
+		})
+	})
+}
+
+func (a *App) loadMoreThreads() {
+	if a.nextPageToken == "" || a.loading || a.loadingMore || a.err != "" {
+		return
+	}
+	a.loadingMore = true
+	service, version := a.service, a.serviceVersion
+	request := a.request
+	query := a.currentQuery()
+	query.PageToken = a.nextPageToken
+	a.schedule(func() {
+		page, err := listThreadPage(context.Background(), service, query)
+		a.publish(func() {
+			if version != a.serviceVersion || request != a.request || query.PageToken != a.nextPageToken {
+				return
+			}
+			a.loadingMore = false
+			if err != nil {
+				a.err = err.Error()
+				return
+			}
+			a.nextPageToken = page.NextPageToken
+			a.applyHistoryChanges(page.Threads, nil)
 		})
 	})
 }
@@ -710,7 +754,7 @@ func (a *App) errorText() string {
 	if a.err != "" {
 		return a.err
 	}
-	if a.loading {
+	if a.loading || a.loadingMore {
 		return locales.LoadingMail()
 	}
 	return locales.ConversationCount(len(a.visibleThreads()))

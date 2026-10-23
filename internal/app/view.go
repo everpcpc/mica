@@ -154,9 +154,6 @@ func (a *App) threadList(c *ui.Context) {
 		}
 		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 12, 0, 18).Gap(8).AlignItems(ui.Center).DragWindow().Children(func() {
 			ui.Text(c, title).FontSize(16).Bold().Grow(1).SingleLine()
-			iconButton(c, locales.Sync(), iconRefresh, a.refresh).Disabled(a.loading)
-		})
-		ui.Column(c).Padding(0, 12, 10, 12).Gap(8).Children(func() {
 			filterLabel := locales.FilterUnread()
 			if a.unreadOnly {
 				filterLabel = locales.ShowAllMail()
@@ -167,13 +164,16 @@ func (a *App) threadList(c *ui.Context) {
 			if filter.Changed() {
 				a.syncThreadSelection(false)
 			}
+			iconButton(c, locales.Sync(), iconRefresh, a.refresh).Disabled(a.loading)
+		})
+		ui.Column(c).Padding(0, 12, 10, 12).Gap(8).Children(func() {
 			search := ui.SearchField(c.Key("search"), &a.query).Bind(&a.search).Label(locales.SearchMail()).Placeholder(locales.SearchGmail())
 			if search.Submitted() || (search.Changed() && a.query == "") {
 				a.refresh()
 			}
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, a.errorText()).FontSize(11).TextColor(t.TextMuted).Grow(1)
-				if a.loading {
+				if a.loading || a.loadingMore {
 					ui.Spinner(c).Size(12, 12)
 				}
 			})
@@ -182,6 +182,9 @@ func (a *App) threadList(c *ui.Context) {
 		threads := a.visibleThreads()
 		if len(threads) == 0 {
 			a.emptyList(c)
+			if a.unreadOnly {
+				a.loadMoreThreads()
+			}
 			return
 		}
 		a.list.Key = func(i int) any { return threads[i].ID }
@@ -194,6 +197,9 @@ func (a *App) threadList(c *ui.Context) {
 		})
 		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {
 			a.selectThread(threads[a.selectedRow].ID)
+		}
+		if a.list.AtEnd() {
+			a.loadMoreThreads()
 		}
 	})
 }

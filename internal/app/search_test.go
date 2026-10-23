@@ -73,3 +73,17 @@ func TestMailboxQueriesMatchGmail(t *testing.T) {
 		})
 	}
 }
+
+func TestInitialThreadListUsesSmallPage(t *testing.T) {
+	service := &searchService{fakeService: newFakeService()}
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.Start()
+	if len(service.queries) != 1 {
+		t.Fatalf("queries = %d, want 1", len(service.queries))
+	}
+	if got := service.queries[0].Limit; got != 25 {
+		t.Fatalf("initial page size = %d, want 25", got)
+	}
+}

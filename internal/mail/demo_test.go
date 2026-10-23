@@ -97,6 +97,27 @@ func TestDemoLabelsListAndSearch(t *testing.T) {
 	}
 }
 
+func TestDemoListThreadPage(t *testing.T) {
+	service := NewDemo()
+	first, err := service.ListThreadPage(context.Background(), Query{LabelID: Inbox, Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Threads) != 2 || first.NextPageToken != "2" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second, err := service.ListThreadPage(context.Background(), Query{LabelID: Inbox, Limit: 100, PageToken: first.NextPageToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Threads) == 0 || second.NextPageToken != "" {
+		t.Fatalf("last page = %+v", second)
+	}
+	if first.Threads[0].ID == second.Threads[0].ID {
+		t.Fatal("second page repeated the first thread")
+	}
+}
+
 func TestDemoCreateAndDeleteLabel(t *testing.T) {
 	ctx := context.Background()
 	service := NewDemo()

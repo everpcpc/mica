@@ -249,6 +249,49 @@ func TestListThreadsQueryPaginationAndSummaries(t *testing.T) {
 	}
 }
 
+func TestListThreadPageReturnsNextToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/users/me/threads":
+			if got := r.URL.Query().Get("maxResults"); got != "1" {
+				t.Errorf("maxResults = %q, want 1", got)
+			}
+			switch r.URL.Query().Get("pageToken") {
+			case "":
+				writeTestJSON(t, w, map[string]any{
+					"threads": []map[string]string{{"id": "thread-1"}}, "nextPageToken": "page-2",
+				})
+			case "page-2":
+				writeTestJSON(t, w, map[string]any{"threads": []map[string]string{{"id": "thread-2"}}})
+			default:
+				http.NotFound(w, r)
+			}
+		case "/users/me/threads/thread-1", "/users/me/threads/thread-2":
+			id := strings.TrimPrefix(r.URL.Path, "/users/me/threads/")
+			writeTestJSON(t, w, apiThread{ID: id, Snippet: "snippet for " + id})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	service := testService(server)
+
+	first, err := service.ListThreadPage(context.Background(), mail.Query{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Threads) != 1 || first.Threads[0].ID != "thread-1" || first.NextPageToken != "page-2" {
+		t.Fatalf("first page = %+v", first)
+	}
+	second, err := service.ListThreadPage(context.Background(), mail.Query{Limit: 1, PageToken: first.NextPageToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Threads) != 1 || second.Threads[0].ID != "thread-2" || second.NextPageToken != "" {
+		t.Fatalf("second page = %+v", second)
+	}
+}
+
 func TestThreadParsesNestedMIME(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/users/me/threads/thread-mime" || r.URL.Query().Get("format") != "full" {
