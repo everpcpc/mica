@@ -78,17 +78,6 @@ func (a *App) labelMenu(m *ui.Menu) {
 			a.toggleThreadLabel(label)
 		}
 	}
-	m.Separator()
-	if m.Item(locales.NewLabel()).Chosen() {
-		a.openLabelCreate()
-	}
-	m.Submenu(locales.DeleteLabel(), func(m *ui.Menu) {
-		for _, label := range labels {
-			if m.Item(label.Name).Chosen() {
-				a.openLabelDelete(label)
-			}
-		}
-	}).Disabled(len(labels) == 0)
 }
 
 func (a *App) threadContent(c *ui.Context) {

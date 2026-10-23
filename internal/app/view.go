@@ -132,16 +132,18 @@ func (a *App) sidebar(c *ui.Context) {
 					}
 				})
 			}
-			if labels := customSidebarLabels(a.labels); len(labels) > 0 {
-				ui.SidebarSection(c, locales.Labels(), nil, func() {
-					for _, label := range labels {
-						item := ui.SidebarItem(c.Key(label.ID), label.ID, iconLabel, label.Name)
+			ui.SidebarSection(c, locales.Labels(), nil, func() {
+				for _, label := range customSidebarLabels(a.labels) {
+					item := ui.SidebarItem(c.Key(label.ID), label.ID, iconLabel, label.Name)
+					item.Children(func() {
 						if label.Unread > 0 {
-							item.Children(func() { ui.Badge(c, fmt.Sprint(label.Unread)) })
+							ui.Badge(c, fmt.Sprint(label.Unread))
 						}
-					}
-				})
-			}
+						iconButton(c, locales.DeleteLabel(), iconTrash, func() { a.openLabelDelete(label) }).Padding(2, 3).TextColor(t.TextMuted)
+					})
+				}
+				ui.Button(c, locales.NewLabel()).WidthPercent(100).OnClick(a.openLabelCreate)
+			})
 		}).Grow(1).Label(locales.SidebarLabels())
 		if mailboxes.Changed() {
 			a.selectLabel()

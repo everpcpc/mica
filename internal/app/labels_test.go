@@ -121,13 +121,28 @@ func openLabelMenu(t *testing.T, tt *ui.Tester) {
 	tt.Release(x, y)
 }
 
-func TestLabelMenuCreatesCustomLabel(t *testing.T) {
+func TestLabelMenuOnlyAssignsCustomLabels(t *testing.T) {
 	service := newFakeService()
+	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
 	a := newTestApp(service)
 	a.selectThread("thread-1")
 	tt := ui.NewTester(a.View, 1280, 800)
 	openLabelMenu(t, tt)
-	if err := tt.ChooseMenuItem("New label…"); err != nil {
+	menu := tt.Menu()
+	for _, unwanted := range []string{"New label…", "Delete label"} {
+		for _, item := range menu {
+			if item == unwanted {
+				t.Fatalf("reader label menu contains management action %q: %q", unwanted, menu)
+			}
+		}
+	}
+}
+
+func TestSidebarCreatesCustomLabel(t *testing.T) {
+	service := newFakeService()
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("New label…"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tt.Click("Label name"); err != nil {
@@ -148,7 +163,7 @@ func TestLabelMenuCreatesCustomLabel(t *testing.T) {
 	t.Fatalf("created label missing from app state: %+v", a.labels)
 }
 
-func TestLabelMenuDeletesCustomLabelAfterConfirmation(t *testing.T) {
+func TestSidebarDeletesCustomLabelAfterConfirmation(t *testing.T) {
 	service := newFakeService()
 	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
 	service.threads[0].LabelIDs = append(service.threads[0].LabelIDs, "Label_9")
@@ -156,8 +171,7 @@ func TestLabelMenuDeletesCustomLabelAfterConfirmation(t *testing.T) {
 	a := newTestApp(service)
 	a.selectThread("thread-1")
 	tt := ui.NewTester(a.View, 1280, 800)
-	openLabelMenu(t, tt)
-	if err := tt.ChooseMenuItem("Delete label", "Receipts"); err != nil {
+	if err := tt.Click("Delete label"); err != nil {
 		t.Fatal(err)
 	}
 	if !tt.HasText("Delete label?") {
@@ -166,9 +180,8 @@ func TestLabelMenuDeletesCustomLabelAfterConfirmation(t *testing.T) {
 	if len(service.deletedLabels) != 0 {
 		t.Fatal("label was deleted before confirmation")
 	}
-	if err := tt.Click("Delete label"); err != nil {
-		t.Fatal(err)
-	}
+	tt.Key(0, ui.KeyTab)
+	tt.Key(0, ui.KeyEnter)
 	if len(service.deletedLabels) != 1 || service.deletedLabels[0] != "Label_9" {
 		t.Fatalf("deleted labels = %v, want Label_9", service.deletedLabels)
 	}
