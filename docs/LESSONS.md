@@ -47,6 +47,11 @@
 - A localized Select must not display a persisted code directly as its option label. Map state to display text explicitly and inspect the collapsed control's actual rendering for empty, `en`, and `zh-Hans` values.
 - A toggle needs a clearly different active color, not only a changed tooltip or filtered result. Verify color transitions at start, middle, and end, and move the pointer away before checking the inactive style because hover can mask the default background.
 
+## Match live theme changes in native and web content
+
+- A WebView background that follows the app appearance exposes stale document colors if the loaded page keeps its initial theme. Let email CSS respond to `prefers-color-scheme` instead of binding colors to the page's creation time.
+- Verify an already-open HTML message through light-to-dark and dark-to-light transitions. A real-window check opened in Light, switched to Dark, and exposed dark text on the dark background; after the CSS change, the same path kept the text readable.
+
 ## Regression tests must prove the guard works
 
 - Confirm that the test fails on the old behavior before implementing the fix; avoid tests that always pass.
