@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-10-23
+
+- Added browser-native HTML email rendering with smooth height transitions and keyboard shortcuts in focused messages.
+- Added account-scoped SQLite caching with offline reading and background Gmail History synchronization.
+- Kept archive selection and shortcuts advancing through conversations.
+- Added attachment opening and saving with safe filenames and download feedback.
+- Added collapsible reply quotes and Reply-To recipient handling.
+- Added persistent sidebar and conversation-list widths.
+
 ## 0.2.0 - 2026-10-22
 
 - Added remote, data URI, and Content-ID images with email dimensions, inline pixel sizes, and hidden-image handling.
