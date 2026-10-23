@@ -168,6 +168,39 @@ func TestUnreadFilterKeyboardNavigation(t *testing.T) {
 	}
 }
 
+func TestThreadSelectionPrecedesLoading(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		click bool
+	}{
+		{name: "list click", click: true},
+		{name: "thread ID"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			var jobs []func()
+			a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+			if tc.click {
+				tt := ui.NewTester(a.View, 1280, 800)
+				if err := tt.Click("Launch plan"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				a.selectThread("thread-1")
+			}
+			if a.selectedThread != "thread-1" {
+				t.Fatalf("selected thread = %q, want thread-1", a.selectedThread)
+			}
+			if a.selectedRow != 0 {
+				t.Fatalf("selected row before loading = %d, want 0", a.selectedRow)
+			}
+			if !a.threadLoading || len(jobs) != 1 {
+				t.Fatalf("loading state = %v, jobs = %d, want one pending load", a.threadLoading, len(jobs))
+			}
+		})
+	}
+}
+
 func TestScrollToEndLoadsNextThreadPage(t *testing.T) {
 	first := make([]mail.ThreadSummary, 25)
 	second := make([]mail.ThreadSummary, 25)
