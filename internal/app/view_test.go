@@ -31,6 +31,32 @@ func TestToastExpiresWhileHovered(t *testing.T) {
 	}
 }
 
+func TestStaleToastTimerDoesNotExpireCurrentToast(t *testing.T) {
+	a := newTestApp(newFakeService())
+	var expirations []func()
+	a.after = func(_ time.Duration, fn func()) { expirations = append(expirations, fn) }
+	a.notice = "First"
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.notice = "Second"
+	tt.Frame()
+	if len(expirations) != 2 {
+		t.Fatalf("expiration callbacks = %d, want 2", len(expirations))
+	}
+	expirations[0]()
+	if a.expiredNoticeID != "" {
+		t.Fatalf("stale timer scheduled an expiration for %q", a.expiredNoticeID)
+	}
+	tt.Frame()
+	if !tt.HasText("Second") {
+		t.Fatal("stale timer expired the current toast")
+	}
+	expirations[1]()
+	tt.Frame()
+	if tt.HasText("Second") {
+		t.Fatal("current toast did not expire at its deadline")
+	}
+}
+
 func TestAccountPhotoLoads(t *testing.T) {
 	a := newTestApp(newFakeService())
 	a.loadAccountPhoto(mail.Account{PhotoURL: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="})
