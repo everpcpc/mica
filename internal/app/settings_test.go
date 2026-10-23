@@ -3,8 +3,38 @@ package app
 import (
 	"testing"
 
+	"mica/locales"
+
 	"github.com/egoist/mygo/ui"
 )
+
+func TestSettingsLanguageUsesDisplayLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		language string
+		want     string
+		count    int
+	}{
+		{name: "system", language: "", want: locales.LanguageSystem(), count: 2},
+		{name: "english", language: "en", want: locales.LanguageEnglish(), count: 1},
+		{name: "chinese", language: "zh-Hans", want: locales.LanguageChinese(), count: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.settings = &settingsState{open: true, language: tc.language}
+			tt := ui.NewTester(a.View, 1280, 800)
+			count := 0
+			for _, text := range tt.Texts() {
+				if text == tc.want {
+					count++
+				}
+			}
+			if count != tc.count {
+				t.Fatalf("display label %q appears %d times, want %d; rendered texts: %q", tc.want, count, tc.count, tt.Texts())
+			}
+		})
+	}
+}
 
 func TestConnectRequiresOAuthConfiguration(t *testing.T) {
 	a := newTestApp(newFakeService())
