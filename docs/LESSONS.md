@@ -45,6 +45,7 @@
 - A layout object's `Bounds` may include padding; X coordinates or outer widths alone cannot establish the content position.
 - For visual differences such as padding, compare text origins in rendered images when necessary.
 - A localized Select must not display a persisted code directly as its option label. Map state to display text explicitly and inspect the collapsed control's actual rendering for empty, `en`, and `zh-Hans` values.
+- A toggle needs a clearly different active color, not only a changed tooltip or filtered result. Verify color transitions at start, middle, and end, and move the pointer away before checking the inactive style because hover can mask the default background.
 
 ## Regression tests must prove the guard works
 

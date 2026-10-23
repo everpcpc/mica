@@ -48,7 +48,7 @@ The language selector stores locale codes but presents readable names in both it
 
 ## Motion
 
-- Buttons and selection states use MyGo's small, built-in feedback.
+- Buttons and selection states use MyGo's small, built-in feedback. The unread filter uses a 140ms color transition to a clear Accent active state with a high-contrast icon.
 - Loaded conversation content fades in with a 10pt upward movement over 240ms rather than flashing a blank pane.
 - The first reader entrance and later conversation transitions use the same short motion. Toasts fade in and out; plain notices remain for 3 seconds, and action notices remain for 5 seconds.
 - MyGo removes or shortens nonessential motion when Reduce Motion is enabled.
