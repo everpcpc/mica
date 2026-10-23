@@ -80,9 +80,11 @@ func (a *App) settingsView(c *ui.Context) {
 			})
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, locales.Language()).Grow(1)
+				language := languageLabel(s.language)
 				options := []string{locales.LanguageSystem(), locales.LanguageEnglish(), locales.LanguageChinese()}
-				if ui.Select(c, &s.language, options).Label(locales.Language()).Width(170).Changed() {
-					mygo.App.SetLocale(languageCode(s.language))
+				if ui.Select(c, &language, options).Label(locales.Language()).Width(170).Changed() {
+					s.language = languageCode(language)
+					mygo.App.SetLocale(s.language)
 				}
 			})
 			ui.Divider(c)
@@ -456,6 +458,19 @@ func appearanceValue(label string) string {
 		return "dark"
 	default:
 		return "system"
+	}
+}
+
+func languageLabel(code string) string {
+	switch code {
+	case "en":
+		return locales.LanguageEnglish()
+	case "zh-Hans":
+		return locales.LanguageChinese()
+	case "":
+		return locales.LanguageSystem()
+	default:
+		return code
 	}
 }
 
