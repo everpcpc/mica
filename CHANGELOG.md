@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 - 2026-10-24
+
+- Unified application styling with shared gradient primary actions, bordered dialog panels, rounded conversation selection, and shortcut keycaps.
+- Added a Liquid Glass reader toolbar and interactive reply actions, backdrop-aware surfaces, and interruptible spring motion for message expansion.
+- Added animated GIF account photos with frame delays, finite loop handling, and first-frame rendering for static images and Reduce Motion.
+
 ## 0.8.0 - 2026-10-24
 
 - Refreshed the conversation reader with a continuous theme background, a lighter subject hierarchy, compact sender details, and Reply, Reply all, and Forward actions.
