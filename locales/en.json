@@ -178,5 +178,17 @@
   "openAttachment": "Open",
   "saveAttachment": "Save",
   "saveAttachmentDialog": "Save attachment",
-  "attachmentUnavailable": "Attachments are unavailable"
+  "attachmentUnavailable": "Attachments are unavailable",
+  "labelColor": "Label color",
+  "labelColorUpdated": "Updated color for {label}",
+  "@labelColorUpdated": {"placeholders": {"label": {"type": "String", "example": "Receipts"}}},
+  "colorRed": "Red",
+  "colorOrange": "Orange",
+  "colorYellow": "Yellow",
+  "colorGreen": "Green",
+  "colorTeal": "Teal",
+  "colorBlue": "Blue",
+  "colorPurple": "Purple",
+  "colorPink": "Pink",
+  "colorGray": "Gray"
 }

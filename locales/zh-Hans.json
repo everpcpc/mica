@@ -166,5 +166,17 @@
   "openAttachment": "打开",
   "saveAttachment": "保存",
   "saveAttachmentDialog": "存储附件",
-  "attachmentUnavailable": "附件不可用"
+  "attachmentUnavailable": "附件不可用",
+  "labelColor": "标签颜色",
+  "labelColorUpdated": "已更新 {label} 的颜色",
+  "@labelColorUpdated": {"placeholders": {"label": {"type": "String", "example": "Receipts"}}},
+  "colorRed": "红色",
+  "colorOrange": "橙色",
+  "colorYellow": "黄色",
+  "colorGreen": "绿色",
+  "colorTeal": "青色",
+  "colorBlue": "蓝色",
+  "colorPurple": "紫色",
+  "colorPink": "粉色",
+  "colorGray": "灰色"
 }

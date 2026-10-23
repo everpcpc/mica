@@ -118,6 +118,32 @@ func TestDemoListThreadPage(t *testing.T) {
 	}
 }
 
+func TestDemoUpdateLabelColor(t *testing.T) {
+	ctx := context.Background()
+	service := NewDemo()
+	label, err := service.CreateLabel(ctx, "Receipts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := LabelColor{Background: "#4a86e8", Text: "#ffffff"}
+	if err := service.UpdateLabelColor(ctx, label.ID, want); err != nil {
+		t.Fatal(err)
+	}
+	labels, err := service.Labels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range labels {
+		if candidate.ID == label.ID {
+			if candidate.Color != want {
+				t.Fatalf("label color = %+v, want %+v", candidate.Color, want)
+			}
+			return
+		}
+	}
+	t.Fatal("updated label is missing")
+}
+
 func TestDemoCreateAndDeleteLabel(t *testing.T) {
 	ctx := context.Background()
 	service := NewDemo()

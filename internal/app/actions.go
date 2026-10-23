@@ -21,6 +21,7 @@ type mutationJob struct {
 	remove      []string
 	trash       bool
 	deleteLabel bool
+	labelColor  *mail.LabelColor
 	readStatus  bool
 	undo        *undoAction
 	failure     func(string) string
@@ -30,6 +31,9 @@ type mutationJob struct {
 func (j mutationJob) run() error {
 	if j.deleteLabel {
 		return j.service.(mail.LabelManager).DeleteLabel(context.Background(), j.id)
+	}
+	if j.labelColor != nil {
+		return j.service.(mail.LabelManager).UpdateLabelColor(context.Background(), j.id, *j.labelColor)
 	}
 	if j.trash {
 		return j.service.TrashThread(context.Background(), j.id)

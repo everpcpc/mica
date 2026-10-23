@@ -28,23 +28,25 @@ var demoLabelNames = map[string]string{
 }
 
 type Demo struct {
-	mu         sync.RWMutex
-	account    Account
-	threads    map[string]*Thread
-	labelNames map[string]string
-	labelOrder []string
-	now        func() time.Time
-	nextID     int
+	mu          sync.RWMutex
+	account     Account
+	threads     map[string]*Thread
+	labelNames  map[string]string
+	labelColors map[string]LabelColor
+	labelOrder  []string
+	now         func() time.Time
+	nextID      int
 }
 
 func NewDemo() *Demo {
 	now := time.Now()
 	d := &Demo{
-		account:    Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
-		threads:    make(map[string]*Thread),
-		labelNames: make(map[string]string, len(demoLabelNames)),
-		labelOrder: []string{Inbox, Starred, Sent, Trash, Unread, "Label_1", "Label_2", "Label_3", "Label_4"},
-		now:        time.Now,
+		account:     Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
+		threads:     make(map[string]*Thread),
+		labelNames:  make(map[string]string, len(demoLabelNames)),
+		labelColors: make(map[string]LabelColor),
+		labelOrder:  []string{Inbox, Starred, Sent, Trash, Unread, "Label_1", "Label_2", "Label_3", "Label_4"},
+		now:         time.Now,
 	}
 	for id, name := range demoLabelNames {
 		d.labelNames[id] = name
@@ -221,7 +223,7 @@ func (d *Demo) Labels(context.Context) ([]Label, error) {
 
 	labels := make([]Label, 0, len(d.labelOrder))
 	for _, id := range d.labelOrder {
-		label := Label{ID: id, Name: d.labelNames[id]}
+		label := Label{ID: id, Name: d.labelNames[id], Color: d.labelColors[id]}
 		for _, thread := range d.threads {
 			for _, message := range thread.Messages {
 				if !hasString(message.LabelIDs, id) {
@@ -270,6 +272,7 @@ func (d *Demo) DeleteLabel(_ context.Context, id string) error {
 		return errors.New("mail: cannot delete system label")
 	}
 	delete(d.labelNames, id)
+	delete(d.labelColors, id)
 	for i, candidate := range d.labelOrder {
 		if candidate == id {
 			d.labelOrder = append(d.labelOrder[:i], d.labelOrder[i+1:]...)
@@ -281,6 +284,16 @@ func (d *Demo) DeleteLabel(_ context.Context, id string) error {
 			thread.Messages[i].LabelIDs = removeString(thread.Messages[i].LabelIDs, id)
 		}
 	}
+	return nil
+}
+
+func (d *Demo) UpdateLabelColor(_ context.Context, id string, color LabelColor) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, ok := d.labelNames[id]; !ok {
+		return errors.New("mail: label not found")
+	}
+	d.labelColors[id] = color
 	return nil
 }
 
