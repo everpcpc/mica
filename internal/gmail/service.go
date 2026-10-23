@@ -149,40 +149,9 @@ func (s *Service) Labels(ctx context.Context) ([]mail.Label, error) {
 	if err := s.doJSON(ctx, http.MethodGet, "/labels", nil, nil, &response); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	labels := make([]mail.Label, len(response.Labels))
-	semaphore := make(chan struct{}, max(1, s.maxParallel))
-	var wg sync.WaitGroup
-	var errorOnce sync.Once
-	var firstErr error
 	for i, item := range response.Labels {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			select {
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-			case <-ctx.Done():
-				return
-			}
-			label, err := s.Label(ctx, item.ID)
-			if err != nil {
-				errorOnce.Do(func() {
-					firstErr = err
-					cancel()
-				})
-				return
-			}
-			labels[i] = label
-		}()
-	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
+		labels[i] = makeLabel(item)
 	}
 	return labels, nil
 }
@@ -192,11 +161,15 @@ func (s *Service) Label(ctx context.Context, id string) (mail.Label, error) {
 	if err := s.doJSON(ctx, http.MethodGet, "/labels/"+url.PathEscape(id), nil, nil, &detail); err != nil {
 		return mail.Label{}, err
 	}
+	return makeLabel(detail), nil
+}
+
+func makeLabel(detail apiLabel) mail.Label {
 	return mail.Label{
 		ID: detail.ID, Name: detail.Name, Messages: detail.MessagesTotal, Unread: detail.MessagesUnread,
 		System: detail.Type == "system", Hide: detail.LabelListVisibility == "labelHide",
 		ShowIfUnread: detail.LabelListVisibility == "labelShowIfUnread",
-	}, nil
+	}
 }
 
 func (s *Service) Attachment(ctx context.Context, messageID, attachmentID string) ([]byte, error) {

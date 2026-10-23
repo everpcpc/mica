@@ -33,13 +33,9 @@ func TestAccountAndLabels(t *testing.T) {
 			writeTestJSON(t, w, map[string]string{"emailAddress": "alex@example.com"})
 		case "/users/me/labels":
 			writeTestJSON(t, w, map[string]any{"labels": []map[string]any{
-				{"id": "INBOX", "name": "Inbox", "type": "system"},
-				{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread"},
+				{"id": "INBOX", "name": "Inbox", "type": "system", "messagesTotal": 12, "messagesUnread": 3},
+				{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread", "messagesTotal": 4, "messagesUnread": 1},
 			}})
-		case "/users/me/labels/INBOX":
-			writeTestJSON(t, w, map[string]any{"id": "INBOX", "name": "Inbox", "type": "system", "messagesTotal": 12, "messagesUnread": 3})
-		case "/users/me/labels/Label_7":
-			writeTestJSON(t, w, map[string]any{"id": "Label_7", "name": "Launch", "type": "user", "labelListVisibility": "labelShowIfUnread", "messagesTotal": 4, "messagesUnread": 1})
 		case "/userinfo":
 			writeTestJSON(t, w, map[string]string{"name": "Alex Example", "picture": "https://images.example/alex.png"})
 		default:
