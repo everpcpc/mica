@@ -53,13 +53,13 @@ func (a *App) setEmailHeight(page *emailPage, height float32) {
 func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 	page := a.emailPage(c, message)
 	if page == nil {
-		return ui.Text(c, a.emailDocument(message).preview).Selectable()
+		return ui.Text(c, a.emailDocument(message).preview).Selectable().Padding(20, 24)
 	}
 	return ui.Column(c.Key("email-body-" + message.ID)).Height(page.height).Transition(ui.ElementTransition{
 		Size: true, Duration: 160 * time.Millisecond,
 	}).Children(func() {
 		if page.failed {
-			ui.Text(c, a.emailDocument(message).preview).Selectable()
+			ui.Text(c, a.emailDocument(message).preview).Selectable().Padding(20, 24)
 			return
 		}
 		ui.WebView(c, page.view).Height(page.height).Transition(ui.ElementTransition{

@@ -182,6 +182,8 @@ const emailFrameCSS = `
 html,body{margin:0;padding:0;background:transparent}
 html{-webkit-text-size-adjust:100%;font:14px/normal -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
 #godwit-body{overflow-x:auto;overflow-y:hidden;overflow-wrap:break-word;word-break:break-word}
+:where(#godwit-body){box-sizing:border-box;padding:0 24px}
+#godwit-body:has(>[style*="padding"]){padding:0}
 #godwit-body.godwit-plain{white-space:pre-wrap}
 #godwit-body.godwit-light{color:#0a0a0a}
 #godwit-body.godwit-dark{color:#fafafa}
