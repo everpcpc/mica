@@ -19,7 +19,6 @@ type emailPage struct {
 	messageID string
 	view      *mygo.WebView
 	height    float32
-	ready     bool
 	failed    bool
 }
 
@@ -35,16 +34,15 @@ func (a *App) SetEmailViewFactory(factory func() (*mygo.WebView, error)) {
 	a.newEmailView = factory
 }
 
-func (a *App) estimatedEmailHeight(id string) (float32, bool) {
+func (a *App) estimatedEmailHeight(id string) float32 {
 	if height := a.emailHeights[id]; height > 0 {
-		return height, true
+		return height
 	}
-	return emailInitialHeight, false
+	return emailInitialHeight
 }
 
 func (a *App) setEmailHeight(page *emailPage, height float32) {
 	page.height = height
-	page.ready = true
 	page.failed = false
 	if a.emailHeights == nil {
 		a.emailHeights = make(map[string]float32)
@@ -62,12 +60,6 @@ func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 	}).Children(func() {
 		if page.failed {
 			ui.Text(c, a.emailDocument(message).preview).Selectable()
-			return
-		}
-		if !page.ready {
-			ui.Column(c).Center().Children(func() {
-				ui.Spinner(c).Size(14, 14)
-			})
 			return
 		}
 		ui.WebView(c, page.view).Height(page.height).Transition(ui.ElementTransition{
@@ -91,8 +83,8 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	if err != nil {
 		return nil
 	}
-	height, ready := a.estimatedEmailHeight(message.ID)
-	page := &emailPage{messageID: message.ID, view: view, height: height, ready: ready}
+	height := a.estimatedEmailHeight(message.ID)
+	page := &emailPage{messageID: message.ID, view: view, height: height}
 	if a.emailPages == nil {
 		a.emailPages = make(map[string]*emailPage)
 	}
