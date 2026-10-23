@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - 2026-10-23
+
+- Added sidebar label creation, right-click management, Gmail-supported color editing, and confirmed deletion; kept the reader menu scoped to label assignment.
+- Made the unread filter's active state clear with an Accent background, high-contrast icon, and a 140ms color transition.
+- Kept the list highlight and reader on the same conversation after archiving, including when the next conversation occupies the same row.
+- Replaced raw locale codes with readable language names and added an overridable default reading inset for HTML mail with matching text fallbacks.
+
 ## 0.6.0 - 2026-10-23
 
 - Added automatic selection of the latest conversation on startup and account switches, with cached detail restoration and stable selection as newer mail arrives.
