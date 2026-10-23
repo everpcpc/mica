@@ -50,6 +50,11 @@
 - UI capture helpers must not call production credential-loading paths. Build modal state directly, or a screenshot run can block on the real macOS Keychain instead of rendering.
 - A gradient fill does not interpolate like a solid color transition. Keep animated toggles on a solid accent and verify start, middle, and end pixels before replacing them with a gradient.
 
+## Animate image data without blocking the UI
+
+- `ui.Avatar` and `ui.DecodeBitmap` show only the first GIF frame. Multi-frame playback needs an app-owned scheduler, with decoding kept off the UI thread and `Bitmap.Update` called only in the view or through `Window.Update`.
+- Honor Reduce Motion and finite GIF loop counts. Verify actual pixels at the first frame, after a frame delay, and after the final loop.
+
 ## Match live theme changes in native and web content
 
 - A WebView background that follows the app appearance exposes stale document colors if the loaded page keeps its initial theme. Let email CSS respond to `prefers-color-scheme` instead of binding colors to the page's creation time.

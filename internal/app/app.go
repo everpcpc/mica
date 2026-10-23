@@ -22,6 +22,7 @@ type App struct {
 	storeAccount           string
 	account                mail.Account
 	accountPhoto           *ui.Bitmap
+	photoAnimation         *photoAnimation
 	labels                 []mail.Label
 	threads                []mail.ThreadSummary
 	thread                 mail.Thread
@@ -193,19 +194,24 @@ func (a *App) Start() {
 
 func (a *App) loadAccountPhoto(account mail.Account) {
 	a.accountPhoto = nil
+	a.photoAnimation = nil
 	if account.PhotoURL == "" {
 		return
 	}
-	load, version := newMessageImages(a.service), a.serviceVersion
+	loader := newMessageImageLoader(a.service)
+	version := a.serviceVersion
 	a.schedule(func() {
-		source, err := load(account.PhotoURL)
+		data, err := loader.loadData(account.PhotoURL)
+		if err != nil {
+			return
+		}
+		animation, err := newPhotoAnimation(data)
 		a.publish(func() {
 			if version != a.serviceVersion || err != nil {
 				return
 			}
-			if bitmap, ok := source.(*ui.Bitmap); ok {
-				a.accountPhoto = bitmap
-			}
+			a.photoAnimation = animation
+			a.accountPhoto = animation.bitmap
 		})
 	})
 }

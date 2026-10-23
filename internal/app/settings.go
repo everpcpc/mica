@@ -107,7 +107,7 @@ func (a *App) settingsView(c *ui.Context) {
 					})
 				} else {
 					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Avatar(c, a.account.Name, a.accountPhoto)
+						ui.Avatar(c, a.account.Name, a.accountPhotoFrame(c))
 						ui.Column(c).Grow(1).Children(func() {
 							ui.Text(c, a.account.Email).Bold()
 							ui.Text(c, locales.Connected()).FontSize(12).TextColor(t.Success)
@@ -350,6 +350,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.labelsSynced = false
 	a.account = mail.Account{Name: "Mica", Demo: !connected}
 	a.accountPhoto = nil
+	a.photoAnimation = nil
 	a.labels = nil
 	a.threads = nil
 	a.thread = mail.Thread{}
