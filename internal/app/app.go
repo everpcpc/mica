@@ -428,6 +428,7 @@ func (a *App) selectThread(id string) {
 	a.threadCall++
 	call := a.threadCall
 	a.selectedThread = id
+	a.syncThreadSelection(false)
 	a.threadErr = ""
 	if thread, ok := a.threadCache[id]; ok {
 		a.showThread(id, thread)
