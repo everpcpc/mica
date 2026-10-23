@@ -85,7 +85,11 @@ func (a *App) showNotice(c *ui.Context) {
 		c.AddToast(toast)
 		a.noticeToastID = id
 		a.after(duration, func() {
-			a.publish(func() { a.expiredNoticeID = id })
+			a.publish(func() {
+				if a.noticeToastID == id {
+					a.expiredNoticeID = id
+				}
+			})
 		})
 		a.notice = ""
 	}
