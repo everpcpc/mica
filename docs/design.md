@@ -16,6 +16,7 @@ The app icon is a white rounded square with a four-color envelope inspired by Gm
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.
 Gmail sign-in uses the embedded OAuth client by default; a custom client is available in a collapsed section.
 Appearance follows the system unless the user selects Light or Dark. Motion respects Reduce Motion.
+The language selector stores locale codes but presents readable names in both its collapsed value and its options.
 
 ## Key states
 
