@@ -28,7 +28,7 @@
 ## Label assignment and label lifecycle are different operations
 
 - Adding or removing a label on a conversation is not the same as creating or deleting the label itself.
-- Keep label creation and deletion in the sidebar's management area; the reader menu is only for assigning labels to the current conversation. Creation must remain available when no custom labels exist.
+- Keep label creation and deletion in the sidebar's management area; the reader menu is only for assigning labels to the current conversation. Creation must remain available when no custom labels exist. Right-clicking a label should expose color editing and deletion, and color updates must use Gmail-supported background/text pairs rather than arbitrary picker values.
 - Creating a label must wait for the server's real ID; do not invent temporary IDs.
 - Deleting a label removes it from every conversation. Require explicit confirmation and clean up the sidebar, current conversation, caches, and stale Undo entries.
 - When the active label is deleted, return to a mailbox view that still exists.
