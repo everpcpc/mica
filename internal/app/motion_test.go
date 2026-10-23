@@ -56,7 +56,10 @@ func TestCaptureMotion(t *testing.T) {
 		t.Skip("capture is opt-in")
 	}
 	a := newTestApp(newFakeService())
+	var expireToast func()
+	a.after = func(_ time.Duration, fn func()) { expireToast = fn }
 	tt := ui.NewTester(a.View, 1280, 800)
+	tt.SetLocale("en")
 	if err := tt.Click("Launch plan"); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +92,15 @@ func TestCaptureMotion(t *testing.T) {
 	tt.Advance(100 * time.Millisecond)
 	captureFrame(t, tt, "toast-mid")
 	tt.Advance(5 * time.Second)
+	if expireToast == nil {
+		t.Fatal("toast did not schedule its expiration")
+	}
+	expireToast()
+	tt.Frame()
 	captureFrame(t, tt, "toast-end")
+	if tt.HasText("Conversation archived") {
+		t.Fatal("toast remained visible after its deadline")
+	}
 }
 
 func captureFrame(t *testing.T, tt *ui.Tester, name string) {
