@@ -168,6 +168,31 @@ func TestUnreadFilterKeyboardNavigation(t *testing.T) {
 	}
 }
 
+func TestThreadListKeepsSingleSelection(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{
+			ID: id, Subject: id,
+			Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}},
+		}, nil
+	}
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	tt := ui.NewTester(a.View, 1280, 800)
+	for range 2 {
+		if err := tt.ClickWith(ui.Cmd, "Second"); err != nil {
+			t.Fatal(err)
+		}
+		if a.selectedThread != "thread-2" || a.selectedRow != 1 || a.thread.ID != "thread-2" {
+			t.Fatalf("selection = %q at row %d, detail = %q; want thread-2", a.selectedThread, a.selectedRow, a.thread.ID)
+		}
+		if a.threadSelection.Len() != 1 || !a.threadSelection.Has("thread-2") {
+			t.Fatal("list selection does not contain only thread-2")
+		}
+	}
+}
+
 func TestThreadSelectionPrecedesLoading(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
