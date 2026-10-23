@@ -45,7 +45,7 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 
 - Buttons and selection states use MyGo's small, built-in feedback.
 - Loaded conversation content fades in with a 10pt upward movement over 240ms rather than flashing a blank pane.
-- The first reader entrance and later conversation transitions use the same short motion. Toasts fade in and out.
+- The first reader entrance and later conversation transitions use the same short motion. Toasts fade in and out; plain notices remain for 3 seconds, and action notices remain for 5 seconds.
 - MyGo removes or shortens nonessential motion when Reduce Motion is enabled.
 
 ## Build configuration

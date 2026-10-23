@@ -12,8 +12,8 @@ import (
 
 const (
 	titleBarHeight       = 52
-	noticeDuration       = 4 * time.Second
-	actionNoticeDuration = 8 * time.Second
+	noticeDuration       = 3 * time.Second
+	actionNoticeDuration = 5 * time.Second
 )
 
 func (a *App) View(c *ui.Context) {

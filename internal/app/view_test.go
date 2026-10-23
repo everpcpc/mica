@@ -9,6 +9,31 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func TestToastDurations(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		undo bool
+		want time.Duration
+	}{
+		{name: "notice", want: 3 * time.Second},
+		{name: "action", undo: true, want: 5 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			var got time.Duration
+			a.after = func(duration time.Duration, _ func()) { got = duration }
+			if tc.undo {
+				a.undo = &undoAction{id: "thread-1"}
+			}
+			a.notice = "Archived"
+			ui.NewTester(a.View, 1280, 800)
+			if got != tc.want {
+				t.Fatalf("toast duration = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestToastExpiresWhileHovered(t *testing.T) {
 	a := newTestApp(newFakeService())
 	var expire func()
