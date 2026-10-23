@@ -349,6 +349,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.threads = nil
 	a.thread = mail.Thread{}
 	a.query = ""
+	a.unreadOnly = false
 	a.selectedLabel = mail.Inbox
 	a.err = ""
 	a.mutating = false

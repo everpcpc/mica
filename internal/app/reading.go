@@ -67,8 +67,8 @@ func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
 	ui.Scroll(c.Key("read-" + thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Surface).Transition(ui.ElementTransition{
-		Enter:    &ui.Motion{Y: 6},
-		Duration: 180 * time.Millisecond,
+		Enter:    &ui.Motion{Y: 10, Opacity: 0},
+		Duration: 240 * time.Millisecond,
 	}).Children(func() {
 		ui.Row(c).Justify(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MaxWidth(960).Padding(24, 24, 32, 24).Gap(20).Children(func() {
@@ -130,18 +130,16 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		if message.To != "" {
 			ui.Text(c, locales.SendTo(message.To)).FontSize(11).TextColor(t.TextMuted)
 		}
-		ui.Column(c).Padding(20, 24).Radius(12).Background(t.Background).Children(func() {
-			if message.HTML != "" && a.emailDocument(message).hasContent {
-				a.emailView(c, message)
-			} else if message.Text != "" {
-				ui.Text(c, message.Text).FontSize(14).LineHeight(1.55).Selectable()
-			} else {
-				ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
-			}
-			for _, attachment := range message.Attachments {
-				a.attachmentView(c, message, attachment)
-			}
-		})
+		if message.HTML != "" && a.emailDocument(message).hasContent {
+			a.emailView(c, message)
+		} else if message.Text != "" {
+			ui.Text(c, message.Text).FontSize(14).LineHeight(1.55).Selectable().Padding(20, 24)
+		} else {
+			ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
+		}
+		for _, attachment := range message.Attachments {
+			a.attachmentView(c, message, attachment)
+		}
 	})
 }
 

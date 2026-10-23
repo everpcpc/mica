@@ -154,6 +154,16 @@ func (a *App) threadList(c *ui.Context) {
 			iconButton(c, locales.Sync(), iconRefresh, a.refresh).Disabled(a.loading)
 		})
 		ui.Column(c).Padding(0, 12, 10, 12).Gap(8).Children(func() {
+			filterLabel := locales.FilterUnread()
+			if a.unreadOnly {
+				filterLabel = locales.ShowAllMail()
+			}
+			filter := ui.Toggle(c.Key("unread-filter"), &a.unreadOnly, "").Label(filterLabel).Tooltip(filterLabel).Padding(5, 6).Children(func() {
+				ui.Icon(c, iconFilter).Size(16, 16)
+			})
+			if filter.Changed() {
+				a.syncThreadSelection(false)
+			}
 			search := ui.SearchField(c.Key("search"), &a.query).Bind(&a.search).Label(locales.SearchMail()).Placeholder(locales.SearchGmail())
 			if search.Submitted() || (search.Changed() && a.query == "") {
 				a.refresh()
@@ -166,23 +176,28 @@ func (a *App) threadList(c *ui.Context) {
 			})
 		})
 		ui.Divider(c)
-		if len(a.threads) == 0 {
+		threads := a.visibleThreads()
+		if len(threads) == 0 {
 			a.emptyList(c)
 			return
 		}
-		list := ui.List(c.Key("threads"), &a.list, len(a.threads)).Grow(1).Rows(func(row ui.ListRow) {
-			a.threadRow(row)
+		a.list.Key = func(i int) any { return threads[i].ID }
+		a.list.Label = func(i int) string {
+			thread := threads[i]
+			return thread.Senders + ", " + thread.Subject + ", " + thread.Snippet
+		}
+		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Rows(func(row ui.ListRow) {
+			a.threadRow(row, &threads[row.Index])
 		})
-		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(a.threads) {
-			a.selectThread(a.threads[a.selectedRow].ID)
+		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {
+			a.selectThread(threads[a.selectedRow].ID)
 		}
 	})
 }
 
-func (a *App) threadRow(row ui.ListRow) {
+func (a *App) threadRow(row ui.ListRow, thread *mail.ThreadSummary) {
 	c := row.Context
 	t := c.Theme()
-	thread := &a.threads[row.Index]
 	primary, secondary, accent := t.Text, t.TextMuted, t.Accent
 	if row.Selected() {
 		primary, secondary, accent = t.AccentText, t.AccentText.Alpha(0.9), t.AccentText
@@ -236,8 +251,13 @@ func (a *App) emptyList(c *ui.Context) {
 			ui.Text(c, a.err).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
 			ui.Button(c, locales.Retry()).OnClick(a.refresh)
 		} else if !a.loading {
-			ui.Text(c, locales.EmptyMailbox()).Bold()
-			ui.Text(c, locales.EmptyMailboxHint()).FontSize(12).TextColor(t.TextMuted)
+			if a.unreadOnly && len(a.threads) > 0 {
+				ui.Text(c, locales.EmptyUnread()).Bold()
+				ui.Text(c, locales.EmptyUnreadHint()).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
+			} else {
+				ui.Text(c, locales.EmptyMailbox()).Bold()
+				ui.Text(c, locales.EmptyMailboxHint()).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
+			}
 		}
 	})
 }

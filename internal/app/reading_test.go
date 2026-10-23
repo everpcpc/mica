@@ -50,6 +50,49 @@ func TestMessageViewFallsBackToTextWhenHTMLIsEmpty(t *testing.T) {
 	}
 }
 
+func TestMessageBodyPaddingDependsOnContentType(t *testing.T) {
+	inkLeft := func(tt *ui.Tester, r ui.Rect) int {
+		img := tt.Image()
+		for x := int(r.X); x < int(r.X+r.W); x++ {
+			for y := int(r.Y); y < int(r.Y+r.H); y++ {
+				p := img.RGBAAt(x, y)
+				if p.R < 128 && p.G < 128 && p.B < 128 && p.A > 128 {
+					return x
+				}
+			}
+		}
+		return -1
+	}
+	left := make(map[string]int)
+	for _, tc := range []struct {
+		name string
+		text string
+		html string
+	}{
+		{name: "plain text", text: "Body"},
+		{name: "html", html: `<p>Body</p>`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.selectThread("thread-1")
+			message := a.thread.Messages[0]
+			message.Text = tc.text
+			message.HTML = tc.html
+			tt := ui.NewTester(func(c *ui.Context) {
+				a.messageView(c, 0, message)
+			}, 900, 700)
+			body, ok := tt.Find("Body")
+			if !ok {
+				t.Fatalf("body not found: %q", tt.Texts())
+			}
+			left[tc.name] = inkLeft(tt, body)
+		})
+	}
+	if got := left["plain text"] - left["html"]; got != 24 {
+		t.Fatalf("plain text extra left padding = %d, want 24 (plain %d, html %d)", got, left["plain text"], left["html"])
+	}
+}
+
 func TestDecodeSizedImage(t *testing.T) {
 	data := testPNG(t)
 	for _, tc := range []struct {
