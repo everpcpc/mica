@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -287,6 +288,50 @@ func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
 	} else {
 		a.selectedRow = -1
 	}
+}
+
+func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string) {
+	changes := make(map[string]mail.ThreadSummary, len(changed))
+	for _, summary := range changed {
+		changes[summary.ID] = summary
+	}
+	removed := make(map[string]bool, len(deleted))
+	for _, id := range deleted {
+		removed[id] = true
+	}
+	query := a.currentQuery()
+	updated := make([]mail.ThreadSummary, 0, len(a.threads)+len(changes))
+	for _, existing := range a.threads {
+		if removed[existing.ID] {
+			continue
+		}
+		if replacement, ok := changes[existing.ID]; ok {
+			existing = replacement
+			delete(changes, existing.ID)
+		}
+		if historyListContains(query, existing) {
+			updated = append(updated, existing)
+		}
+	}
+	for _, summary := range changes {
+		if !removed[summary.ID] && historyListContains(query, summary) {
+			updated = append(updated, summary)
+		}
+	}
+	sort.SliceStable(updated, func(i, j int) bool {
+		return updated[i].Updated.After(updated[j].Updated)
+	})
+	a.applyThreadList(updated, true)
+	if a.accountVerified {
+		a.persistList(query, updated)
+	}
+}
+
+func historyListContains(query mail.Query, summary mail.ThreadSummary) bool {
+	if query.LabelID == "" || query.LabelID == mail.All {
+		return true
+	}
+	return containsLabel(summary.LabelIDs, query.LabelID)
 }
 
 func (a *App) selectLabel() {

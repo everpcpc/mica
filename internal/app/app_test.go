@@ -55,6 +55,19 @@ func (f *fakeService) Thread(_ context.Context, id string) (mail.Thread, error) 
 	}
 	return f.thread, nil
 }
+
+func (f *fakeService) ThreadState(_ context.Context, id string) (mail.ThreadSummary, mail.Thread, error) {
+	thread, err := f.Thread(context.Background(), id)
+	if err != nil {
+		return mail.ThreadSummary{}, mail.Thread{}, err
+	}
+	for _, summary := range f.threads {
+		if summary.ID == id {
+			return summary, thread, nil
+		}
+	}
+	return mail.ThreadSummary{ID: id, Subject: thread.Subject, LabelIDs: append([]string(nil), thread.LabelIDs...), MessageCount: len(thread.Messages)}, thread, nil
+}
 func (f *fakeService) ModifyThread(_ context.Context, id string, add, remove []string) error {
 	f.modified = append(f.modified, id)
 	f.add, f.remove = add, remove

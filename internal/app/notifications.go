@@ -17,6 +17,7 @@ import (
 const (
 	watchRenewInterval       = 24 * time.Hour
 	historyReconcileInterval = time.Hour
+	historyBatchDelay        = 500 * time.Millisecond
 )
 
 type pushService interface {
@@ -25,7 +26,7 @@ type pushService interface {
 	History(context.Context, uint64, func(gmail.HistoryPage) error) (uint64, error)
 	Stream(context.Context, func(uint64) error) error
 	Label(context.Context, string) (mail.Label, error)
-	Thread(context.Context, string) (mail.Thread, error)
+	ThreadState(context.Context, string) (mail.ThreadSummary, mail.Thread, error)
 }
 
 func (a *App) SetNotificationHandlers(badge func(int), notify func(string, string, string)) {
@@ -86,7 +87,7 @@ func (a *App) runNotifications(ctx context.Context, service pushService, version
 	backoff := time.Second
 	for {
 		err := service.Stream(ctx, func(uint64) error {
-			return synchronizer.sync(synchronizer.current())
+			return synchronizer.trigger()
 		})
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil || version != a.serviceVersion {
 			return
@@ -184,6 +185,7 @@ type historySynchronizer struct {
 	email     string
 	mu        sync.Mutex
 	historyID uint64
+	pending   bool
 }
 
 func (s *historySynchronizer) current() uint64 {
@@ -192,21 +194,45 @@ func (s *historySynchronizer) current() uint64 {
 	return s.historyID
 }
 
+func (s *historySynchronizer) trigger() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending {
+		return nil
+	}
+	s.pending = true
+	s.app.after(historyBatchDelay, func() {
+		if err := s.sync(s.current()); err != nil {
+			s.app.handlePushError(err, s.version)
+		}
+	})
+	return nil
+}
+
 func (s *historySynchronizer) sync(start uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pending = false
 	if start > s.historyID {
 		start = s.historyID
 	}
 	changed := make(map[string]bool)
+	var changedSummaries []mail.ThreadSummary
+	var deleted []string
 	latest, err := s.service.History(s.ctx, start, func(page gmail.HistoryPage) error {
 		for _, id := range page.ChangedThreadIDs {
 			if changed[id] {
 				continue
 			}
 			changed[id] = true
-			if err := s.cacheThread(id); err != nil {
+			summary, gone, err := s.cacheThread(id)
+			if err != nil {
 				return err
+			}
+			if gone {
+				deleted = append(deleted, id)
+			} else {
+				changedSummaries = append(changedSummaries, summary)
 			}
 		}
 		s.app.publish(func() {
@@ -235,36 +261,45 @@ func (s *historySynchronizer) sync(start uint64) error {
 	if err := s.app.saveCheckpoint(s.email, s.historyID); err != nil {
 		return err
 	}
-	label, err := s.service.Label(s.ctx, mail.Inbox)
-	if err == nil {
-		s.app.publish(func() {
-			if s.version == s.app.serviceVersion {
-				s.app.setLabel(label)
-			}
-		})
+	if len(changedSummaries) == 0 && len(deleted) == 0 {
+		return nil
 	}
+	label, labelErr := s.service.Label(s.ctx, mail.Inbox)
 	s.app.publish(func() {
-		if s.version == s.app.serviceVersion {
-			s.app.refreshList()
+		if s.version != s.app.serviceVersion {
+			return
+		}
+		if labelErr == nil {
+			s.app.setLabel(label)
+		}
+		if a := s.app; a.currentQuery().Search != "" {
+			a.refreshList()
+		} else {
+			a.applyHistoryChanges(changedSummaries, deleted)
 		}
 	})
 	return nil
 }
 
-func (s *historySynchronizer) cacheThread(id string) error {
-	store := s.app.store
-	if store == nil || s.email == "" {
-		return nil
-	}
-	thread, err := s.service.Thread(s.ctx, id)
+func (s *historySynchronizer) cacheThread(id string) (mail.ThreadSummary, bool, error) {
+	summary, thread, err := s.service.ThreadState(s.ctx, id)
 	if err != nil {
 		var apiErr *gmail.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
-			return store.DeleteThread(s.ctx, s.email, id)
+			store := s.app.store
+			if store == nil || s.email == "" {
+				return mail.ThreadSummary{}, true, nil
+			}
+			return mail.ThreadSummary{}, true, store.DeleteThread(s.ctx, s.email, id)
 		}
-		return err
+		return mail.ThreadSummary{}, false, err
 	}
-	return store.SaveThread(s.ctx, s.email, thread)
+	if store := s.app.store; store != nil && s.email != "" {
+		if err := store.SaveThread(s.ctx, s.email, thread); err != nil {
+			return mail.ThreadSummary{}, false, err
+		}
+	}
+	return summary, false, nil
 }
 
 func (a *App) refreshUnreadVersion(version int) {

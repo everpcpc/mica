@@ -349,11 +349,23 @@ func TestPaneWidthsRejectInvalidValues(t *testing.T) {
 
 type historyPageService struct {
 	*fakeService
-	history func(uint64, func(gmail.HistoryPage) error) (uint64, error)
+	history    func(uint64, func(gmail.HistoryPage) error) (uint64, error)
+	listCalls  int
+	labelCalls int
 }
 
 func (s *historyPageService) History(_ context.Context, start uint64, fn func(gmail.HistoryPage) error) (uint64, error) {
 	return s.history(start, fn)
+}
+
+func (s *historyPageService) ListThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {
+	s.listCalls++
+	return s.fakeService.ListThreads(ctx, query)
+}
+
+func (s *historyPageService) Label(ctx context.Context, id string) (mail.Label, error) {
+	s.labelCalls++
+	return s.fakeService.Label(ctx, id)
 }
 
 func newHistoryCacheHarness() (*notificationHarness, *fakeMailStore, *historyPageService) {
@@ -365,6 +377,92 @@ func newHistoryCacheHarness() (*notificationHarness, *fakeMailStore, *historyPag
 	service := &historyPageService{fakeService: h.service}
 	h.app.service = service
 	return h, store, service
+}
+
+func TestHistorySyncSkipsEmptyRefresh(t *testing.T) {
+	h, _, service := newHistoryCacheHarness()
+	service.history = func(_ uint64, fn func(gmail.HistoryPage) error) (uint64, error) {
+		if err := fn(gmail.HistoryPage{}); err != nil {
+			return 0, err
+		}
+		return 6, nil
+	}
+	synchronizer := &historySynchronizer{app: h.app, service: service, ctx: context.Background(), email: h.service.account.Email, historyID: 5}
+	if err := synchronizer.sync(5); err != nil {
+		t.Fatal(err)
+	}
+	if service.listCalls != 0 || service.labelCalls != 0 {
+		t.Fatalf("empty history refreshed data: list=%d label=%d", service.listCalls, service.labelCalls)
+	}
+}
+
+func TestHistorySyncUpdatesOnlyChangedThread(t *testing.T) {
+	h, _, service := newHistoryCacheHarness()
+	first := h.service.threads[0]
+	second := mail.ThreadSummary{ID: "thread-2", Subject: "New mail", Senders: "Bob", Updated: first.Updated.Add(time.Minute), LabelIDs: []string{mail.Inbox, mail.Unread}, Unread: true}
+	h.service.threads = append([]mail.ThreadSummary{second}, h.service.threads...)
+	h.app.threads = append([]mail.ThreadSummary(nil), h.service.threads...)
+	service.history = func(_ uint64, fn func(gmail.HistoryPage) error) (uint64, error) {
+		if err := fn(gmail.HistoryPage{ChangedThreadIDs: []string{"thread-2"}}); err != nil {
+			return 0, err
+		}
+		return 6, nil
+	}
+	synchronizer := &historySynchronizer{app: h.app, service: service, ctx: context.Background(), email: h.service.account.Email, historyID: 5}
+	if err := synchronizer.sync(5); err != nil {
+		t.Fatal(err)
+	}
+	if service.listCalls != 0 || service.labelCalls != 1 {
+		t.Fatalf("incremental update performed a full refresh: list=%d label=%d", service.listCalls, service.labelCalls)
+	}
+	if len(h.app.threads) != 2 || h.app.threads[0].ID != "thread-2" {
+		t.Fatalf("updated list = %+v, want new thread first", h.app.threads)
+	}
+}
+
+func TestHistorySyncSearchRefreshesList(t *testing.T) {
+	h, _, service := newHistoryCacheHarness()
+	h.app.query = "invoice"
+	service.history = func(_ uint64, fn func(gmail.HistoryPage) error) (uint64, error) {
+		if err := fn(gmail.HistoryPage{ChangedThreadIDs: []string{"thread-1"}}); err != nil {
+			return 0, err
+		}
+		return 6, nil
+	}
+	synchronizer := &historySynchronizer{app: h.app, service: service, ctx: context.Background(), email: h.service.account.Email, historyID: 5}
+	if err := synchronizer.sync(5); err != nil {
+		t.Fatal(err)
+	}
+	if service.listCalls != 1 {
+		t.Fatalf("search list requests = %d, want one server refresh", service.listCalls)
+	}
+}
+
+func TestHistoryTriggerCoalescesPushNotifications(t *testing.T) {
+	h, _, service := newHistoryCacheHarness()
+	var delayed []func()
+	h.app.after = func(_ time.Duration, fn func()) { delayed = append(delayed, fn) }
+	historyCalls := 0
+	service.history = func(_ uint64, fn func(gmail.HistoryPage) error) (uint64, error) {
+		historyCalls++
+		if err := fn(gmail.HistoryPage{ChangedThreadIDs: []string{"thread-1"}}); err != nil {
+			return 0, err
+		}
+		return 6, nil
+	}
+	synchronizer := &historySynchronizer{app: h.app, service: service, ctx: context.Background(), email: h.service.account.Email, historyID: 5}
+	for range 3 {
+		if err := synchronizer.trigger(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(delayed) != 1 {
+		t.Fatalf("scheduled syncs = %d, want one coalesced sync", len(delayed))
+	}
+	delayed[0]()
+	if historyCalls != 1 {
+		t.Fatalf("history calls = %d, want one after three notifications", historyCalls)
+	}
 }
 
 func TestHistorySyncPersistsCompleteChangedThreads(t *testing.T) {

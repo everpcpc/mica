@@ -254,7 +254,11 @@ func (f *fakeService) History(_ context.Context, start uint64, fn func(gmail.His
 		})
 	}
 	if len(f.threads) > 0 {
-		if err := fn(gmail.HistoryPage{Added: append([]mail.ThreadSummary(nil), f.threads...)}); err != nil {
+		changed := make([]string, 0, len(f.threads))
+		for _, thread := range f.threads {
+			changed = append(changed, thread.ID)
+		}
+		if err := fn(gmail.HistoryPage{Added: append([]mail.ThreadSummary(nil), f.threads...), ChangedThreadIDs: changed}); err != nil {
 			return 0, err
 		}
 	}
