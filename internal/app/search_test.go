@@ -52,6 +52,7 @@ func TestMailboxQueriesMatchGmail(t *testing.T) {
 		mailbox string
 		search  string
 	}{
+		{name: "all mail", mailbox: "ALL"},
 		{name: "snoozed", mailbox: "SNOOZED", search: "in:snoozed"},
 		{name: "purchases", mailbox: "CATEGORY_PURCHASES", search: "category:purchases"},
 		{name: "reservations", mailbox: "CATEGORY_RESERVATIONS", search: "category:reservations"},

@@ -36,6 +36,8 @@ var categoryLabels = []sidebarLabel{
 
 func mailboxQuery(id string) (labelID, search string) {
 	switch id {
+	case mail.All:
+		return "", ""
 	case mail.Snoozed:
 		return "", "in:snoozed"
 	case mail.CategoryPurchases:
