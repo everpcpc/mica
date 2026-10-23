@@ -67,46 +67,50 @@ func (a *App) composeView(c *ui.Context) {
 				ui.Text(c, title).FontSize(18).Bold().Grow(1)
 				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted)
 			})
-			composeField(c, "to", locales.To(), &m.to, "name@example.com")
-			if m.showCc || m.cc != "" {
-				composeField(c, "cc", locales.Cc(), &m.cc, locales.Optional())
-			}
-			if m.showBcc || m.bcc != "" {
-				composeField(c, "bcc", locales.Bcc(), &m.bcc, locales.Optional())
-			}
-			if !m.showCc || !m.showBcc {
-				ui.Row(c).Gap(8).Children(func() {
-					if !m.showCc {
-						ui.Button(c, locales.Cc()).Padding(2, 7).OnClick(func() { m.showCc = true })
-					}
-					if !m.showBcc {
-						ui.Button(c, locales.Bcc()).Padding(2, 7).OnClick(func() { m.showBcc = true })
-					}
-				})
-			}
-			composeField(c, "subject", locales.Subject(), &m.subject, locales.SubjectPlaceholder())
-			ui.Row(c).Gap(4).Children(func() {
-				formatButton(c, "B", locales.BoldTooltip(), m.doc.ToggleBold).Bold()
-				formatButton(c, "I", locales.ItalicTooltip(), m.doc.ToggleItalic).Italic()
-				formatButton(c, "U", locales.UnderlineTooltip(), m.doc.ToggleUnderline).Underline()
-				formatButton(c, "•", locales.BulletsTooltip(), func() { m.doc.ToggleList(richtext.Bullets) })
+			sectionPanel(c).Children(func() {
+				composeField(c, "to", locales.To(), &m.to, "name@example.com")
+				if m.showCc || m.cc != "" {
+					composeField(c, "cc", locales.Cc(), &m.cc, locales.Optional())
+				}
+				if m.showBcc || m.bcc != "" {
+					composeField(c, "bcc", locales.Bcc(), &m.bcc, locales.Optional())
+				}
+				if !m.showCc || !m.showBcc {
+					ui.Row(c).Gap(8).Children(func() {
+						if !m.showCc {
+							ui.Button(c, locales.Cc()).Padding(2, 7).OnClick(func() { m.showCc = true })
+						}
+						if !m.showBcc {
+							ui.Button(c, locales.Bcc()).Padding(2, 7).OnClick(func() { m.showBcc = true })
+						}
+					})
+				}
+				composeField(c, "subject", locales.Subject(), &m.subject, locales.SubjectPlaceholder())
 			})
-			richtext.Editor(c.Key("compose-body"), m.doc, richtext.EditorOptions{
-				Label:       locales.Body(),
-				Placeholder: locales.BodyPlaceholder(),
-			}).Height(250)
-			if m.quote != nil {
-				ui.Collapsible(c, locales.OriginalMessage(), &m.quoteOpen, func() {
-					ui.Text(c, replyQuoteText(*m.quote)).FontSize(12).TextColor(t.TextMuted).MaxLines(8).Selectable()
+			sectionPanel(c).Children(func() {
+				ui.Row(c).Gap(4).Padding(2).Radius(8).Background(t.Surface).Children(func() {
+					formatButton(c, "B", locales.BoldTooltip(), m.doc.ToggleBold).Bold()
+					formatButton(c, "I", locales.ItalicTooltip(), m.doc.ToggleItalic).Italic()
+					formatButton(c, "U", locales.UnderlineTooltip(), m.doc.ToggleUnderline).Underline()
+					formatButton(c, "•", locales.BulletsTooltip(), func() { m.doc.ToggleList(richtext.Bullets) })
 				})
-			}
+				richtext.Editor(c.Key("compose-body"), m.doc, richtext.EditorOptions{
+					Label:       locales.Body(),
+					Placeholder: locales.BodyPlaceholder(),
+				}).Height(250)
+				if m.quote != nil {
+					ui.Collapsible(c, locales.OriginalMessage(), &m.quoteOpen, func() {
+						ui.Text(c, replyQuoteText(*m.quote)).FontSize(12).TextColor(t.TextMuted).MaxLines(8).Selectable()
+					})
+				}
+			})
 			if m.err != "" {
 				ui.Text(c, m.err).FontSize(12).TextColor(t.Danger)
 			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, locales.SendShortcut()).FontSize(11).TextColor(t.TextMuted).Grow(1)
 				ui.Button(c, locales.Cancel()).Disabled(m.sending).OnClick(func() { a.compose = nil })
-				ui.PrimaryButton(c, locales.Send()).Disabled(m.sending).OnClick(a.sendCompose)
+				primaryAction(c, locales.Send()).Disabled(m.sending).OnClick(a.sendCompose)
 			})
 		})
 	}).Dismissed()

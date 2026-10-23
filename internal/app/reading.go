@@ -7,14 +7,38 @@ import (
 	"mica/internal/mail"
 	"mica/locales"
 
+	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
 
 func (a *App) reader(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, bar.Right+14, 0, 16).Gap(5).AlignItems(ui.Center).DragWindow().Children(func() {
+	ui.Box(c).Fill().Background(t.Background).Children(func() {
+		ui.Column(c).Fill().Children(func() {
+			switch {
+			case a.selectedThread == "":
+				a.emptyReader(c)
+			case a.threadLoading:
+				ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
+					ui.Spinner(c).Size(22, 22)
+					ui.Text(c, locales.OpeningThread()).FontSize(12).TextColor(t.TextMuted)
+				})
+			case a.threadErr != "":
+				ui.Column(c).Grow(1).Center().Padding(28).Gap(10).Children(func() {
+					ui.Text(c, locales.ThreadLoadFailed()).FontSize(17).Bold()
+					ui.Text(c, a.threadErr).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
+					ui.Button(c, locales.Retry()).OnClick(func() {
+						id := a.selectedThread
+						a.selectedThread = ""
+						a.selectThread(id)
+					})
+				})
+			case len(a.thread.Messages) > 0:
+				a.threadContent(c)
+			}
+		})
+		ui.Toolbar(c, func() {
 			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "")
 			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "")
@@ -29,31 +53,9 @@ func (a *App) reader(c *ui.Context) {
 			if summary := a.selectedSummary(); summary != nil && summary.Starred {
 				star.TextColor(t.Warning)
 			}
-			ui.Box(c).Grow(1)
+			ui.Spacer(c)
 			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0).OnClick(a.openReply)
-		})
-		ui.Divider(c)
-		switch {
-		case a.selectedThread == "":
-			a.emptyReader(c)
-		case a.threadLoading:
-			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-				ui.Spinner(c).Size(22, 22)
-				ui.Text(c, locales.OpeningThread()).FontSize(12).TextColor(t.TextMuted)
-			})
-		case a.threadErr != "":
-			ui.Column(c).Grow(1).Center().Padding(28).Gap(10).Children(func() {
-				ui.Text(c, locales.ThreadLoadFailed()).FontSize(17).Bold()
-				ui.Text(c, a.threadErr).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
-				ui.Button(c, locales.Retry()).OnClick(func() {
-					id := a.selectedThread
-					a.selectedThread = ""
-					a.selectThread(id)
-				})
-			})
-		case len(a.thread.Messages) > 0:
-			a.threadContent(c)
-		}
+		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background.Alpha(0.82)}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
 	})
 }
 
@@ -83,7 +85,7 @@ func (a *App) labelMenu(m *ui.Menu) {
 func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
-	ui.Scroll(c.Key("read-" + thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Background).Transition(ui.ElementTransition{
+	ui.Scroll(c.Key("read-"+thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Background).Padding(titleBarHeight, 0, 0, 0).ScrollbarInsets(titleBarHeight, 0, 0).Transition(ui.ElementTransition{
 		Enter:    &ui.Motion{Y: 10, Opacity: 0},
 		Duration: 240 * time.Millisecond,
 	}).Children(func() {
@@ -125,7 +127,8 @@ func (a *App) threadContent(c *ui.Context) {
 }
 
 func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func()) {
-	ui.Button(c, "").Label(label).Padding(7, 12).Radius(16).Children(func() {
+	t := c.Theme()
+	ui.Button(c, "").Label(label).Padding(7, 12).Radius(16).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph).Size(15, 15)
 			ui.Text(c, label)
@@ -135,7 +138,7 @@ func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func()) {
 
 func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 	t := c.Theme()
-	container := ui.Column(c.Key(message.ID)).Gap(12)
+	container := ui.Column(c.Key(message.ID)).Gap(12).Transition(ui.ElementTransition{Animation: &ui.Snappy})
 	if a.messageScroll == index {
 		container.ScrollIntoView()
 		a.messageScroll = -1

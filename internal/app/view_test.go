@@ -168,6 +168,14 @@ func TestUnreadFilterKeyboardNavigation(t *testing.T) {
 	}
 }
 
+func TestThreadListUsesRoundedSelection(t *testing.T) {
+	a := newTestApp(newFakeService())
+	_ = ui.NewTester(a.View, 1280, 800)
+	if !a.list.RoundRows {
+		t.Fatal("conversation rows do not use rounded selection")
+	}
+}
+
 func TestThreadListKeepsSingleSelection(t *testing.T) {
 	service := newFakeService()
 	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})

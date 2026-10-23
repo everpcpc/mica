@@ -198,6 +198,45 @@ func TestMessageViewHidesInlineMetadata(t *testing.T) {
 	}
 }
 
+func TestMessageExpansionUsesSpringMotion(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		reduce      bool
+		wantPending bool
+	}{
+		{name: "spring", wantPending: true},
+		{name: "reduced motion", reduce: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.thread.Messages = []mail.Message{
+				{ID: "message-old", ThreadID: "thread-1", From: "Ada <ada@example.com>", Date: time.Now(), Text: strings.TrimSpace(strings.Repeat("Older message details ", 10)) + " OLDER_TAIL"},
+				{ID: "message-latest", ThreadID: "thread-1", From: "Cid <cid@example.com>", Date: time.Now(), Text: "Latest body"},
+			}
+			a := newTestApp(service)
+			a.selectThread("thread-1")
+			tt := ui.NewTester(func(c *ui.Context) {
+				a.messageView(c, 0, a.thread.Messages[0])
+			}, 900, 300)
+			tt.SetPreferences(ui.Preferences{ReduceMotion: tc.reduce})
+			tt.Advance(time.Second)
+			if err := tt.Click("Expand message"); err != nil {
+				t.Fatal(err)
+			}
+			if got := tt.FramePending(); got != tc.wantPending {
+				t.Fatalf("animation pending = %v, want %v", got, tc.wantPending)
+			}
+			tt.Advance(2 * time.Second)
+			if tt.FramePending() {
+				t.Fatal("message expansion did not settle")
+			}
+			if !tt.HasText("OLDER_TAIL") {
+				t.Fatal("expanded message content is missing after the transition")
+			}
+		})
+	}
+}
+
 func TestThreadCollapsesOlderReadMessages(t *testing.T) {
 	service := newFakeService()
 	service.thread.Messages = []mail.Message{

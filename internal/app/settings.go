@@ -69,53 +69,56 @@ func (a *App) settingsView(c *ui.Context) {
 	ui.Modal(c, &s.open, func() {
 		ui.Column(c).Width(600).Gap(15).Children(func() {
 			ui.Text(c, locales.Settings()).FontSize(19).Bold()
-			ui.Row(c).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, locales.Appearance()).Grow(1)
-				appearance := a.appearanceLabel()
-				options := []string{locales.AppearanceSystem(), locales.AppearanceLight(), locales.AppearanceDark()}
-				if ui.Select(c, &appearance, options).Label(locales.Appearance()).Width(170).Changed() {
-					a.appearance = appearanceValue(appearance)
-					a.applyAppearance()
-				}
-			})
-			ui.Row(c).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, locales.Language()).Grow(1)
-				language := languageLabel(s.language)
-				options := []string{locales.LanguageSystem(), locales.LanguageEnglish(), locales.LanguageChinese()}
-				if ui.Select(c, &language, options).Label(locales.Language()).Width(170).Changed() {
-					s.language = languageCode(language)
-					mygo.App.SetLocale(s.language)
-				}
-			})
-			ui.Divider(c)
-			ui.Text(c, locales.Gmail()).FontSize(16).Bold()
-			if a.account.Demo {
-				ui.Text(c, locales.GmailSetup()).FontSize(12).LineHeight(1.45).TextColor(t.TextMuted)
-				ui.Row(c).Justify(ui.End).Children(func() {
-					ui.PrimaryButton(c, locales.ConnectGmail()).Disabled(s.busy).OnClick(a.connectGmail)
+			sectionPanel(c).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, locales.Appearance()).Grow(1)
+					appearance := a.appearanceLabel()
+					options := []string{locales.AppearanceSystem(), locales.AppearanceLight(), locales.AppearanceDark()}
+					if ui.Select(c, &appearance, options).Label(locales.Appearance()).Width(170).Changed() {
+						a.appearance = appearanceValue(appearance)
+						a.applyAppearance()
+					}
 				})
-				ui.Collapsible(c, locales.CustomOauthClient(), &s.customOAuth, func() {
-					ui.Link(c, locales.GmailCloudCredentials(), "https://console.cloud.google.com/apis/credentials")
-					settingsField(c, "Client ID", &s.clientID, "…apps.googleusercontent.com", false, s.busy)
-					settingsField(c, "Client Secret", &s.clientSecret, locales.ClientSecretPlaceholder(), true, s.busy)
-					settingsField(c, "Project ID", &s.projectID, "my-project", false, s.busy)
+				ui.Row(c).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, locales.Language()).Grow(1)
+					language := languageLabel(s.language)
+					options := []string{locales.LanguageSystem(), locales.LanguageEnglish(), locales.LanguageChinese()}
+					if ui.Select(c, &language, options).Label(locales.Language()).Width(170).Changed() {
+						s.language = languageCode(language)
+						mygo.App.SetLocale(s.language)
+					}
+				})
+			})
+			sectionPanel(c).Children(func() {
+				ui.Text(c, locales.Gmail()).FontSize(16).Bold()
+				if a.account.Demo {
+					ui.Text(c, locales.GmailSetup()).FontSize(12).LineHeight(1.45).TextColor(t.TextMuted)
 					ui.Row(c).Justify(ui.End).Children(func() {
-						ui.Button(c, locales.ConnectGmail()).Disabled(s.busy).OnClick(a.connectCustomGmail)
+						primaryAction(c, locales.ConnectGmail()).Disabled(s.busy).OnClick(a.connectGmail)
 					})
-				})
-			} else {
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Avatar(c, a.account.Name, a.accountPhoto)
-					ui.Column(c).Grow(1).Children(func() {
-						ui.Text(c, a.account.Email).Bold()
-						ui.Text(c, locales.Connected()).FontSize(12).TextColor(t.Success)
+					ui.Collapsible(c, locales.CustomOauthClient(), &s.customOAuth, func() {
+						ui.Link(c, locales.GmailCloudCredentials(), "https://console.cloud.google.com/apis/credentials")
+						settingsField(c, "Client ID", &s.clientID, "…apps.googleusercontent.com", false, s.busy)
+						settingsField(c, "Client Secret", &s.clientSecret, locales.ClientSecretPlaceholder(), true, s.busy)
+						settingsField(c, "Project ID", &s.projectID, "my-project", false, s.busy)
+						ui.Row(c).Justify(ui.End).Children(func() {
+							ui.Button(c, locales.ConnectGmail()).Disabled(s.busy).OnClick(a.connectCustomGmail)
+						})
 					})
-					ui.Button(c, locales.LogoutGmail()).Disabled(s.busy).OnClick(a.logoutGmail)
-				})
-			}
-			if s.err != "" {
-				ui.Text(c, s.err).FontSize(12).LineHeight(1.4).TextColor(t.Danger)
-			}
+				} else {
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Avatar(c, a.account.Name, a.accountPhoto)
+						ui.Column(c).Grow(1).Children(func() {
+							ui.Text(c, a.account.Email).Bold()
+							ui.Text(c, locales.Connected()).FontSize(12).TextColor(t.Success)
+						})
+						ui.Button(c, locales.LogoutGmail()).Disabled(s.busy).OnClick(a.logoutGmail)
+					})
+				}
+				if s.err != "" {
+					ui.Text(c, s.err).FontSize(12).LineHeight(1.4).TextColor(t.Danger)
+				}
+			})
 			ui.Divider(c)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				if s.busy {
