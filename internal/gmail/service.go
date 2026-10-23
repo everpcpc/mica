@@ -272,14 +272,23 @@ func (s *Service) ListThreads(ctx context.Context, query mail.Query) ([]mail.Thr
 }
 
 func (s *Service) Thread(ctx context.Context, id string) (mail.Thread, error) {
+	_, thread, err := s.ThreadState(ctx, id)
+	return thread, err
+}
+
+func (s *Service) ThreadState(ctx context.Context, id string) (mail.ThreadSummary, mail.Thread, error) {
 	if id == "" {
-		return mail.Thread{}, errors.New("gmail: empty thread ID")
+		return mail.ThreadSummary{}, mail.Thread{}, errors.New("gmail: empty thread ID")
 	}
-	thread, err := s.getThread(ctx, id, "full")
+	apiThread, err := s.getThread(ctx, id, "full")
 	if err != nil {
-		return mail.Thread{}, err
+		return mail.ThreadSummary{}, mail.Thread{}, err
 	}
-	return makeThread(thread)
+	thread, err := makeThread(apiThread)
+	if err != nil {
+		return mail.ThreadSummary{}, mail.Thread{}, err
+	}
+	return makeSummary(apiThread), thread, nil
 }
 
 func (s *Service) getThread(ctx context.Context, id, format string) (apiThread, error) {
