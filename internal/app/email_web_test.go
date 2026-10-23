@@ -97,6 +97,27 @@ func TestEmailResourceStoreIsNotReplacedOnAccountSwitch(t *testing.T) {
 	}
 }
 
+func TestEmailDocumentReadingInset(t *testing.T) {
+	const inset = ":where(#godwit-body){box-sizing:border-box;padding:0 24px}"
+	document := emailDocumentHTML(`<p>Body</p>`, false)
+	for _, want := range []string{inset, `#godwit-body:has(>[style*="padding"]){padding:0}`} {
+		if !strings.Contains(document, want) {
+			t.Fatalf("document is missing reading inset rule %q: %q", want, document)
+		}
+	}
+	inline := prepareEmailHTML(newEmailResourceStore(newFakeService()), mail.Message{HTML: `<body style="padding:40px"><p>Body</p></body>`})
+	if !strings.HasPrefix(inline, `<div style="padding: 40px">`) {
+		t.Fatalf("inline body padding is not a top-level element: %q", inline)
+	}
+	body := prepareEmailHTML(newEmailResourceStore(newFakeService()), mail.Message{HTML: `<style>body{padding:40px}</style><p>Body</p>`})
+	document = emailDocumentHTML(body, false)
+	own := "#godwit-body{padding:40px"
+	defaultAt, ownAt := strings.Index(document, inset), strings.Index(document, own)
+	if defaultAt < 0 || ownAt < 0 || defaultAt > ownAt {
+		t.Fatalf("email padding does not override the default inset: default=%d own=%d document=%q", defaultAt, ownAt, document)
+	}
+}
+
 func TestEmailDocumentUsesSystemFont(t *testing.T) {
 	for _, want := range []string{"-apple-system", "14px/normal"} {
 		if !strings.Contains(emailFrameCSS, want) {

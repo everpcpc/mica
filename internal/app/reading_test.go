@@ -50,7 +50,7 @@ func TestMessageViewFallsBackToTextWhenHTMLIsEmpty(t *testing.T) {
 	}
 }
 
-func TestMessageBodyPaddingDependsOnContentType(t *testing.T) {
+func TestMessageBodyHasReadingInset(t *testing.T) {
 	inkLeft := func(tt *ui.Tester, r ui.Rect) int {
 		img := tt.Image()
 		for x := int(r.X); x < int(r.X+r.W); x++ {
@@ -88,8 +88,8 @@ func TestMessageBodyPaddingDependsOnContentType(t *testing.T) {
 			left[tc.name] = inkLeft(tt, body)
 		})
 	}
-	if got := left["plain text"] - left["html"]; got != 24 {
-		t.Fatalf("plain text extra left padding = %d, want 24 (plain %d, html %d)", got, left["plain text"], left["html"])
+	if got := left["plain text"] - left["html"]; got != 0 {
+		t.Fatalf("body padding difference = %d, want the same inset for plain text and HTML (plain %d, html %d)", got, left["plain text"], left["html"])
 	}
 }
 
