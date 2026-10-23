@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 - 2026-10-23
+
+- Added unread-only filtering, smoother reader transitions, and content-aware spacing for HTML and plain-text mail.
+- Made mail mutations optimistic with serialized background synchronization and immediate undo.
+- Added custom-label assignment, creation, and deletion with confirmation for destructive changes.
+- Reduced initial sync work with 25-thread pages and automatic loading when scrolling to the end.
+- Fixed All Mail by using a global query instead of the unsupported ALL label.
+
 ## 0.4.0 - 2026-10-23
 
 - Fixed first email rendering so WebViews appear before the initial height measurement.
