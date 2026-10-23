@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0 - 2026-10-24
+
+- Refreshed the conversation reader with a continuous theme background, a lighter subject hierarchy, compact sender details, and Reply, Reply all, and Forward actions.
+- Matched email WebView backgrounds to the native reader, increased HTML body line height, and made mail follow live appearance changes through `prefers-color-scheme`.
+
 ## 0.7.0 - 2026-10-23
 
 - Added sidebar label creation, right-click management, Gmail-supported color editing, and confirmed deletion; kept the reader menu scoped to label assignment.
