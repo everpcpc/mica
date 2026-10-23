@@ -65,3 +65,47 @@ func TestCustomSidebarLabelsUseMetadataAndVisibility(t *testing.T) {
 		t.Fatalf("custom labels = %+v", labels)
 	}
 }
+
+func TestLabelMenuAddsRemovesAndUndoesCustomLabel(t *testing.T) {
+	service := newFakeService()
+	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	tt := ui.NewTester(a.View, 1280, 800)
+	openMenu := func() {
+		r, ok := tt.Find("Edit labels")
+		if !ok {
+			t.Fatal("label menu button not found")
+		}
+		x, y := r.X+r.W/2, r.Y+r.H/2
+		tt.Press(x, y)
+		if menu := tt.Menu(); len(menu) == 0 || menu[0] != "Receipts" {
+			t.Fatalf("label menu = %q, want Receipts first", menu)
+		}
+		tt.Release(x, y)
+	}
+
+	openMenu()
+	if err := tt.ChooseMenuItem("Receipts"); err != nil {
+		t.Fatal(err)
+	}
+	if !containsLabel(a.thread.LabelIDs, "Label_9") || len(service.add) != 1 || service.add[0] != "Label_9" {
+		t.Fatalf("label was not added locally and queued: thread=%v add=%v", a.thread.LabelIDs, service.add)
+	}
+	a.selectedLabel = "Label_9"
+	a.clearThread()
+	a.selectThread("thread-1")
+	tt.Frame()
+
+	openMenu()
+	if err := tt.ChooseMenuItem("Receipts"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.threads) != 0 || len(service.remove) != 1 || service.remove[0] != "Label_9" {
+		t.Fatalf("removing the current label did not remove the conversation: threads=%v remove=%v", a.threads, service.remove)
+	}
+	a.undoLast()
+	if len(a.threads) != 1 || !containsLabel(a.threads[0].LabelIDs, "Label_9") {
+		t.Fatalf("undo did not restore the labeled conversation: %+v", a.threads)
+	}
+}

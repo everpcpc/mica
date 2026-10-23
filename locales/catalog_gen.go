@@ -214,6 +214,46 @@ func (msgs Messages) Labels() string {
 	return Catalog.Format(msgs.locale, "labels", nil)
 }
 
+// EditLabels says "Edit labels"
+// in the language the app shows.
+func EditLabels() string { return In(i18n.Locale()).EditLabels() }
+
+// EditLabels says "Edit labels"
+// in the language of msgs.
+func (msgs Messages) EditLabels() string {
+	return Catalog.Format(msgs.locale, "editLabels", nil)
+}
+
+// NoCustomLabels says "No custom labels"
+// in the language the app shows.
+func NoCustomLabels() string { return In(i18n.Locale()).NoCustomLabels() }
+
+// NoCustomLabels says "No custom labels"
+// in the language of msgs.
+func (msgs Messages) NoCustomLabels() string {
+	return Catalog.Format(msgs.locale, "noCustomLabels", nil)
+}
+
+// LabelAdded says "Added label “{label}”"
+// in the language the app shows.
+func LabelAdded(label string) string { return In(i18n.Locale()).LabelAdded(label) }
+
+// LabelAdded says "Added label “{label}”"
+// in the language of msgs.
+func (msgs Messages) LabelAdded(label string) string {
+	return Catalog.Format(msgs.locale, "labelAdded", map[string]any{"label": label})
+}
+
+// LabelRemoved says "Removed label “{label}”"
+// in the language the app shows.
+func LabelRemoved(label string) string { return In(i18n.Locale()).LabelRemoved(label) }
+
+// LabelRemoved says "Removed label “{label}”"
+// in the language of msgs.
+func (msgs Messages) LabelRemoved(label string) string {
+	return Catalog.Format(msgs.locale, "labelRemoved", map[string]any{"label": label})
+}
+
 // SidebarLabels says "Mailboxes & Labels"
 // in the language the app shows.
 func SidebarLabels() string { return In(i18n.Locale()).SidebarLabels() }

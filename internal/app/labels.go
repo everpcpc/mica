@@ -1,6 +1,7 @@
 package app
 
 import (
+	"sort"
 	"strings"
 
 	"mica/internal/mail"
@@ -47,6 +48,24 @@ func mailboxQuery(id string) (labelID, search string) {
 	default:
 		return id, ""
 	}
+}
+
+func assignableLabels(labels []mail.Label) []mail.Label {
+	assignable := make([]mail.Label, 0, len(labels))
+	for _, label := range labels {
+		if label.System || hiddenSystemLabel(label.ID) {
+			continue
+		}
+		assignable = append(assignable, label)
+	}
+	sort.SliceStable(assignable, func(i, j int) bool {
+		left, right := strings.ToLower(assignable[i].Name), strings.ToLower(assignable[j].Name)
+		if left == right {
+			return assignable[i].Name < assignable[j].Name
+		}
+		return left < right
+	})
+	return assignable
 }
 
 func visibleSidebarLabels(labels []mail.Label, items []sidebarLabel) []sidebarLabel {
