@@ -89,7 +89,7 @@ func main() {
 			}
 		})
 		a.SetEmailViewFactory(func() (*mygo.WebView, error) {
-			return win.NewWebView(mygo.WebViewOptions{})
+			return win.NewWebView(mygo.WebViewOptions{BackgroundColor: "light-dark(#ffffff, #18181b)"})
 		})
 		a.SetUpdate(win.Update)
 		dir, err := mygo.App.Path(mygo.PathUserData)

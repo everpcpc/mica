@@ -83,14 +83,14 @@ func (a *App) labelMenu(m *ui.Menu) {
 func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
-	ui.Scroll(c.Key("read-" + thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Surface).Transition(ui.ElementTransition{
+	ui.Scroll(c.Key("read-" + thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Background).Transition(ui.ElementTransition{
 		Enter:    &ui.Motion{Y: 10, Opacity: 0},
 		Duration: 240 * time.Millisecond,
 	}).Children(func() {
 		ui.Row(c).Justify(ui.Center).Children(func() {
-			ui.Column(c).Grow(1).MaxWidth(960).Padding(24, 24, 32, 24).Gap(20).Children(func() {
-				ui.Column(c).Gap(10).Children(func() {
-					ui.Text(c, thread.Subject).FontSize(23).Bold().LineHeight(1.25)
+			ui.Column(c).Grow(1).MaxWidth(960).Padding(24, 24, 32, 24).Gap(18).Children(func() {
+				ui.Column(c).Gap(8).Children(func() {
+					ui.Text(c, thread.Subject).FontSize(22).LineHeight(1.3)
 					ui.Row(c).Gap(6).Children(func() {
 						if containsLabel(thread.LabelIDs, mail.Important) {
 							ui.Icon(c, iconImportant).Size(14, 14).TextColor(t.Warning).Label(locales.Important())
@@ -115,17 +115,27 @@ func (a *App) threadContent(c *ui.Context) {
 					a.messageView(c, i, message)
 				}
 				ui.Row(c).Gap(10).Children(func() {
-					ui.Button(c, locales.Reply()).OnClick(a.openReply)
-					ui.Button(c, locales.Forward()).OnClick(a.openForward)
+					threadAction(c, locales.Reply(), iconReply, a.openReply)
+					threadAction(c, locales.ReplyAll(), iconReplyAll, a.openReplyAll)
+					threadAction(c, locales.Forward(), iconForward, a.openForward)
 				})
 			})
 		})
 	})
 }
 
+func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func()) {
+	ui.Button(c, "").Label(label).Padding(7, 12).Radius(16).Children(func() {
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, glyph).Size(15, 15)
+			ui.Text(c, label)
+		})
+	}).OnClick(action)
+}
+
 func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 	t := c.Theme()
-	container := ui.Column(c.Key(message.ID)).Gap(14)
+	container := ui.Column(c.Key(message.ID)).Gap(12)
 	if a.messageScroll == index {
 		container.ScrollIntoView()
 		a.messageScroll = -1
@@ -137,21 +147,23 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		}
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Avatar(c, addressName(message.From), nil)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, addressName(message.From)).Bold().SingleLine()
+			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, addressName(message.From)).Bold().SingleLine().MinWidth(0)
 					if containsLabel(message.LabelIDs, mail.Important) {
 						ui.Icon(c, iconImportant).Size(13, 13).TextColor(t.Warning).Label(locales.Important())
 					}
+					if email := addressEmail(message.From); email != "" {
+						ui.Text(c, "<"+email+">").FontSize(12).TextColor(t.TextMuted).SingleLine().Grow(2).MinWidth(0)
+					}
 				})
-				ui.Text(c, addressEmail(message.From)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				if message.To != "" {
+					ui.Text(c, locales.SendTo(message.To)).FontSize(12).TextColor(t.TextMuted).SingleLine()
+				}
 			})
-			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted).Shrink(0)
 			iconButton(c, locales.CollapseMessage(), iconChevronDown, func() { a.setMessageExpanded(message.ID, false) })
 		})
-		if message.To != "" {
-			ui.Text(c, locales.SendTo(message.To)).FontSize(11).TextColor(t.TextMuted)
-		}
 		if message.HTML != "" && a.emailDocument(message).hasContent {
 			a.emailView(c, message)
 		} else if message.Text != "" {

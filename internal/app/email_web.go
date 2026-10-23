@@ -167,34 +167,33 @@ func walkEmailNodes(node *xhtml.Node, fn func(*xhtml.Node)) {
 	}
 }
 
-func emailDocumentHTML(body string, dark bool) string {
-	class := "godwit-light"
-	if dark {
-		class = "godwit-dark"
-		if !strings.HasPrefix(body, `<style data-dark="">`) {
-			class += " godwit-invert"
-		}
+func emailDocumentHTML(body string) string {
+	class := ""
+	if !strings.HasPrefix(body, `<style data-dark="">`) {
+		class = "godwit-invert"
 	}
 	return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: mica-img:"><style>` + emailFrameCSS + `</style></head><body><div id="godwit-body" class="` + class + `">` + body + `</div></body></html>`
 }
 
 const emailFrameCSS = `
 html,body{margin:0;padding:0;background:transparent}
-html{-webkit-text-size-adjust:100%;font:14px/normal -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+html{-webkit-text-size-adjust:100%;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
 #godwit-body{overflow-x:auto;overflow-y:hidden;overflow-wrap:break-word;word-break:break-word}
 :where(#godwit-body){box-sizing:border-box;padding:0 24px}
 #godwit-body:has(>[style*="padding"]){padding:0}
 #godwit-body.godwit-plain{white-space:pre-wrap}
-#godwit-body.godwit-light{color:#0a0a0a}
-#godwit-body.godwit-dark{color:#fafafa}
-#godwit-body.godwit-invert{color:#0a0a0a}
+#godwit-body{color:#0a0a0a}
 #godwit-body a[href],#godwit-body area[href]{cursor:pointer;text-decoration:underline;color:#0b57d0}
-#godwit-body.godwit-dark:not(.godwit-invert) a[href]{color:#8ab4f8}
 #godwit-body img{max-width:100%!important}
 #godwit-body table{max-width:100%}
 #godwit-body td,#godwit-body th{word-break:break-word}
 #godwit-body img:not([height]):not([width]){height:auto}
+@media (prefers-color-scheme: dark){
+#godwit-body{color:#fafafa}
+#godwit-body.godwit-invert{color:#0a0a0a}
+#godwit-body:not(.godwit-invert) a[href]{color:#8ab4f8}
 #godwit-body.godwit-invert,#godwit-body.godwit-invert img{filter:invert(1) hue-rotate(180deg)}
 #godwit-body.godwit-invert [style*="--mica-bg"]{position:relative;isolation:isolate;background-image:none!important}
 #godwit-body.godwit-invert [style*="--mica-bg"]::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:var(--mica-bg);background-size:inherit;background-position:inherit;background-repeat:inherit;border-radius:inherit;filter:invert(1) hue-rotate(180deg)}
+}
 `

@@ -11,7 +11,10 @@ The primary tasks are reading conversations, processing the inbox, and replying 
 The current message is the focus. The sidebar and conversation list stay quiet and compact.
 The sidebar is about 200pt, the list about 340pt, and the reader content is centered and capped at 960pt for comfortable line lengths.
 The interface uses the system font, subtle dividers, unread weight and dots, muted avatars, and one blue accent.
-The reading surface gives HTML and plain-text bodies a 24px horizontal reading inset without an additional card. Root email styles and top-level inline padding take precedence over the HTML default.
+The reader uses one continuous theme background across native UI and email WebViews.
+Email documents follow live appearance changes through `prefers-color-scheme`, keeping an open message readable without reloading it.
+HTML and plain-text bodies have a 24px horizontal reading inset. Root email styles and top-level inline padding take precedence over the HTML default.
+Subjects, sender metadata, and recipients use a compact Gmail-style hierarchy, with Reply, Reply all, and Forward after the conversation.
 The app icon is a white rounded square with a four-color envelope inspired by Gmail, while the interface keeps its own identity.
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.
 Gmail sign-in uses the embedded OAuth client by default; a custom client is available in a collapsed section.

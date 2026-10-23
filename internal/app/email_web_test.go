@@ -22,7 +22,7 @@ func TestEmailDocumentPreservesLayoutWithoutScripts(t *testing.T) {
 			t.Fatalf("sanitized body contains %q: %q", unwanted, body)
 		}
 	}
-	document := emailDocumentHTML(body, false)
+	document := emailDocumentHTML(body)
 	if !strings.Contains(document, "default-src 'none'") || !strings.Contains(document, `id="godwit-body"`) {
 		t.Fatalf("document has no isolated body or CSP: %q", document)
 	}
@@ -59,12 +59,21 @@ func TestEmailResourceHandlerServesDataImage(t *testing.T) {
 	}
 }
 
-func TestEmailDocumentUsesDarkModeWithoutInvertingAwareMail(t *testing.T) {
-	if document := emailDocumentHTML(`<style data-dark="">#godwit-body{color:white}</style><p>Dark</p>`, true); !strings.Contains(document, `class="godwit-dark"`) {
+func TestEmailDocumentOnlyInvertsLightOnlyMail(t *testing.T) {
+	if document := emailDocumentHTML(`<style data-dark="">#godwit-body{color:white}</style><p>Dark</p>`); strings.Contains(document, `class="godwit-invert"`) {
 		t.Fatalf("dark-aware mail was inverted: %q", document)
 	}
-	if document := emailDocumentHTML(`<p>Light</p>`, true); !strings.Contains(document, `class="godwit-dark godwit-invert"`) {
-		t.Fatalf("light-only mail was not inverted: %q", document)
+	if document := emailDocumentHTML(`<p>Light</p>`); !strings.Contains(document, `class="godwit-invert"`) {
+		t.Fatalf("light-only mail was not marked for dark-mode inversion: %q", document)
+	}
+}
+
+func TestEmailDocumentFollowsAppearanceChanges(t *testing.T) {
+	document := emailDocumentHTML(`<p>Light</p>`)
+	for _, want := range []string{"@media (prefers-color-scheme: dark)", `class="godwit-invert"`} {
+		if !strings.Contains(document, want) {
+			t.Fatalf("document does not follow appearance changes: missing %q in %q", want, document)
+		}
 	}
 }
 
@@ -99,7 +108,7 @@ func TestEmailResourceStoreIsNotReplacedOnAccountSwitch(t *testing.T) {
 
 func TestEmailDocumentReadingInset(t *testing.T) {
 	const inset = ":where(#godwit-body){box-sizing:border-box;padding:0 24px}"
-	document := emailDocumentHTML(`<p>Body</p>`, false)
+	document := emailDocumentHTML(`<p>Body</p>`)
 	for _, want := range []string{inset, `#godwit-body:has(>[style*="padding"]){padding:0}`} {
 		if !strings.Contains(document, want) {
 			t.Fatalf("document is missing reading inset rule %q: %q", want, document)
@@ -110,7 +119,7 @@ func TestEmailDocumentReadingInset(t *testing.T) {
 		t.Fatalf("inline body padding is not a top-level element: %q", inline)
 	}
 	body := prepareEmailHTML(newEmailResourceStore(newFakeService()), mail.Message{HTML: `<style>body{padding:40px}</style><p>Body</p>`})
-	document = emailDocumentHTML(body, false)
+	document = emailDocumentHTML(body)
 	own := "#godwit-body{padding:40px"
 	defaultAt, ownAt := strings.Index(document, inset), strings.Index(document, own)
 	if defaultAt < 0 || ownAt < 0 || defaultAt > ownAt {
@@ -119,7 +128,7 @@ func TestEmailDocumentReadingInset(t *testing.T) {
 }
 
 func TestEmailDocumentUsesSystemFont(t *testing.T) {
-	for _, want := range []string{"-apple-system", "14px/normal"} {
+	for _, want := range []string{"-apple-system", "14px/1.5"} {
 		if !strings.Contains(emailFrameCSS, want) {
 			t.Fatalf("system font is missing %q", want)
 		}

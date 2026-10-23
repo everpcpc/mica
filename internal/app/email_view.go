@@ -108,7 +108,7 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 			services.OpenURL(event.URL)
 		}
 	})
-	view.Page().LoadHTML(emailDocumentHTML(body, c.Theme().Dark), "")
+	view.Page().LoadHTML(emailDocumentHTML(body), "")
 	return page
 }
 

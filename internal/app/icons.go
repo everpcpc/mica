@@ -18,6 +18,8 @@ var (
 	iconArchive      = icon(`<path d="M3 4h14v4H3zM4.5 8v8h11V8M8 11h4"/>`)
 	iconCompose      = icon(`<path d="m12.8 3.2 4 4L8 16H4v-4zM11.5 4.5l4 4M4 20h12"/>`)
 	iconReply        = icon(`<path d="m8 5-5 5 5 5M3 10h8c4 0 6 2 6 6"/>`)
+	iconReplyAll     = icon(`<path d="m7 16-5-5 5-5M12 16l-5-5 5-5M7 11h5c4 0 6 2 6 6"/>`)
+	iconForward      = icon(`<path d="m12 5 5 5-5 5M17 10H9c-4 0-6 2-6 6"/>`)
 	iconRefresh      = icon(`<path d="M16 7a6.5 6.5 0 1 0 .5 6M16 3v4h-4"/>`)
 	iconFilter       = icon(`<path d="M3 4h14l-5.5 6.5v5L8.5 17v-6.5z"/>`)
 	iconMail         = icon(`<rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="m3.5 5 6.5 5 6.5-5"/>`)

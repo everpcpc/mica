@@ -36,6 +36,48 @@ func TestMessageBodyCarriesImageDimensions(t *testing.T) {
 	}
 }
 
+func TestThreadContentUsesBackground(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dark bool
+	}{
+		{name: "light"},
+		{name: "dark", dark: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.selectThread("thread-1")
+			var want ui.Color
+			tt := ui.NewTester(func(c *ui.Context) {
+				want = c.Theme().Background
+				a.threadContent(c)
+			}, 900, 700)
+			tt.SetDark(tc.dark)
+			tt.Advance(time.Second)
+			for _, point := range []struct{ x, y int }{{0, 0}, {899, 0}, {0, 699}, {899, 699}} {
+				got := tt.Image().RGBAAt(point.x, point.y)
+				if got.R != want.R || got.G != want.G || got.B != want.B || got.A != want.A {
+					t.Fatalf("reader background at %v = %v, want %v", point, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestThreadActionsIncludeReplyAll(t *testing.T) {
+	service := newFakeService()
+	service.thread.Messages[0].To = "demo@example.com, Bob <bob@example.com>"
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("Reply all"); err != nil {
+		t.Fatal(err)
+	}
+	if a.compose == nil || !strings.Contains(a.compose.to, "bob@example.com") {
+		t.Fatalf("Reply all recipients = %+v, want Bob included", a.compose)
+	}
+}
+
 func TestMessageViewFallsBackToTextWhenHTMLIsEmpty(t *testing.T) {
 	service := newFakeService()
 	service.thread.Messages[0].Text = "Plain fallback"
