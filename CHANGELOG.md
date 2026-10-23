@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 - 2026-10-23
+
+- Added automatic selection of the latest conversation on startup and account switches, with cached detail restoration and stable selection as newer mail arrives.
+- Synchronized list selection before cached or network detail loading.
+- Shortened toast notifications to 3 seconds and actionable Undo notifications to 5 seconds.
+
 ## 0.5.0 - 2026-10-23
 
 - Added unread-only filtering, smoother reader transitions, and content-aware spacing for HTML and plain-text mail.
