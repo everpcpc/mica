@@ -224,23 +224,32 @@ func (s *Service) Attachment(ctx context.Context, messageID, attachmentID string
 }
 
 func (s *Service) ListThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {
-	key := fmt.Sprintf("threads:%v", query)
-	value, err, _ := s.requestGroup.Do(key, func() (any, error) {
-		return s.listThreads(ctx, query)
-	})
+	page, err := s.ListThreadPage(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	return value.([]mail.ThreadSummary), nil
+	return page.Threads, nil
 }
 
-func (s *Service) listThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {
+func (s *Service) ListThreadPage(ctx context.Context, query mail.Query) (mail.ThreadPage, error) {
+	key := fmt.Sprintf("threads:%v", query)
+	value, err, _ := s.requestGroup.Do(key, func() (any, error) {
+		return s.listThreadPage(ctx, query)
+	})
+	if err != nil {
+		return mail.ThreadPage{}, err
+	}
+	return value.(mail.ThreadPage), nil
+}
+
+func (s *Service) listThreadPage(ctx context.Context, query mail.Query) (mail.ThreadPage, error) {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = threadListSize
 	}
 	var ids []string
-	pageToken := ""
+	pageToken := query.PageToken
+	nextPageToken := ""
 	for len(ids) < limit {
 		values := make(url.Values)
 		values.Set("maxResults", strconv.Itoa(min(500, limit-len(ids))))
@@ -260,23 +269,25 @@ func (s *Service) listThreads(ctx context.Context, query mail.Query) ([]mail.Thr
 			NextPageToken string `json:"nextPageToken"`
 		}
 		if err := s.doJSON(ctx, http.MethodGet, "/threads", values, nil, &page); err != nil {
-			return nil, err
+			return mail.ThreadPage{}, err
 		}
 		for _, thread := range page.Threads {
 			if thread.ID != "" {
 				ids = append(ids, thread.ID)
 			}
 		}
-		if page.NextPageToken == "" || page.NextPageToken == pageToken {
+		nextPageToken = page.NextPageToken
+		if nextPageToken == "" || nextPageToken == pageToken {
+			nextPageToken = ""
 			break
 		}
-		pageToken = page.NextPageToken
+		pageToken = nextPageToken
 	}
 	if len(ids) > limit {
 		ids = ids[:limit]
 	}
 	if len(ids) == 0 {
-		return []mail.ThreadSummary{}, nil
+		return mail.ThreadPage{Threads: []mail.ThreadSummary{}, NextPageToken: nextPageToken}, nil
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -309,12 +320,12 @@ func (s *Service) listThreads(ctx context.Context, query mail.Query) ([]mail.Thr
 	}
 	wg.Wait()
 	if firstErr != nil {
-		return nil, firstErr
+		return mail.ThreadPage{}, firstErr
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return mail.ThreadPage{}, err
 	}
-	return summaries, nil
+	return mail.ThreadPage{Threads: summaries, NextPageToken: nextPageToken}, nil
 }
 
 func (s *Service) Thread(ctx context.Context, id string) (mail.Thread, error) {

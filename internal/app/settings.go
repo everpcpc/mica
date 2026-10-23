@@ -350,6 +350,8 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.thread = mail.Thread{}
 	a.query = ""
 	a.unreadOnly = false
+	a.nextPageToken = ""
+	a.loadingMore = false
 	a.selectedLabel = mail.Inbox
 	a.err = ""
 	a.mutationQueue = nil

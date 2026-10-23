@@ -6,6 +6,7 @@ import (
 	"fmt"
 	stdmail "net/mail"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -283,13 +284,29 @@ func (d *Demo) DeleteLabel(_ context.Context, id string) error {
 	return nil
 }
 
-func (d *Demo) ListThreads(_ context.Context, query Query) ([]ThreadSummary, error) {
+func (d *Demo) ListThreads(ctx context.Context, query Query) ([]ThreadSummary, error) {
+	page, err := d.ListThreadPage(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return page.Threads, nil
+}
+
+func (d *Demo) ListThreadPage(_ context.Context, query Query) (ThreadPage, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
 	limit := query.Limit
 	if limit <= 0 {
 		limit = demoThreadLimit
+	}
+	offset := 0
+	if query.PageToken != "" {
+		parsed, err := strconv.Atoi(query.PageToken)
+		if err != nil || parsed < 0 {
+			return ThreadPage{}, errors.New("mail: invalid page token")
+		}
+		offset = parsed
 	}
 	includeTrash := query.LabelID == Trash || hasSearchOption(query.Search, "in:trash") || hasSearchOption(query.Search, "in:anywhere")
 	summaries := make([]ThreadSummary, 0)
@@ -312,10 +329,16 @@ func (d *Demo) ListThreads(_ context.Context, query Query) ([]ThreadSummary, err
 		}
 		return summaries[i].Updated.After(summaries[j].Updated)
 	})
-	if len(summaries) > limit {
-		summaries = summaries[:limit]
+	offset = min(offset, len(summaries))
+	end := len(summaries)
+	if limit < end-offset {
+		end = offset + limit
 	}
-	return summaries, nil
+	nextPageToken := ""
+	if end < len(summaries) {
+		nextPageToken = strconv.Itoa(end)
+	}
+	return ThreadPage{Threads: summaries[offset:end], NextPageToken: nextPageToken}, nil
 }
 
 func (d *Demo) Thread(_ context.Context, id string) (Thread, error) {

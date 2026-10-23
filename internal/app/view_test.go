@@ -116,3 +116,39 @@ func TestUnreadFilterKeyboardNavigation(t *testing.T) {
 		t.Fatalf("keyboard navigation did not follow the filtered list: selected=%q loaded=%q", a.selectedThread, a.thread.ID)
 	}
 }
+
+func TestScrollToEndLoadsNextThreadPage(t *testing.T) {
+	first := make([]mail.ThreadSummary, 25)
+	second := make([]mail.ThreadSummary, 25)
+	for i := range 25 {
+		first[i] = mail.ThreadSummary{
+			ID: "first-" + string(rune('A'+i)), Subject: "First page", LabelIDs: []string{mail.Inbox},
+			Updated: time.Unix(int64(100-i), 0),
+		}
+		second[i] = mail.ThreadSummary{
+			ID: "second-" + string(rune('a'+i)), Subject: "Second page", LabelIDs: []string{mail.Inbox},
+			Updated: time.Unix(int64(50-i), 0),
+		}
+	}
+	service := &pagingService{fakeService: newFakeService(), pages: []mail.ThreadPage{
+		{Threads: first, NextPageToken: "next"}, {Threads: second},
+	}}
+	service.threads = first
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.Start()
+	if len(a.threads) != 25 {
+		t.Fatalf("initial threads = %d, want 25", len(a.threads))
+	}
+	tt := ui.NewTester(a.View, 1280, 400)
+	a.list.ScrollToEnd()
+	tt.Frame()
+	tt.Frame()
+	if len(a.threads) != 50 {
+		t.Fatalf("threads after scrolling to the end = %d, want 50", len(a.threads))
+	}
+	if len(service.queries) != 2 || service.queries[1].PageToken != "next" {
+		t.Fatalf("page queries = %+v, want a second query with next token", service.queries)
+	}
+}
