@@ -167,9 +167,14 @@ func (a *App) threadList(c *ui.Context) {
 			if a.unreadOnly {
 				filterLabel = locales.ShowAllMail()
 			}
-			filter := ui.Toggle(c.Key("unread-filter"), &a.unreadOnly, "").Label(filterLabel).Tooltip(filterLabel).Padding(5, 6).Children(func() {
+			filter := ui.Toggle(c.Key("unread-filter"), &a.unreadOnly, "").Label(filterLabel).Tooltip(filterLabel).Padding(5, 6).Transition(ui.ElementTransition{
+				Colors: true, Duration: 140 * time.Millisecond,
+			}).Children(func() {
 				ui.Icon(c, iconFilter).Size(16, 16)
 			})
+			if a.unreadOnly {
+				filter.Background(t.Accent).TextColor(t.AccentText)
+			}
 			if filter.Changed() {
 				a.syncThreadSelection(false)
 			}

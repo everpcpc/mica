@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -9,6 +10,46 @@ import (
 
 	"github.com/egoist/mygo/ui"
 )
+
+func TestUnreadFilterButtonTransition(t *testing.T) {
+	a := newTestApp(newFakeService())
+	var accent ui.Color
+	tt := ui.NewTester(func(c *ui.Context) {
+		accent = c.Theme().Accent
+		a.View(c)
+	}, 1280, 800)
+	r, ok := tt.Find("Filter unread")
+	if !ok {
+		t.Fatal("unread filter button not found")
+	}
+	pixel := func() color.RGBA {
+		return tt.Image().RGBAAt(int(r.X+4), int(r.Y+4))
+	}
+	matches := func(got color.RGBA, want ui.Color) bool {
+		return got.R == want.R && got.G == want.G && got.B == want.B && got.A == want.A
+	}
+	before := pixel()
+	if err := tt.Click("Filter unread"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(60 * time.Millisecond)
+	mid := pixel()
+	if mid == before || matches(mid, accent) {
+		t.Fatalf("filter button is not transitioning to the active color: before=%v mid=%v accent=%v", before, mid, accent)
+	}
+	tt.Advance(200 * time.Millisecond)
+	if got := pixel(); !matches(got, accent) {
+		t.Fatalf("active filter background = %v, want accent %v", got, accent)
+	}
+	if err := tt.Click("Show all mail"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Move(0, 0)
+	tt.Advance(time.Second)
+	if got := pixel(); got != before {
+		t.Fatalf("inactive filter background = %v, want original %v", got, before)
+	}
+}
 
 func TestCaptureMotion(t *testing.T) {
 	if os.Getenv("MICA_CAPTURE") == "" {
