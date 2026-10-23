@@ -69,7 +69,7 @@ func (a *App) labelDialogView(c *ui.Context) {
 				if s.isDelete {
 					ui.Button(c, locales.DeleteLabel()).TextColor(t.Danger).Disabled(s.busy).OnClick(a.deleteLabel)
 				} else {
-					ui.PrimaryButton(c, locales.CreateLabel()).Disabled(s.busy).OnClick(a.createLabel)
+					primaryAction(c, locales.CreateLabel()).Disabled(s.busy).OnClick(a.createLabel)
 				}
 			})
 		})

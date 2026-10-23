@@ -15,6 +15,9 @@ The reader uses one continuous theme background across native UI and email WebVi
 Email documents follow live appearance changes through `prefers-color-scheme`, keeping an open message readable without reloading it.
 HTML and plain-text bodies have a 24px horizontal reading inset. Root email styles and top-level inline padding take precedence over the HTML default.
 Subjects, sender metadata, and recipients use a compact Gmail-style hierarchy, with Reply, Reply all, and Forward after the conversation.
+The reader toolbar floats above the conversation with a lightly tinted Liquid Glass material and a subtle shadow. Primary actions share a blue-indigo gradient and restrained shadow.
+Grouped dialog content uses 12pt-radius bordered panels with consistent padding. Conversation rows use rounded selection with a small inset.
+Reader reply actions use interactive Liquid Glass, and other secondary actions use light borders and shadows.
 The app icon is a white rounded square with a four-color envelope inspired by Gmail, while the interface keeps its own identity.
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.
 Gmail sign-in uses the embedded OAuth client by default; a custom client is available in a collapsed section.
@@ -54,6 +57,7 @@ The language selector stores locale codes but presents readable names in both it
 - Buttons and selection states use MyGo's small, built-in feedback. The unread filter uses a 140ms color transition to a clear Accent active state with a high-contrast icon.
 - Loaded conversation content fades in with a 10pt upward movement over 240ms rather than flashing a blank pane.
 - The first reader entrance and later conversation transitions use the same short motion. Toasts fade in and out; plain notices remain for 3 seconds, and action notices remain for 5 seconds.
+- Message expansion and collapse use an interruptible spring transition. Reduce Motion completes the change immediately.
 - MyGo removes or shortens nonessential motion when Reduce Motion is enabled.
 
 ## Build configuration

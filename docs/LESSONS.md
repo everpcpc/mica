@@ -46,6 +46,9 @@
 - For visual differences such as padding, compare text origins in rendered images when necessary.
 - A localized Select must not display a persisted code directly as its option label. Map state to display text explicitly and inspect the collapsed control's actual rendering for empty, `en`, and `zh-Hans` values.
 - A toggle needs a clearly different active color, not only a changed tooltip or filtered result. Verify color transitions at start, middle, and end, and move the pointer away before checking the inactive style because hover can mask the default background.
+- Glass materials can be nearly invisible on a light reader while looking strong in dark mode. Check both appearances with real content behind the material, including while content scrolls under it, and tune the tint and shadow so the backdrop cannot reduce control contrast.
+- UI capture helpers must not call production credential-loading paths. Build modal state directly, or a screenshot run can block on the real macOS Keychain instead of rendering.
+- A gradient fill does not interpolate like a solid color transition. Keep animated toggles on a solid accent and verify start, middle, and end pixels before replacing them with a gradient.
 
 ## Match live theme changes in native and web content
 

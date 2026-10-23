@@ -100,11 +100,11 @@ func (a *App) sidebar(c *ui.Context) {
 	bar := c.TitleBar()
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 12, 0, bar.Left+12).AlignItems(ui.Center).Justify(ui.End).DragWindow().Children(func() {
-			ui.PrimaryButton(c, "").Label(locales.Compose()).Tooltip(locales.ComposeTooltip()).Padding(5, 7).Children(func() {
+			primaryAction(c, "").Label(locales.Compose()).Tooltip(locales.ComposeTooltip()).Padding(5, 7).Children(func() {
 				ui.Icon(c, iconCompose).Size(16, 16)
 			}).OnClick(func() { a.openCompose(nil) })
 		})
-		ui.Row(c).Padding(8, 14, 14, 14).Gap(10).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Margin(6, 8, 4, 8).Padding(8, 8).Gap(10).AlignItems(ui.Center).Radius(10).Background(t.Background).Border(1, t.Border).Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.05)).Children(func() {
 			ui.Avatar(c, a.account.Name, a.accountPhoto)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
@@ -173,7 +173,7 @@ func (a *App) threadList(c *ui.Context) {
 				ui.Icon(c, iconFilter).Size(16, 16)
 			})
 			if a.unreadOnly {
-				filter.Background(t.Accent).TextColor(t.AccentText)
+				filter.Background(t.Accent).TextColor(t.AccentText).Shadow(0, 1, 3, 0, ui.RGBA(37, 99, 235, 0.18))
 			}
 			if filter.Changed() {
 				a.syncThreadSelection(false)
@@ -206,7 +206,8 @@ func (a *App) threadList(c *ui.Context) {
 			thread := threads[i]
 			return thread.Senders + ", " + thread.Subject + ", " + thread.Snippet
 		}
-		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Rows(func(row ui.ListRow) {
+		a.list.RoundRows = true
+		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Padding(0, 4).Rows(func(row ui.ListRow) {
 			a.threadRow(row, &threads[row.Index])
 		})
 		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {

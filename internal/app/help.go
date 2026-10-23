@@ -62,7 +62,7 @@ func (a *App) helpView(c *ui.Context) {
 							ui.Text(c, group.title).Bold()
 							for _, item := range group.items {
 								ui.Row(c).Gap(16).Children(func() {
-									ui.Text(c, item.keys).Width(170).Shrink(0).Font("monospace").TextColor(c.Theme().Accent)
+									ui.Text(c, item.keys).Width(170).Shrink(0).Font("monospace").TextColor(c.Theme().Text).Padding(2, 6).Radius(4).Background(c.Theme().Surface).Border(1, c.Theme().Border)
 									ui.Text(c, item.label).Grow(1)
 								})
 							}
@@ -71,7 +71,7 @@ func (a *App) helpView(c *ui.Context) {
 				})
 			})
 			ui.Row(c).Justify(ui.End).Children(func() {
-				ui.PrimaryButton(c, locales.Close()).OnClick(func() { a.helpOpen = false })
+				ui.Button(c, locales.Close()).OnClick(func() { a.helpOpen = false })
 			})
 		})
 	})
