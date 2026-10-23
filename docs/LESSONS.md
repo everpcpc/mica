@@ -1,68 +1,68 @@
-# 开发经验
+# Development Lessons
 
-## 外部服务的概念不能直接照搬
+## Do not copy external service concepts directly
 
-- 应用内部的虚拟标签不一定是服务端真实标签。
-- All Mail 在 Gmail 中应使用不带 `labelId` 的全局查询，而不是传入 `ALL`。
-- 修改查询映射时，同时验证请求参数、缓存键和列表过滤逻辑，避免只修界面显示。
+- An internal virtual label is not necessarily a real label on the server.
+- All Mail in Gmail should use a global query without a `labelId`, not the unsupported `ALL` value.
+- When changing query mappings, verify request parameters, cache keys, and list filtering together instead of fixing only the visible UI.
 
-## 乐观更新必须和请求顺序一起设计
+## Design optimistic updates together with request ordering
 
-- 本地先生效不等于可以并发乱序请求，邮件变更应按 FIFO 顺序同步。
-- 连续操作、自动标读和 Undo 要进入同一个队列，避免后到的结果覆盖先做的操作。
-- Undo 应保存操作后的快照，再应用反向变更，确保本地状态与服务端最终状态一致。
-- 失败对账要防止“刷新—标读—失败—再刷新”的循环。
-- 账号切换后，旧账号的请求和 Undo 都不能再回写新状态。
+- Applying changes locally first does not allow requests to run concurrently and out of order; mail mutations must synchronize in FIFO order.
+- Consecutive actions, automatic read marking, and Undo belong to the same queue so later results cannot overwrite earlier actions.
+- Undo should capture the post-action snapshot and then apply the inverse mutation, keeping local state consistent with the server's final state.
+- Failure reconciliation must avoid a refresh-mark-read-failure-refresh loop.
+- After an account switch, requests and Undo entries from the previous account must not write into the new state.
 
-## 筛选、分页和选择状态是同一个问题
+## Filtering, pagination, and selection are one problem
 
-- 原始列表和筛选后的可见列表要分开，鼠标选择、键盘导航、删除和数量显示都使用同一套映射。
-- 当前会话被筛掉时，可以取消列表选中，但不应打断正在阅读的内容。
-- 首批不宜直接拉取大量完整会话，使用小首批和 `nextPageToken` 滚动加载。
-- 追加页面时要去重并保持选择，基础查询快照与分页请求参数不要混用。
-- 到达底部后如果请求失败，不能因界面重建而自动反复重试。
-- 按 ID 打开会话也要在详情加载前同步选中行；回归测试曾复现加载前 `selectedRow == -1`，不能只在 `showThread` 里同步。
-- 启动自动选择应在每个账号的首次非空列表上执行一次；旧行为在离线恢复和账号切换后都留下空选中，新邮件置顶则只能按 ID 调整行号，不能重选或切换详情。
-- 仅用行号绑定单选时，归档首封后新邮件占据同一行号会被列表误认为继续跟踪旧 key；列表高亮必须用会话 ID 的 Selection，并用对照测试验证首封和末封归档时 detail 与选中一致。
+- Keep the raw list and the filtered visible list separate. Mouse selection, keyboard navigation, deletion, and counts must all use the same mapping.
+- When the current conversation is filtered out, the list selection may be cleared without interrupting the open reader.
+- Avoid fetching a large first page of complete conversations; use a small first page and load more with `nextPageToken`.
+- Deduplicate appended pages and preserve selection. Do not mix the base query snapshot with pagination request parameters.
+- When a load-at-end request fails, view rebuilds must not retry it automatically and repeatedly.
+- Opening a thread by ID must also synchronize the selected row before detail loading. A regression reproduced `selectedRow == -1` before loading; do not synchronize only in `showThread`.
+- Run automatic startup selection once for each account's first non-empty list. The previous behavior left no selection after offline restoration and account switches. New mail inserted above may move only the selected row by ID; it must not reselect or switch the detail.
+- When single selection is bound only by row index, archiving the first conversation lets the next one occupy the same row and makes the list keep tracking the old key. Highlight the list with a Selection keyed by thread ID, and use first/last archive comparisons to verify that detail and selection stay aligned.
 
-## 标签分配和标签生命周期是两种操作
+## Label assignment and label lifecycle are different operations
 
-- 给会话添加或移除标签，不等于创建或删除标签本身。
-- 创建标签需要等待服务端返回真实 ID，不应伪造临时 ID。
-- 删除标签会从所有会话上移除它，必须明确确认，并清理侧栏、当前会话、缓存和旧 Undo。
-- 正在查看被删除的标签时，应回到一个仍然存在的邮箱视图。
+- Adding or removing a label on a conversation is not the same as creating or deleting the label itself.
+- Creating a label must wait for the server's real ID; do not invent temporary IDs.
+- Deleting a label removes it from every conversation. Require explicit confirmation and clean up the sidebar, current conversation, caches, and stale Undo entries.
+- When the active label is deleted, return to a mailbox view that still exists.
 
-## 正文排版要尊重内容类型
+## Respect content type in body layout
 
-- HTML 不一定自带边距；默认阅读边距必须能被邮件根节点 CSS 或顶层 inline padding 覆盖，不能再套固定卡片或容器 padding。
-- 纯文本和 HTML fallback 需要相同的阅读边距；覆盖关系要用计算样式验证，本次裸 HTML 为 24px、inline padding 外层为 0、根节点 CSS 为 40px。
-- 不要用同一个容器同时处理 HTML 和纯文本的间距需求。
+- HTML does not always provide its own inset. The default reading inset must be overridable by root email CSS or top-level inline padding; do not add a fixed card or container padding.
+- Plain text and HTML fallbacks need the same reading inset. Verify the cascade with computed styles: in this case, bare HTML measured 24px, the wrapper with inline padding measured 0, and root email CSS measured 40px.
+- Do not use one container to handle both HTML and plain-text spacing requirements.
 
-## 视觉验证要落到真实渲染
+## Verify visuals through real rendering
 
-- 动画不能只检查参数，要查看开始、中间、结束帧，确认没有闪跳、重影或白屏。
-- 布局对象的 `Bounds` 可能包含 padding，不能仅凭 X 坐标或外框宽度判断内容位置。
-- 检查 padding 这类视觉差异时，必要时直接比较渲染图像中的文字起点。
-- 本地化 Select 不能把持久化 code 直接当选项文案；状态和显示要显式映射，并用收起状态的真实渲染检查空值、`en` 和 `zh-Hans`。
+- Do not validate animation only by its parameters. Inspect start, middle, and end frames for jumps, ghosting, and blank screens.
+- A layout object's `Bounds` may include padding; X coordinates or outer widths alone cannot establish the content position.
+- For visual differences such as padding, compare text origins in rendered images when necessary.
+- A localized Select must not display a persisted code directly as its option label. Map state to display text explicitly and inspect the collapsed control's actual rendering for empty, `en`, and `zh-Hans` values.
 
-## 回归测试要证明防线有效
+## Regression tests must prove the guard works
 
-- 先在旧行为上确认测试会失败，再实现修复，避免写出永远通过的假防线。
-- 测试要卡在目标行为上，构建失败不能算复现成功。
-- 手动恢复验证时，一次只破坏和恢复一处，避免冲掉尚未提交的修复。
-- 队列和时序测试使用可控 fake service，不用真实 Gmail 做破坏性验证。
-- 异步回调要核对当前对象 ID，旧 toast 的定时器只能让当前 toast 过期，避免并发写入过期状态。
+- Confirm that the test fails on the old behavior before implementing the fix; avoid tests that always pass.
+- Assertions must target the behavior itself. A build failure does not count as a reproduction.
+- When restoring behavior by hand for verification, break and restore one thing at a time so uncommitted fixes are not overwritten.
+- Use controllable fake services for queue and timing tests; never run destructive tests against a real Gmail account.
+- A toast timer may expire only the toast with the ID it was created for; stale timers must not expire the current toast.
 
-## 大型改动拆分要核对功能边界
+## Check feature boundaries when splitting large changes
 
-- 拆分前先做保险提交，确保任何阶段都能恢复完整改动。
-- 零上下文 diff 容易把新函数或 case 插到错误位置，复杂拆分应使用带上下文的 hunk 或函数级编辑。
-- 每组都要检查完整 diff，确认没有混入下一组功能，再运行测试。
-- 共享文件较多的改动适合按依赖顺序逐个 PR 合并，而不是并行拆出互相冲突的分支。
+- Make a safety commit before splitting so the complete change can be recovered at any stage.
+- Zero-context diffs can insert new functions or cases in the wrong place. Use contextual hunks or function-level edits for complex splits.
+- Review the complete diff for each group to ensure that no functionality from a later group has leaked in, then run the tests.
+- Changes touching many shared files should land in dependency order, one PR at a time, instead of parallel branches that conflict with each other.
 
-## 发版元数据要尽早验证
+## Validate release metadata early
 
-- `mygo build` 要求 `CHANGELOG.md` 存在当前版本的 `## <version>` 小节，版本号 PR 之前就应准备好发版说明。
-- 构建和公证成功不代表发版成功，还要检查打包、产物上传和 Release 创建的最后几步日志。
-- `gh run rerun --failed` 使用原始失败 commit，无法带上后续修复；重试应从最新 main 使用 `workflow_dispatch`。
-- 发版产物统一由 CI 生成；除非明确要求，不在本地生成 DMG，也不手动创建 tag 或 Release。
+- `mygo build` requires a `## <version>` section for the current version in `CHANGELOG.md`; prepare the release notes before the version PR.
+- A successful build and notarization do not prove that the release succeeded. Also inspect the final packaging, artifact upload, and Release creation logs.
+- `gh run rerun --failed` uses the original failing commit and misses later fixes. Retry from the latest main with `workflow_dispatch`.
+- CI generates all release artifacts. Do not build DMGs locally unless explicitly requested, and never create tags or GitHub releases manually.
