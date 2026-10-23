@@ -115,6 +115,11 @@ type Service interface {
 	Send(context.Context, Compose) error
 }
 
+type LabelManager interface {
+	CreateLabel(context.Context, string) (Label, error)
+	DeleteLabel(context.Context, string) error
+}
+
 type AttachmentFetcher interface {
 	Attachment(context.Context, string, string) ([]byte, error)
 }

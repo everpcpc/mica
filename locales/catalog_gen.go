@@ -254,6 +254,118 @@ func (msgs Messages) LabelRemoved(label string) string {
 	return Catalog.Format(msgs.locale, "labelRemoved", map[string]any{"label": label})
 }
 
+// NewLabel says "New label…"
+// in the language the app shows.
+func NewLabel() string { return In(i18n.Locale()).NewLabel() }
+
+// NewLabel says "New label…"
+// in the language of msgs.
+func (msgs Messages) NewLabel() string {
+	return Catalog.Format(msgs.locale, "newLabel", nil)
+}
+
+// CreateLabel says "Create label"
+// in the language the app shows.
+func CreateLabel() string { return In(i18n.Locale()).CreateLabel() }
+
+// CreateLabel says "Create label"
+// in the language of msgs.
+func (msgs Messages) CreateLabel() string {
+	return Catalog.Format(msgs.locale, "createLabel", nil)
+}
+
+// DeleteLabel says "Delete label"
+// in the language the app shows.
+func DeleteLabel() string { return In(i18n.Locale()).DeleteLabel() }
+
+// DeleteLabel says "Delete label"
+// in the language of msgs.
+func (msgs Messages) DeleteLabel() string {
+	return Catalog.Format(msgs.locale, "deleteLabel", nil)
+}
+
+// DeleteLabelQuestion says "Delete label?"
+// in the language the app shows.
+func DeleteLabelQuestion() string { return In(i18n.Locale()).DeleteLabelQuestion() }
+
+// DeleteLabelQuestion says "Delete label?"
+// in the language of msgs.
+func (msgs Messages) DeleteLabelQuestion() string {
+	return Catalog.Format(msgs.locale, "deleteLabelQuestion", nil)
+}
+
+// LabelName says "Label name"
+// in the language the app shows.
+func LabelName() string { return In(i18n.Locale()).LabelName() }
+
+// LabelName says "Label name"
+// in the language of msgs.
+func (msgs Messages) LabelName() string {
+	return Catalog.Format(msgs.locale, "labelName", nil)
+}
+
+// LabelNameRequired says "Enter a label name"
+// in the language the app shows.
+func LabelNameRequired() string { return In(i18n.Locale()).LabelNameRequired() }
+
+// LabelNameRequired says "Enter a label name"
+// in the language of msgs.
+func (msgs Messages) LabelNameRequired() string {
+	return Catalog.Format(msgs.locale, "labelNameRequired", nil)
+}
+
+// LabelExists says "A label named “{label}” already exists"
+// in the language the app shows.
+func LabelExists(label string) string { return In(i18n.Locale()).LabelExists(label) }
+
+// LabelExists says "A label named “{label}” already exists"
+// in the language of msgs.
+func (msgs Messages) LabelExists(label string) string {
+	return Catalog.Format(msgs.locale, "labelExists", map[string]any{"label": label})
+}
+
+// LabelCreated says "Created label “{label}”"
+// in the language the app shows.
+func LabelCreated(label string) string { return In(i18n.Locale()).LabelCreated(label) }
+
+// LabelCreated says "Created label “{label}”"
+// in the language of msgs.
+func (msgs Messages) LabelCreated(label string) string {
+	return Catalog.Format(msgs.locale, "labelCreated", map[string]any{"label": label})
+}
+
+// LabelDeleted says "Deleted label “{label}”"
+// in the language the app shows.
+func LabelDeleted(label string) string { return In(i18n.Locale()).LabelDeleted(label) }
+
+// LabelDeleted says "Deleted label “{label}”"
+// in the language of msgs.
+func (msgs Messages) LabelDeleted(label string) string {
+	return Catalog.Format(msgs.locale, "labelDeleted", map[string]any{"label": label})
+}
+
+// DeleteLabelConfirmation says "Delete “{label}” from all conversations? This cannot be undone."
+// in the language the app shows.
+func DeleteLabelConfirmation(label string) string {
+	return In(i18n.Locale()).DeleteLabelConfirmation(label)
+}
+
+// DeleteLabelConfirmation says "Delete “{label}” from all conversations? This cannot be undone."
+// in the language of msgs.
+func (msgs Messages) DeleteLabelConfirmation(label string) string {
+	return Catalog.Format(msgs.locale, "deleteLabelConfirmation", map[string]any{"label": label})
+}
+
+// LabelActionFailed says "Label action failed: {error}"
+// in the language the app shows.
+func LabelActionFailed(error string) string { return In(i18n.Locale()).LabelActionFailed(error) }
+
+// LabelActionFailed says "Label action failed: {error}"
+// in the language of msgs.
+func (msgs Messages) LabelActionFailed(error string) string {
+	return Catalog.Format(msgs.locale, "labelActionFailed", map[string]any{"error": error})
+}
+
 // SidebarLabels says "Mailboxes & Labels"
 // in the language the app shows.
 func SidebarLabels() string { return In(i18n.Locale()).SidebarLabels() }

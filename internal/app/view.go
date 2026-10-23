@@ -25,7 +25,7 @@ func (a *App) View(c *ui.Context) {
 	if c.Vibrancy() {
 		c.Root().Background(ui.Transparent)
 	}
-	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen {
+	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen && (a.labelDialog == nil || !a.labelDialog.open) {
 		a.shortcuts(c)
 	}
 	sidebarSplit := ui.Split(c, &a.sidebarWidth, func() {
@@ -51,6 +51,9 @@ func (a *App) View(c *ui.Context) {
 	}
 	if a.helpOpen {
 		a.helpView(c)
+	}
+	if a.labelDialog != nil && a.labelDialog.open {
+		a.labelDialogView(c)
 	}
 	a.showNotice(c)
 }

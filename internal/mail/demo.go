@@ -27,19 +27,26 @@ var demoLabelNames = map[string]string{
 }
 
 type Demo struct {
-	mu      sync.RWMutex
-	account Account
-	threads map[string]*Thread
-	now     func() time.Time
-	nextID  int
+	mu         sync.RWMutex
+	account    Account
+	threads    map[string]*Thread
+	labelNames map[string]string
+	labelOrder []string
+	now        func() time.Time
+	nextID     int
 }
 
 func NewDemo() *Demo {
 	now := time.Now()
 	d := &Demo{
-		account: Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
-		threads: make(map[string]*Thread),
-		now:     time.Now,
+		account:    Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
+		threads:    make(map[string]*Thread),
+		labelNames: make(map[string]string, len(demoLabelNames)),
+		labelOrder: []string{Inbox, Starred, Sent, Trash, Unread, "Label_1", "Label_2", "Label_3", "Label_4"},
+		now:        time.Now,
+	}
+	for id, name := range demoLabelNames {
+		d.labelNames[id] = name
 	}
 	message := func(id, from, to string, age time.Duration, text, html string, labels ...string) Message {
 		return Message{
@@ -211,10 +218,9 @@ func (d *Demo) Labels(context.Context) ([]Label, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	order := []string{Inbox, Starred, Sent, Trash, Unread, "Label_1", "Label_2", "Label_3", "Label_4"}
-	labels := make([]Label, 0, len(order))
-	for _, id := range order {
-		label := Label{ID: id, Name: demoLabelNames[id]}
+	labels := make([]Label, 0, len(d.labelOrder))
+	for _, id := range d.labelOrder {
+		label := Label{ID: id, Name: d.labelNames[id]}
 		for _, thread := range d.threads {
 			for _, message := range thread.Messages {
 				if !hasString(message.LabelIDs, id) {
@@ -229,6 +235,52 @@ func (d *Demo) Labels(context.Context) ([]Label, error) {
 		labels = append(labels, label)
 	}
 	return labels, nil
+}
+
+func (d *Demo) CreateLabel(_ context.Context, name string) (Label, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Label{}, errors.New("mail: empty label name")
+	}
+	for _, existing := range d.labelNames {
+		if strings.EqualFold(existing, name) {
+			return Label{}, errors.New("mail: label already exists")
+		}
+	}
+	d.nextID++
+	id := fmt.Sprintf("demo-label-%d", d.nextID)
+	d.labelNames[id] = name
+	d.labelOrder = append(d.labelOrder, id)
+	return Label{ID: id, Name: name}, nil
+}
+
+func (d *Demo) DeleteLabel(_ context.Context, id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if _, ok := d.labelNames[id]; !ok {
+		return errors.New("mail: label not found")
+	}
+	switch id {
+	case Inbox, Starred, Sent, Trash, Unread:
+		return errors.New("mail: cannot delete system label")
+	}
+	delete(d.labelNames, id)
+	for i, candidate := range d.labelOrder {
+		if candidate == id {
+			d.labelOrder = append(d.labelOrder[:i], d.labelOrder[i+1:]...)
+			break
+		}
+	}
+	for _, thread := range d.threads {
+		for i := range thread.Messages {
+			thread.Messages[i].LabelIDs = removeString(thread.Messages[i].LabelIDs, id)
+		}
+	}
+	return nil
 }
 
 func (d *Demo) ListThreads(_ context.Context, query Query) ([]ThreadSummary, error) {
@@ -249,7 +301,7 @@ func (d *Demo) ListThreads(_ context.Context, query Query) ([]ThreadSummary, err
 		if query.LabelID == "" && !includeTrash && hasString(labels, Trash) {
 			continue
 		}
-		if !matchesDemoSearch(thread, query.Search) {
+		if !matchesDemoSearch(thread, query.Search, d.labelNames) {
 			continue
 		}
 		summaries = append(summaries, demoSummary(thread))
@@ -407,7 +459,11 @@ func combinedLabels(messages []Message) []string {
 	return labels
 }
 
-func matchesDemoSearch(thread *Thread, search string) bool {
+func matchesDemoSearch(thread *Thread, search string, names ...map[string]string) bool {
+	labelNames := demoLabelNames
+	if len(names) > 0 {
+		labelNames = names[0]
+	}
 	search = strings.TrimSpace(search)
 	if search == "" {
 		return true
@@ -432,7 +488,7 @@ func matchesDemoSearch(thread *Thread, search string) bool {
 	for _, label := range combinedLabels(thread.Messages) {
 		text.WriteString(label)
 		text.WriteByte(' ')
-		text.WriteString(demoLabelNames[label])
+		text.WriteString(labelNames[label])
 		text.WriteByte('\n')
 	}
 	body := strings.ToLower(text.String())
@@ -489,7 +545,7 @@ func matchesDemoSearch(thread *Thread, search string) bool {
 			case "label":
 				matched := false
 				for _, label := range labels {
-					if strings.EqualFold(label, value) || strings.Contains(strings.ToLower(demoLabelNames[label]), value) {
+					if strings.EqualFold(label, value) || strings.Contains(strings.ToLower(labelNames[label]), value) {
 						matched = true
 						break
 					}

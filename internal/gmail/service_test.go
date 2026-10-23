@@ -69,6 +69,44 @@ func TestAccountAndLabels(t *testing.T) {
 	}
 }
 
+func TestCreateAndDeleteLabel(t *testing.T) {
+	var created, deleted bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/users/me/labels" && r.Method == http.MethodPost:
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body["name"] != "Receipts" || body["labelListVisibility"] != "labelShow" || body["messageListVisibility"] != "labelShow" {
+				t.Fatalf("create body = %v", body)
+			}
+			created = true
+			writeTestJSON(t, w, apiLabel{ID: "Label_new", Name: "Receipts", Type: "user", LabelListVisibility: "labelShow"})
+		case r.URL.Path == "/users/me/labels/Label_new" && r.Method == http.MethodDelete:
+			deleted = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	service := testService(server)
+	label, err := service.CreateLabel(context.Background(), " Receipts ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created || label.ID != "Label_new" || label.Name != "Receipts" {
+		t.Fatalf("created label = %+v, request sent %v", label, created)
+	}
+	if err := service.DeleteLabel(context.Background(), label.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("delete request was not sent")
+	}
+}
+
 func TestAccountProfileUnauthorized(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
