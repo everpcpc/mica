@@ -176,6 +176,72 @@ func (s *fakeMailStore) DeleteThread(_ context.Context, email, id string) error 
 	return nil
 }
 
+func TestStartupSelectsCachedThreadAndKeepsItAfterRefresh(t *testing.T) {
+	store := newFakeMailStore()
+	account := mail.Account{Name: "Cached User", Email: "cached@example.com"}
+	store.account, store.accountFound = account, true
+	cachedSummary := mail.ThreadSummary{ID: "thread-1", Subject: "Cached", Updated: time.Unix(100, 0), LabelIDs: []string{mail.Inbox}}
+	newSummary := mail.ThreadSummary{ID: "thread-2", Subject: "New", Updated: time.Unix(200, 0), LabelIDs: []string{mail.Inbox}}
+	query := mail.Query{LabelID: mail.Inbox, Limit: 25}
+	store.lists[cacheListKey{email: account.Email, query: query}] = []mail.ThreadSummary{cachedSummary}
+	cachedThread := mail.Thread{
+		ID: "thread-1", Subject: "Cached",
+		Messages: []mail.Message{{ID: "cached-message", ThreadID: "thread-1", Text: "Cached body"}},
+	}
+	store.threads[cacheThreadKey{email: account.Email, id: "thread-1"}] = cachedThread
+	service := newFakeService()
+	service.account = account
+	service.threads = []mail.ThreadSummary{newSummary, cachedSummary}
+	service.thread = mail.Thread{
+		ID: "thread-1", Subject: "Fresh",
+		Messages: []mail.Message{{ID: "fresh-message", ThreadID: "thread-1", Text: "Fresh body"}},
+	}
+	a := New(service)
+	a.restoreAttempted = true
+	a.storeAccount = account.Email
+	a.SetMailStore(store)
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.Start()
+	if len(jobs) != 2 {
+		t.Fatalf("scheduled jobs = %d, want list and account jobs", len(jobs))
+	}
+	jobs[0]()
+	if len(updates) != 2 {
+		t.Fatalf("published list updates = %d, want cached and network updates", len(updates))
+	}
+	updates[0]()
+	if a.selectedThread != "thread-1" || a.selectedRow != 0 {
+		t.Fatalf("cached selection = %q at row %d, want thread-1 at row 0", a.selectedThread, a.selectedRow)
+	}
+	if len(jobs) != 3 {
+		t.Fatalf("scheduled jobs after cached selection = %d, want a thread load", len(jobs))
+	}
+	jobs[2]()
+	if len(updates) != 4 {
+		t.Fatalf("published updates = %d, want cached and network thread updates", len(updates))
+	}
+	updates[2]()
+	if a.thread.ID != "thread-1" || len(a.thread.Messages) != 1 || a.thread.Messages[0].ID != "cached-message" {
+		t.Fatalf("cached detail was not restored: %+v", a.thread)
+	}
+	updates[1]()
+	if len(a.threads) != 2 || a.threads[0].ID != "thread-2" {
+		t.Fatalf("new mail was not inserted above the cached conversation: %+v", a.threads)
+	}
+	if a.selectedThread != "thread-1" || a.selectedRow != 1 {
+		t.Fatalf("selection after refresh = %q at row %d, want thread-1 at row 1", a.selectedThread, a.selectedRow)
+	}
+	if a.thread.ID != "thread-1" || a.thread.Messages[0].ID != "cached-message" {
+		t.Fatalf("list refresh changed the open detail: %+v", a.thread)
+	}
+	updates[3]()
+	if a.selectedThread != "thread-1" || a.selectedRow != 1 || a.thread.ID != "thread-1" || a.thread.Messages[0].ID != "fresh-message" {
+		t.Fatalf("detail revalidation changed the selection: selected=%q row=%d detail=%+v", a.selectedThread, a.selectedRow, a.thread)
+	}
+}
+
 func TestCachedListCannotOverwriteFreshNetworkResult(t *testing.T) {
 	store := newFakeMailStore()
 	account := mail.Account{Name: "Cached User", Email: "cached@example.com"}
@@ -370,6 +436,7 @@ func (s *historyPageService) Label(ctx context.Context, id string) (mail.Label, 
 
 func newHistoryCacheHarness() (*notificationHarness, *fakeMailStore, *historyPageService) {
 	h := newNotificationHarness()
+	h.app.startupSelectionDone = true
 	store := newFakeMailStore()
 	h.app.store = store
 	h.app.storeAccount = h.service.account.Email

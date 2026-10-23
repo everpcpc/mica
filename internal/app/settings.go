@@ -364,6 +364,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.threadCache = nil
 	a.resetMessageViews()
 	a.clearThread()
+	a.startupSelectionDone = false
 	a.Start()
 }
 
