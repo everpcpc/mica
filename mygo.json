@@ -1,7 +1,7 @@
 {
   "name": "Mica",
   "identifier": "dev.mica.mail",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "out": "build",
   "i18n": {
     "dir": "locales",
