@@ -4,8 +4,33 @@ import (
 	"strings"
 	"testing"
 
+	"mica/internal/mail"
+
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
+
+func TestEmailViewShowsWebViewBeforeFirstMeasurement(t *testing.T) {
+	a := New(newFakeService())
+	a.selectedThread = "thread-1"
+	a.thread = mail.Thread{ID: "thread-1", Messages: []mail.Message{{ID: "message-1", HTML: "<p>Body</p>"}}}
+	a.emailPages = map[string]*emailPage{
+		"message-1": {messageID: "message-1", view: new(mygo.WebView), height: emailInitialHeight},
+	}
+	tt := ui.NewTester(a.View, 1280, 800)
+	found := false
+	for y := float32(0); y < 800 && !found; y += 20 {
+		for x := float32(0); x < 1280; x += 20 {
+			if tt.WebViewAt(x, y) != nil {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("email WebView is gated behind the first height callback")
+	}
+}
 
 func TestEmailShortcutBinding(t *testing.T) {
 	binding, ok := emailShortcutBinding("archive")
@@ -19,18 +44,17 @@ func TestEmailShortcutBinding(t *testing.T) {
 
 func TestEmailHeightEstimateAndUpdate(t *testing.T) {
 	a := New(newFakeService())
-	height, ready := a.estimatedEmailHeight("message-1")
-	if height != 24 || ready {
-		t.Fatalf("initial email height = %v, ready=%v, want one-line placeholder", height, ready)
+	height := a.estimatedEmailHeight("message-1")
+	if height != 24 {
+		t.Fatalf("initial email height = %v, want one-line placeholder", height)
 	}
-	page := &emailPage{messageID: "message-1", height: height, ready: ready, failed: true}
+	page := &emailPage{messageID: "message-1", height: height, failed: true}
 	a.setEmailHeight(page, 480)
-	if page.height != 480 || !page.ready || page.failed {
+	if page.height != 480 || page.failed {
 		t.Fatalf("updated page = %+v, want ready 480px page", page)
 	}
-	height, ready = a.estimatedEmailHeight("message-1")
-	if height != 480 || !ready {
-		t.Fatalf("estimated height = %v, ready=%v, want cached 480px", height, ready)
+	if height := a.estimatedEmailHeight("message-1"); height != 480 {
+		t.Fatalf("estimated height = %v, want cached 480px", height)
 	}
 }
 
