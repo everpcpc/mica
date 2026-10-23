@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 - 2026-10-23
+
+- Fixed first email rendering so WebViews appear before the initial height measurement.
+- Reduced Gmail request overhead with single-request labels, changed-thread synchronization, and coalesced push delivery.
+- Added bounded Retry-After backoff with jitter and concurrent request deduplication.
+
 ## 0.3.0 - 2026-10-23
 
 - Added browser-native HTML email rendering with smooth height transitions and keyboard shortcuts in focused messages.
