@@ -141,7 +141,8 @@ func (a *App) goLabel(id string) {
 }
 
 func (a *App) moveSelection(delta int) {
-	if len(a.threads) == 0 {
+	threads := a.visibleThreads()
+	if len(threads) == 0 {
 		return
 	}
 	row := a.selectedRow
@@ -149,19 +150,20 @@ func (a *App) moveSelection(delta int) {
 		if delta > 0 {
 			row = 0
 		} else {
-			row = len(a.threads) - 1
+			row = len(threads) - 1
 		}
 	} else {
-		row = max(0, min(len(a.threads)-1, row+delta))
+		row = max(0, min(len(threads)-1, row+delta))
 	}
 	a.selectedRow = row
 	a.list.ScrollIntoView(row)
-	a.selectThread(a.threads[row].ID)
+	a.selectThread(threads[row].ID)
 }
 
 func (a *App) openSelected() {
-	if a.selectedRow >= 0 && a.selectedRow < len(a.threads) {
-		a.selectThread(a.threads[a.selectedRow].ID)
+	threads := a.visibleThreads()
+	if a.selectedRow >= 0 && a.selectedRow < len(threads) {
+		a.selectThread(threads[a.selectedRow].ID)
 	}
 }
 

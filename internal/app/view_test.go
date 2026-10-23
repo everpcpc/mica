@@ -57,3 +57,62 @@ func TestImportantMarkerAppearsInListAndReader(t *testing.T) {
 		t.Fatalf("Important appears %d time(s), want markers in both list and reader: %q", count, tt.Texts())
 	}
 }
+
+func TestUnreadFilterKeepsReaderOpen(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads, mail.ThreadSummary{
+		ID: "thread-2", Subject: "Already read", Senders: "Bob", LabelIDs: []string{mail.Inbox},
+	})
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("Filter unread"); err != nil {
+		t.Fatal(err)
+	}
+	if tt.HasText("Already read") || !tt.HasText("Launch plan") {
+		t.Fatalf("unread filter showed the wrong conversations: %q", tt.Texts())
+	}
+	if err := tt.Click("Launch plan"); err != nil {
+		t.Fatal(err)
+	}
+	if a.thread.ID != "thread-1" || !tt.HasText("Launch plan") {
+		t.Fatal("opening a filtered conversation did not keep its reader visible")
+	}
+	if !tt.HasText("No unread conversations") {
+		t.Fatalf("read conversation remained in the unread filter: %q", tt.Texts())
+	}
+	if err := tt.Click("Show all mail"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Already read") || a.thread.ID != "thread-1" {
+		t.Fatalf("restoring all mail lost a conversation or the reader: %q", tt.Texts())
+	}
+}
+
+func TestUnreadFilterKeyboardNavigation(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads,
+		mail.ThreadSummary{ID: "thread-2", Subject: "Already read", LabelIDs: []string{mail.Inbox}},
+		mail.ThreadSummary{
+			ID: "thread-3", Subject: "Another unread", LabelIDs: []string{mail.Inbox, mail.Unread}, Unread: true,
+		},
+	)
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{
+			ID: id, Subject: id,
+			Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}},
+		}, nil
+	}
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("Filter unread"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(0, ui.KeyJ)
+	if a.selectedThread != "thread-1" {
+		t.Fatalf("first keyboard selection = %q, want thread-1", a.selectedThread)
+	}
+	tt.Key(0, ui.KeyJ)
+	if a.selectedThread != "thread-3" || a.thread.ID != "thread-3" {
+		t.Fatalf("keyboard navigation did not follow the filtered list: selected=%q loaded=%q", a.selectedThread, a.thread.ID)
+	}
+}

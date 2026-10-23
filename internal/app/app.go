@@ -32,6 +32,7 @@ type App struct {
 	sidebarWidth   float32
 	listWidth      float32
 	query          string
+	unreadOnly     bool
 
 	loading         bool
 	threadLoading   bool
@@ -108,11 +109,6 @@ func New(service mail.Service) *App {
 	}
 	a.resetMessageViews()
 	a.list.Selected = &a.selectedRow
-	a.list.Key = func(i int) any { return a.threads[i].ID }
-	a.list.Label = func(i int) string {
-		t := a.threads[i]
-		return t.Senders + ", " + t.Subject + ", " + t.Snippet
-	}
 	return a
 }
 
@@ -269,8 +265,21 @@ func (a *App) refreshList() {
 	})
 }
 
-func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
-	a.threads = threads
+func (a *App) visibleThreads() []mail.ThreadSummary {
+	if !a.unreadOnly {
+		return a.threads
+	}
+	visible := make([]mail.ThreadSummary, 0, len(a.threads))
+	for _, thread := range a.threads {
+		if thread.Unread {
+			visible = append(visible, thread)
+		}
+	}
+	return visible
+}
+
+func (a *App) syncThreadSelection(clearMissing bool) {
+	threads := a.visibleThreads()
 	if a.selectedThread == "" {
 		if a.selectedRow >= len(threads) {
 			a.selectedRow = -1
@@ -283,11 +292,21 @@ func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
 			return
 		}
 	}
-	if clearMissing {
-		a.clearThread()
-	} else {
-		a.selectedRow = -1
+	a.selectedRow = -1
+	if !clearMissing {
+		return
 	}
+	for i := range a.threads {
+		if a.threads[i].ID == a.selectedThread {
+			return
+		}
+	}
+	a.clearThread()
+}
+
+func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
+	a.threads = threads
+	a.syncThreadSelection(clearMissing)
 }
 
 func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string) {
@@ -426,6 +445,7 @@ func (a *App) showThread(id string, thread mail.Thread) {
 			break
 		}
 	}
+	a.syncThreadSelection(false)
 }
 
 func (a *App) selectedSummary() *mail.ThreadSummary {
@@ -597,24 +617,17 @@ func (a *App) removeThread(id string) {
 	}
 	if a.selectedThread == id {
 		a.selectedThread = ""
-		if len(a.threads) == 0 {
+		threads := a.visibleThreads()
+		if len(threads) == 0 {
 			a.clearThread()
 			return
 		}
-		a.selectedRow = min(removed, len(a.threads)-1)
-		a.selectThread(a.threads[a.selectedRow].ID)
+		row := max(a.selectedRow, 0)
+		a.selectedRow = min(row, len(threads)-1)
+		a.selectThread(threads[a.selectedRow].ID)
 		return
 	}
-	if a.selectedThread != "" {
-		for i := range a.threads {
-			if a.threads[i].ID == a.selectedThread {
-				a.selectedRow = i
-				break
-			}
-		}
-	} else if a.selectedRow >= len(a.threads) {
-		a.selectedRow = -1
-	}
+	a.syncThreadSelection(false)
 }
 
 func (a *App) updateThreadLabels(id string, add, remove []string) {
@@ -639,6 +652,7 @@ func (a *App) updateThreadLabels(id string, add, remove []string) {
 			a.thread.Messages[i].LabelIDs = modifyLabelIDs(a.thread.Messages[i].LabelIDs, add, remove)
 		}
 	}
+	a.syncThreadSelection(false)
 	if !a.accountVerified {
 		return
 	}
@@ -722,5 +736,5 @@ func (a *App) errorText() string {
 	if a.loading {
 		return locales.LoadingMail()
 	}
-	return locales.ConversationCount(len(a.threads))
+	return locales.ConversationCount(len(a.visibleThreads()))
 }

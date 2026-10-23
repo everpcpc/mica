@@ -11,7 +11,7 @@ The primary tasks are reading conversations, processing the inbox, and replying 
 The current message is the focus. The sidebar and conversation list stay quiet and compact.
 The sidebar is about 200pt, the list about 340pt, and the reader content is centered and capped at 960pt for comfortable line lengths.
 The interface uses the system font, subtle dividers, unread weight and dots, muted avatars, and one blue accent.
-A gray reading surface and a white message body separate content from the surrounding chrome without marketing gradients or decorative illustrations.
+The reading surface holds HTML mail directly, while plain-text bodies keep a small reading inset; neither uses an additional card.
 The app icon is a white rounded square with a four-color envelope inspired by Gmail, while the interface keeps its own identity.
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.
 Gmail sign-in uses the embedded OAuth client by default; a custom client is available in a collapsed section.
@@ -21,6 +21,7 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 
 - Without a Gmail connection, a clearly labeled demo mailbox supports the full workflow.
 - Label switching, global Gmail search, conversation loading, empty results, request failures, and offline states.
+- The conversation list can instantly filter to unread threads without changing the Gmail query; opening a thread may remove it from the filtered list while keeping it open in the reader.
 - Gmail mailboxes, categories, label visibility, and user labels share one navigation model; internal system labels stay out of the Labels section.
 - Label details are fetched individually because the label list endpoint omits message counts.
 - Remote, data, and Content-ID inline images load through the `mica-img` protocol with per-message tokens. Remote requests never carry Gmail credentials and only connect to public IP addresses; closing a message revokes its tokens.
@@ -41,7 +42,7 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 ## Motion
 
 - Buttons and selection states use MyGo's small, built-in feedback.
-- Loaded conversation content fades in rather than flashing a blank pane.
+- Loaded conversation content fades in with a 10pt upward movement over 240ms rather than flashing a blank pane.
 - The first reader entrance and later conversation transitions use the same short motion. Toasts fade in and out.
 - MyGo removes or shortens nonessential motion when Reduce Motion is enabled.
 

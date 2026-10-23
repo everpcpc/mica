@@ -504,6 +504,26 @@ func (msgs Messages) ReplyAll() string {
 	return Catalog.Format(msgs.locale, "replyAll", nil)
 }
 
+// FilterUnread says "Filter unread"
+// in the language the app shows.
+func FilterUnread() string { return In(i18n.Locale()).FilterUnread() }
+
+// FilterUnread says "Filter unread"
+// in the language of msgs.
+func (msgs Messages) FilterUnread() string {
+	return Catalog.Format(msgs.locale, "filterUnread", nil)
+}
+
+// ShowAllMail says "Show all mail"
+// in the language the app shows.
+func ShowAllMail() string { return In(i18n.Locale()).ShowAllMail() }
+
+// ShowAllMail says "Show all mail"
+// in the language of msgs.
+func (msgs Messages) ShowAllMail() string {
+	return Catalog.Format(msgs.locale, "showAllMail", nil)
+}
+
 // Forward says "Forward"
 // in the language the app shows.
 func Forward() string { return In(i18n.Locale()).Forward() }
@@ -602,6 +622,26 @@ func Cc() string { return In(i18n.Locale()).Cc() }
 // in the language of msgs.
 func (msgs Messages) Cc() string {
 	return Catalog.Format(msgs.locale, "cc", nil)
+}
+
+// EmptyUnread says "No unread conversations"
+// in the language the app shows.
+func EmptyUnread() string { return In(i18n.Locale()).EmptyUnread() }
+
+// EmptyUnread says "No unread conversations"
+// in the language of msgs.
+func (msgs Messages) EmptyUnread() string {
+	return Catalog.Format(msgs.locale, "emptyUnread", nil)
+}
+
+// EmptyUnreadHint says "Turn off the filter to see all conversations."
+// in the language the app shows.
+func EmptyUnreadHint() string { return In(i18n.Locale()).EmptyUnreadHint() }
+
+// EmptyUnreadHint says "Turn off the filter to see all conversations."
+// in the language of msgs.
+func (msgs Messages) EmptyUnreadHint() string {
+	return Catalog.Format(msgs.locale, "emptyUnreadHint", nil)
 }
 
 // Bcc says "Bcc"
