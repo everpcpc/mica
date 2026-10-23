@@ -261,3 +261,107 @@ func TestThreadCacheTracksLabelChanges(t *testing.T) {
 	}
 	t.Fatalf("cached labels = %v, want STARRED", a.thread.LabelIDs)
 }
+
+func TestArchiveIsOptimisticAndSerializesRequests(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads,
+		mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}},
+		mail.ThreadSummary{ID: "thread-3", Subject: "Third", LabelIDs: []string{mail.Inbox}},
+	)
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{
+			ID: id, Subject: id,
+			Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}},
+		}, nil
+	}
+	a := newTestApp(service)
+	for _, id := range []string{"thread-1", "thread-2", "thread-3"} {
+		a.selectThread(id)
+	}
+	a.selectThread("thread-1")
+	service.modified = nil
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+
+	a.archive()
+	if len(a.threads) != 2 || a.selectedThread != "thread-2" {
+		t.Fatalf("archive did not update the UI before the request: threads=%v selected=%q", a.threads, a.selectedThread)
+	}
+	a.archive()
+	if len(a.threads) != 1 || a.selectedThread != "thread-3" {
+		t.Fatalf("second archive did not update the UI immediately: threads=%v selected=%q", a.threads, a.selectedThread)
+	}
+	if len(jobs) != 1 || len(service.modified) != 0 {
+		t.Fatalf("queued requests ran ahead of schedule: jobs=%d modified=%v", len(jobs), service.modified)
+	}
+	jobs[0]()
+	if len(jobs) != 2 || len(service.modified) != 1 || service.modified[0] != "thread-1" {
+		t.Fatalf("first request did not release the second in order: jobs=%d modified=%v", len(jobs), service.modified)
+	}
+	jobs[1]()
+	if len(service.modified) != 2 || service.modified[1] != "thread-2" {
+		t.Fatalf("request order = %v, want thread-1 then thread-2", service.modified)
+	}
+}
+
+func TestUndoRestoresArchivedThreadBeforeRequest(t *testing.T) {
+	service := newFakeService()
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	service.modified = nil
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+
+	a.archive()
+	if len(a.threads) != 0 {
+		t.Fatal("archive waited for the service before removing the thread")
+	}
+	a.undoLast()
+	if len(a.threads) != 1 || !containsLabel(a.threads[0].LabelIDs, mail.Inbox) {
+		t.Fatalf("undo did not restore the thread locally: %+v", a.threads)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("undo ran concurrently with archive: %d scheduled jobs", len(jobs))
+	}
+	jobs[0]()
+	if len(jobs) != 2 {
+		t.Fatal("undo was not queued after archive")
+	}
+	jobs[1]()
+	if len(service.modified) != 2 || len(service.add) != 1 || service.add[0] != mail.Inbox {
+		t.Fatalf("undo requests = %v, final added labels %v", service.modified, service.add)
+	}
+}
+
+func TestTrashUndoMatchesQueuedLabels(t *testing.T) {
+	service := newFakeService()
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	service.modified = nil
+	service.add = nil
+	service.remove = nil
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+
+	a.trash()
+	if len(a.threads) != 0 {
+		t.Fatal("trash waited for the service before removing the thread")
+	}
+	a.selectedLabel = mail.All
+	a.undoLast()
+	if len(a.threads) != 1 {
+		t.Fatal("trash undo did not restore the thread locally")
+	}
+	labels := a.threads[0].LabelIDs
+	if containsLabel(labels, mail.Inbox) || containsLabel(labels, mail.Trash) {
+		t.Fatalf("local labels %v do not match the queued undo: add=%v remove=%v", labels, service.add, service.remove)
+	}
+	jobs[0]()
+	if len(jobs) != 2 {
+		t.Fatal("trash undo was not queued after trash")
+	}
+	jobs[1]()
+	if service.trashed != "thread-1" || len(service.remove) != 1 || service.remove[0] != mail.Trash {
+		t.Fatalf("trash requests = %q, undo removals = %v", service.trashed, service.remove)
+	}
+}

@@ -36,7 +36,10 @@ type App struct {
 
 	loading         bool
 	threadLoading   bool
-	mutating        bool
+	mutationQueue   []mutationJob
+	mutationRunning bool
+	mutationRefresh bool
+	mutationLabels  bool
 	err             string
 	threadErr       string
 	notice          string
@@ -208,6 +211,10 @@ func (a *App) publish(fn func()) {
 }
 
 func (a *App) refresh() {
+	if a.mutationsPending() {
+		a.mutationRefresh = true
+		return
+	}
 	a.threadCache = make(map[string]mail.Thread)
 	if a.selectedThread != "" {
 		id := a.selectedThread
@@ -458,20 +465,13 @@ func (a *App) selectedSummary() *mail.ThreadSummary {
 }
 
 func (a *App) markRead(id string) {
-	service, version := a.service, a.serviceVersion
-	a.schedule(func() {
-		err := service.ModifyThread(context.Background(), id, nil, []string{mail.Unread})
-		a.publish(func() {
-			if version != a.serviceVersion {
-				return
-			}
-			if err != nil {
-				a.notice = locales.ReadStatusFailed(err.Error())
-				return
-			}
-			a.updateThreadLabels(id, nil, []string{mail.Unread})
-			a.reloadLabels()
-		})
+	a.updateThreadLabels(id, nil, []string{mail.Unread})
+	a.enqueueMutation(mutationJob{
+		service:    a.service,
+		id:         id,
+		remove:     []string{mail.Unread},
+		readStatus: true,
+		failure:    locales.ReadStatusFailed,
 	})
 }
 
@@ -493,11 +493,10 @@ func (a *App) reloadLabels() {
 
 func (a *App) toggleStar() {
 	summary := a.selectedSummary()
-	if summary == nil || a.mutating {
+	if summary == nil {
 		return
 	}
 	starred := !summary.Starred
-	summary.Starred = starred
 	add, remove := []string{mail.Starred}, []string(nil)
 	if !starred {
 		add, remove = remove, add
@@ -513,11 +512,10 @@ func (a *App) toggleStar() {
 
 func (a *App) toggleUnread() {
 	summary := a.selectedSummary()
-	if summary == nil || a.mutating {
+	if summary == nil {
 		return
 	}
 	unread := !summary.Unread
-	summary.Unread = unread
 	add, remove := []string{mail.Unread}, []string(nil)
 	if !unread {
 		add, remove = remove, add
@@ -533,7 +531,7 @@ func (a *App) toggleUnread() {
 
 func (a *App) archive() {
 	summary := a.selectedSummary()
-	if summary == nil || a.mutating {
+	if summary == nil {
 		return
 	}
 	a.recordUndo(summary.ID, []string{mail.Inbox}, nil)
@@ -542,60 +540,38 @@ func (a *App) archive() {
 
 func (a *App) trash() {
 	summary := a.selectedSummary()
-	if summary == nil || a.mutating || a.selectedLabel == mail.Trash {
+	if summary == nil || a.selectedLabel == mail.Trash {
 		return
 	}
-	a.mutating = true
 	id := summary.ID
 	a.recordUndo(id, nil, []string{mail.Trash})
-	service, version := a.service, a.serviceVersion
-	a.schedule(func() {
-		err := service.TrashThread(context.Background(), id)
-		a.publish(func() {
-			if version != a.serviceVersion {
-				return
-			}
-			a.mutating = false
-			if err != nil {
-				if a.undo != nil && a.undo.id == id {
-					a.undo = nil
-				}
-				a.notice = locales.TrashFailed(err.Error())
-				return
-			}
-			a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
-			a.removeThread(id)
-			a.reloadLabels()
-			a.notice = locales.Trashed()
-		})
+	a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
+	a.captureUndoSummary(id)
+	a.removeThread(id)
+	a.notice = locales.Trashed()
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		id:      id,
+		trash:   true,
+		undo:    a.undo,
+		failure: locales.TrashFailed,
 	})
 }
 
 func (a *App) mutate(id string, add, remove []string, removeFromList bool, message func() string) {
-	a.mutating = true
-	service, version := a.service, a.serviceVersion
-	a.schedule(func() {
-		err := service.ModifyThread(context.Background(), id, add, remove)
-		a.publish(func() {
-			if version != a.serviceVersion {
-				return
-			}
-			a.mutating = false
-			if err != nil {
-				if a.undo != nil && a.undo.id == id {
-					a.undo = nil
-				}
-				a.notice = locales.ActionFailed(err.Error())
-				a.refresh()
-				return
-			}
-			a.updateThreadLabels(id, add, remove)
-			if removeFromList {
-				a.removeThread(id)
-			}
-			a.reloadLabels()
-			a.notice = message()
-		})
+	a.updateThreadLabels(id, add, remove)
+	a.captureUndoSummary(id)
+	if removeFromList {
+		a.removeThread(id)
+	}
+	a.notice = message()
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		id:      id,
+		add:     add,
+		remove:  remove,
+		undo:    a.undo,
+		failure: locales.ActionFailed,
 	})
 }
 

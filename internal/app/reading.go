@@ -15,14 +15,14 @@ func (a *App) reader(c *ui.Context) {
 	bar := c.TitleBar()
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
 		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, bar.Right+14, 0, 16).Gap(5).AlignItems(ui.Center).DragWindow().Children(func() {
-			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "" || a.mutating)
-			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.mutating || a.selectedLabel == mail.Trash)
-			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "" || a.mutating)
+			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "")
+			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash)
+			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "")
 			starLabel := locales.AddStar()
 			if summary := a.selectedSummary(); summary != nil && summary.Starred {
 				starLabel = locales.RemoveStar()
 			}
-			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(a.selectedThread == "" || a.mutating)
+			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(a.selectedThread == "")
 			if summary := a.selectedSummary(); summary != nil && summary.Starred {
 				star.TextColor(t.Warning)
 			}
