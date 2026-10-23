@@ -34,6 +34,7 @@ Mica is built and maintained by agent sessions. This file is the entry point; th
 
 ## Public writing
 
+- Write code comments and repository documentation, including lessons, in English. Localization resources are the only exception.
 - Docs, lessons, and issue/PR text record mechanisms and verification evidence, not local machine details or personal attribution. Do not include hostnames, absolute paths, internal addresses, or private conversation content.
 
 ## Session ritual
