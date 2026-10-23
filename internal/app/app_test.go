@@ -13,20 +13,22 @@ import (
 )
 
 type fakeService struct {
-	account     mail.Account
-	labels      []mail.Label
-	threads     []mail.ThreadSummary
-	thread      mail.Thread
-	threadFunc  func(string) (mail.Thread, error)
-	modified    []string
-	add         []string
-	remove      []string
-	trashed     string
-	sent        mail.Compose
-	sendErr     error
-	watchID     uint64
-	historyFunc func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
-	stream      func(context.Context, func(uint64) error) error
+	account       mail.Account
+	labels        []mail.Label
+	threads       []mail.ThreadSummary
+	thread        mail.Thread
+	threadFunc    func(string) (mail.Thread, error)
+	modified      []string
+	add           []string
+	remove        []string
+	trashed       string
+	sent          mail.Compose
+	sendErr       error
+	createdLabels []string
+	deletedLabels []string
+	watchID       uint64
+	historyFunc   func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
+	stream        func(context.Context, func(uint64) error) error
 }
 
 func newFakeService() *fakeService {
@@ -75,6 +77,22 @@ func (f *fakeService) ModifyThread(_ context.Context, id string, add, remove []s
 }
 func (f *fakeService) TrashThread(_ context.Context, id string) error {
 	f.trashed = id
+	return nil
+}
+func (f *fakeService) CreateLabel(_ context.Context, name string) (mail.Label, error) {
+	f.createdLabels = append(f.createdLabels, name)
+	label := mail.Label{ID: "Label_new", Name: name}
+	f.labels = append(f.labels, label)
+	return label, nil
+}
+func (f *fakeService) DeleteLabel(_ context.Context, id string) error {
+	f.deletedLabels = append(f.deletedLabels, id)
+	for i := range f.labels {
+		if f.labels[i].ID == id {
+			f.labels = append(f.labels[:i], f.labels[i+1:]...)
+			break
+		}
+	}
 	return nil
 }
 func (f *fakeService) Send(_ context.Context, compose mail.Compose) error {

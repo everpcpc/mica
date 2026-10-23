@@ -97,6 +97,52 @@ func TestDemoLabelsListAndSearch(t *testing.T) {
 	}
 }
 
+func TestDemoCreateAndDeleteLabel(t *testing.T) {
+	ctx := context.Background()
+	service := NewDemo()
+	label, err := service.CreateLabel(ctx, "Receipts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if label.ID == "" || label.Name != "Receipts" {
+		t.Fatalf("created label = %+v", label)
+	}
+	if err := service.ModifyThread(ctx, "t-launch", []string{label.ID}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DeleteLabel(ctx, label.ID); err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.Thread(ctx, "t-launch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range thread.Messages {
+		if hasString(message.LabelIDs, label.ID) {
+			t.Fatalf("deleted label remains on a message: %v", message.LabelIDs)
+		}
+	}
+	labels, err := service.Labels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range labels {
+		if candidate.ID == label.ID {
+			t.Fatal("deleted label remains in the demo label list")
+		}
+	}
+	other := NewDemo()
+	otherLabels, err := other.Labels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range otherLabels {
+		if candidate.ID == label.ID {
+			t.Fatal("label creation leaked into another demo instance")
+		}
+	}
+}
+
 func TestDemoModifyTrashAndSend(t *testing.T) {
 	ctx := context.Background()
 	service := NewDemo()

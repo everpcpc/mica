@@ -109,3 +109,75 @@ func TestLabelMenuAddsRemovesAndUndoesCustomLabel(t *testing.T) {
 		t.Fatalf("undo did not restore the labeled conversation: %+v", a.threads)
 	}
 }
+
+func openLabelMenu(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	r, ok := tt.Find("Edit labels")
+	if !ok {
+		t.Fatal("label menu button not found")
+	}
+	x, y := r.X+r.W/2, r.Y+r.H/2
+	tt.Press(x, y)
+	tt.Release(x, y)
+}
+
+func TestLabelMenuCreatesCustomLabel(t *testing.T) {
+	service := newFakeService()
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	tt := ui.NewTester(a.View, 1280, 800)
+	openLabelMenu(t, tt)
+	if err := tt.ChooseMenuItem("New label…"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Label name"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("Receipts")
+	if err := tt.Click("Create label"); err != nil {
+		t.Fatal(err)
+	}
+	if len(service.createdLabels) != 1 || service.createdLabels[0] != "Receipts" {
+		t.Fatalf("created labels = %v, want Receipts", service.createdLabels)
+	}
+	for _, label := range a.labels {
+		if label.ID == "Label_new" && label.Name == "Receipts" {
+			return
+		}
+	}
+	t.Fatalf("created label missing from app state: %+v", a.labels)
+}
+
+func TestLabelMenuDeletesCustomLabelAfterConfirmation(t *testing.T) {
+	service := newFakeService()
+	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
+	service.threads[0].LabelIDs = append(service.threads[0].LabelIDs, "Label_9")
+	service.thread.LabelIDs = append(service.thread.LabelIDs, "Label_9")
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	tt := ui.NewTester(a.View, 1280, 800)
+	openLabelMenu(t, tt)
+	if err := tt.ChooseMenuItem("Delete label", "Receipts"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("Delete label?") {
+		t.Fatalf("delete confirmation missing: %q", tt.Texts())
+	}
+	if len(service.deletedLabels) != 0 {
+		t.Fatal("label was deleted before confirmation")
+	}
+	if err := tt.Click("Delete label"); err != nil {
+		t.Fatal(err)
+	}
+	if len(service.deletedLabels) != 1 || service.deletedLabels[0] != "Label_9" {
+		t.Fatalf("deleted labels = %v, want Label_9", service.deletedLabels)
+	}
+	for _, label := range a.labels {
+		if label.ID == "Label_9" {
+			t.Fatal("deleted label remains in app state")
+		}
+	}
+	if containsLabel(a.thread.LabelIDs, "Label_9") {
+		t.Fatalf("deleted label remains on the conversation: %v", a.thread.LabelIDs)
+	}
+}

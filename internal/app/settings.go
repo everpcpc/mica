@@ -358,6 +358,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.mutationLabels = false
 	a.undo = nil
 	a.compose = nil
+	a.labelDialog = nil
 	a.threadCache = nil
 	a.resetMessageViews()
 	a.clearThread()

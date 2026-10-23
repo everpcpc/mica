@@ -59,6 +59,7 @@ type App struct {
 	documents            map[string]*emailDocument
 	expandedMessages     map[string]bool
 	compose              *composer
+	labelDialog          *labelDialogState
 	settings             *settingsState
 	appearance           string
 	helpOpen             bool

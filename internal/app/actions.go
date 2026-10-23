@@ -15,17 +15,22 @@ type undoAction struct {
 }
 
 type mutationJob struct {
-	service    mail.Service
-	id         string
-	add        []string
-	remove     []string
-	trash      bool
-	readStatus bool
-	undo       *undoAction
-	failure    func(string) string
+	service     mail.Service
+	id          string
+	add         []string
+	remove      []string
+	trash       bool
+	deleteLabel bool
+	readStatus  bool
+	undo        *undoAction
+	failure     func(string) string
+	done        func(error)
 }
 
 func (j mutationJob) run() error {
+	if j.deleteLabel {
+		return j.service.(mail.LabelManager).DeleteLabel(context.Background(), j.id)
+	}
 	if j.trash {
 		return j.service.TrashThread(context.Background(), j.id)
 	}
@@ -135,6 +140,9 @@ func (a *App) pumpMutations() {
 				if job.failure != nil {
 					a.notice = job.failure(err.Error())
 				}
+			}
+			if job.done != nil {
+				job.done(err)
 			}
 			a.pumpMutations()
 		})

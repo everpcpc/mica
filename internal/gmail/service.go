@@ -178,6 +178,27 @@ func (s *Service) Label(ctx context.Context, id string) (mail.Label, error) {
 	return makeLabel(detail), nil
 }
 
+func (s *Service) CreateLabel(ctx context.Context, name string) (mail.Label, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return mail.Label{}, errors.New("gmail: empty label name")
+	}
+	body := struct {
+		Name                  string `json:"name"`
+		LabelListVisibility   string `json:"labelListVisibility"`
+		MessageListVisibility string `json:"messageListVisibility"`
+	}{Name: name, LabelListVisibility: "labelShow", MessageListVisibility: "labelShow"}
+	var detail apiLabel
+	if err := s.doJSON(ctx, http.MethodPost, "/labels", nil, body, &detail); err != nil {
+		return mail.Label{}, err
+	}
+	return makeLabel(detail), nil
+}
+
+func (s *Service) DeleteLabel(ctx context.Context, id string) error {
+	return s.doJSON(ctx, http.MethodDelete, "/labels/"+url.PathEscape(id), nil, nil, nil)
+}
+
 func makeLabel(detail apiLabel) mail.Label {
 	return mail.Label{
 		ID: detail.ID, Name: detail.Name, Messages: detail.MessagesTotal, Unread: detail.MessagesUnread,
