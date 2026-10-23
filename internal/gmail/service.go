@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -29,19 +30,22 @@ const (
 )
 
 type Service struct {
-	client      *http.Client
-	baseURL     string
-	userinfoURL string
-	userID      string
-	maxParallel int
-	projectID   string
-	tokenSource oauth2.TokenSource
+	client       *http.Client
+	baseURL      string
+	userinfoURL  string
+	userID       string
+	maxParallel  int
+	projectID    string
+	tokenSource  oauth2.TokenSource
+	sleep        func(context.Context, time.Duration) error
+	requestGroup singleflight.Group
 }
 
 type APIError struct {
 	StatusCode int
 	Reason     string
 	Message    string
+	RetryAfter time.Duration
 }
 
 func (e *APIError) Error() string {
@@ -107,7 +111,7 @@ func NewWithProject(client *http.Client, projectID string, source oauth2.TokenSo
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &Service{client: client, baseURL: gmailAPIURL, userinfoURL: googleUserinfoURL, userID: "me", maxParallel: listParallel, projectID: projectID, tokenSource: source}
+	return &Service{client: client, baseURL: gmailAPIURL, userinfoURL: googleUserinfoURL, userID: "me", maxParallel: listParallel, projectID: projectID, tokenSource: source, sleep: sleepContext}
 }
 
 func (s *Service) Account(ctx context.Context) (mail.Account, error) {
@@ -143,6 +147,16 @@ func (s *Service) Account(ctx context.Context) (mail.Account, error) {
 }
 
 func (s *Service) Labels(ctx context.Context) ([]mail.Label, error) {
+	value, err, _ := s.requestGroup.Do("labels", func() (any, error) {
+		return s.listLabels(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value.([]mail.Label), nil
+}
+
+func (s *Service) listLabels(ctx context.Context) ([]mail.Label, error) {
 	var response struct {
 		Labels []apiLabel `json:"labels"`
 	}
@@ -189,6 +203,17 @@ func (s *Service) Attachment(ctx context.Context, messageID, attachmentID string
 }
 
 func (s *Service) ListThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {
+	key := fmt.Sprintf("threads:%v", query)
+	value, err, _ := s.requestGroup.Do(key, func() (any, error) {
+		return s.listThreads(ctx, query)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return value.([]mail.ThreadSummary), nil
+}
+
+func (s *Service) listThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = threadListSize
@@ -276,19 +301,35 @@ func (s *Service) Thread(ctx context.Context, id string) (mail.Thread, error) {
 	return thread, err
 }
 
+type threadStateResult struct {
+	summary mail.ThreadSummary
+	thread  mail.Thread
+}
+
 func (s *Service) ThreadState(ctx context.Context, id string) (mail.ThreadSummary, mail.Thread, error) {
+	value, err, _ := s.requestGroup.Do("thread:"+id, func() (any, error) {
+		return s.threadState(ctx, id)
+	})
+	if err != nil {
+		return mail.ThreadSummary{}, mail.Thread{}, err
+	}
+	result := value.(threadStateResult)
+	return result.summary, result.thread, nil
+}
+
+func (s *Service) threadState(ctx context.Context, id string) (threadStateResult, error) {
 	if id == "" {
-		return mail.ThreadSummary{}, mail.Thread{}, errors.New("gmail: empty thread ID")
+		return threadStateResult{}, errors.New("gmail: empty thread ID")
 	}
 	apiThread, err := s.getThread(ctx, id, "full")
 	if err != nil {
-		return mail.ThreadSummary{}, mail.Thread{}, err
+		return threadStateResult{}, err
 	}
 	thread, err := makeThread(apiThread)
 	if err != nil {
-		return mail.ThreadSummary{}, mail.Thread{}, err
+		return threadStateResult{}, err
 	}
-	return makeSummary(apiThread), thread, nil
+	return threadStateResult{summary: makeSummary(apiThread), thread: thread}, nil
 }
 
 func (s *Service) getThread(ctx context.Context, id, format string) (apiThread, error) {
@@ -356,13 +397,13 @@ func (s *Service) Send(ctx context.Context, compose mail.Compose) error {
 }
 
 func (s *Service) doJSON(ctx context.Context, method, path string, query url.Values, body, result any) error {
-	var payload io.Reader
+	var payload []byte
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("gmail: encode request: %w", err)
 		}
-		payload = bytes.NewReader(encoded)
+		payload = encoded
 	}
 	requestURL := path
 	if !strings.HasPrefix(path, "https://") && !strings.HasPrefix(path, "http://") {
@@ -371,32 +412,53 @@ func (s *Service) doJSON(ctx context.Context, method, path string, query url.Val
 	if len(query) > 0 {
 		requestURL += "?" + query.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, method, requestURL, payload)
-	if err != nil {
-		return fmt.Errorf("gmail: create request: %w", err)
+	sleep := s.sleep
+	if sleep == nil {
+		sleep = sleepContext
 	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, method, requestURL, bytes.NewReader(payload))
+		if err != nil {
+			return fmt.Errorf("gmail: create request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json; charset=utf-8")
+		}
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("gmail: request failed: %w", err)
+		}
+		success, err := s.doJSONAttempt(resp, result)
+		if success || err == nil {
+			return err
+		}
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || !apiErr.Transient() || attempt == maxAttempts {
+			return err
+		}
+		if err := sleep(ctx, retryDelay(attempt, apiErr.RetryAfter)); err != nil {
+			return err
+		}
 	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("gmail: request failed: %w", err)
-	}
+	return errors.New("gmail: retry loop exhausted")
+}
+
+func (s *Service) doJSONAttempt(resp *http.Response, result any) (bool, error) {
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return readAPIError(resp)
+		return false, readAPIError(resp)
 	}
 	if result == nil || resp.StatusCode == http.StatusNoContent {
-		return nil
+		return true, nil
 	}
 	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-		return fmt.Errorf("gmail: decode response: %w", err)
+		return true, fmt.Errorf("gmail: decode response: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 func readAPIError(resp *http.Response) error {
@@ -414,6 +476,7 @@ func readAPIError(resp *http.Response) error {
 	if len(response.Error.Errors) > 0 {
 		apiErr.Reason = response.Error.Errors[0].Reason
 	}
+	apiErr.RetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
 	return apiErr
 }
 
