@@ -28,13 +28,14 @@ type App struct {
 	threadCache            map[string]mail.Thread
 	profileReauthAttempted bool
 
-	selectedLabel  string
-	selectedThread string
-	selectedRow    int
-	sidebarWidth   float32
-	listWidth      float32
-	query          string
-	unreadOnly     bool
+	selectedLabel        string
+	selectedThread       string
+	selectedRow          int
+	startupSelectionDone bool
+	sidebarWidth         float32
+	listWidth            float32
+	query                string
+	unreadOnly           bool
 
 	loading         bool
 	loadingMore     bool
@@ -284,6 +285,7 @@ func (a *App) refreshList() {
 			a.listFreshRequest = request
 			a.nextPageToken = page.NextPageToken
 			a.applyThreadList(page.Threads, true)
+			a.startupSelectionDone = true
 			if a.accountVerified {
 				a.persistList(query, page.Threads)
 			}
@@ -359,6 +361,11 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
 	a.threads = threads
 	a.syncThreadSelection(clearMissing)
+	if !a.startupSelectionDone && a.selectedThread == "" {
+		if visible := a.visibleThreads(); len(visible) > 0 {
+			a.selectThread(visible[0].ID)
+		}
+	}
 }
 
 func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string) {
@@ -412,6 +419,7 @@ func (a *App) selectLabel() {
 }
 
 func (a *App) clearThread() {
+	a.startupSelectionDone = true
 	a.closeEmailViews()
 	a.threadCall++
 	a.selectedRow = -1
@@ -425,6 +433,7 @@ func (a *App) selectThread(id string) {
 	if id == "" || id == a.selectedThread {
 		return
 	}
+	a.startupSelectionDone = true
 	a.threadCall++
 	call := a.threadCall
 	a.selectedThread = id

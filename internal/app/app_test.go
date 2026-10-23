@@ -104,8 +104,29 @@ func newTestApp(service *fakeService) *App {
 	a := New(service)
 	a.schedule = func(fn func()) { fn() }
 	a.restoreAttempted = true
+	a.startupSelectionDone = true
 	a.Start()
 	return a
+}
+
+func TestAccountSwitchRestartsThreadSelection(t *testing.T) {
+	a := New(newFakeService())
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.Start()
+	if a.selectedThread != "thread-1" {
+		t.Fatalf("initial selection = %q, want thread-1", a.selectedThread)
+	}
+	service := newFakeService()
+	service.threads[0].ID = "thread-2"
+	service.thread = mail.Thread{
+		ID: "thread-2", Subject: "Second account",
+		Messages: []mail.Message{{ID: "message-2", ThreadID: "thread-2", Text: "Second account body"}},
+	}
+	a.useService(service)
+	if a.selectedThread != "thread-2" || a.selectedRow != 0 || a.thread.ID != "thread-2" {
+		t.Fatalf("selection after account switch = %q at row %d, detail=%q; want thread-2", a.selectedThread, a.selectedRow, a.thread.ID)
+	}
 }
 
 func TestSelectThreadLoadsMessagesAndMarksRead(t *testing.T) {
