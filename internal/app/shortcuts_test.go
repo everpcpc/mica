@@ -75,6 +75,45 @@ func TestArchiveShortcutTwiceAdvancesSelection(t *testing.T) {
 	}
 }
 
+func TestArchiveSelectionAndDetailStayInSync(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		selected int
+		wantID   string
+		wantRow  int
+	}{
+		{name: "first", selected: 0, wantID: "thread-2", wantRow: 0},
+		{name: "last", selected: 2, wantID: "thread-2", wantRow: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.threads = append(service.threads,
+				mail.ThreadSummary{ID: "thread-2", Subject: "Second", Senders: "Bob", LabelIDs: []string{mail.Inbox}},
+				mail.ThreadSummary{ID: "thread-3", Subject: "Third", Senders: "Cid", LabelIDs: []string{mail.Inbox}},
+			)
+			a := newTestApp(service)
+			for _, summary := range service.threads {
+				a.threadCache[summary.ID] = mail.Thread{
+					ID: summary.ID, Subject: summary.Subject,
+					Messages: []mail.Message{{ID: "message-" + summary.ID, ThreadID: summary.ID, Text: summary.Subject + " body"}},
+				}
+			}
+			a.selectThread(service.threads[tc.selected].ID)
+			tt := ui.NewTester(a.View, 1280, 800)
+			tt.Key(0, ui.KeyE)
+			if a.thread.ID != tc.wantID {
+				t.Fatalf("detail after archive = %q, want %q", a.thread.ID, tc.wantID)
+			}
+			if a.selectedThread != tc.wantID || a.selectedRow != tc.wantRow {
+				t.Fatalf("selection after archive = %q at row %d, want %q at row %d; detail is already %q", a.selectedThread, a.selectedRow, tc.wantID, tc.wantRow, a.thread.ID)
+			}
+			if a.threadSelection.Len() != 1 || !a.threadSelection.Has(tc.wantID) {
+				t.Fatalf("list selection after archive does not contain only %q", tc.wantID)
+			}
+		})
+	}
+}
+
 func TestReportSpamAndUndo(t *testing.T) {
 	service := newFakeService()
 	a := newTestApp(service)

@@ -34,6 +34,7 @@ Appearance follows the system unless the user selects Light or Dark. Motion resp
 - Cached content appears before network revalidation, while fresh in-memory conversations still avoid duplicate requests during the same session. Network failures leave cached content visible, and background body updates preserve the reading position. Attachment binaries and remote images remain on demand; only attachment metadata is persisted.
 - Conversation lists load 25 threads initially and fetch the next 25 when scrolled to the end; loaded pages are merged into the same query snapshot without losing selection.
 - Opening a conversation synchronizes its list selection before cached or network detail loading, whether the open came from list input or a thread ID.
+- Single-selection highlighting is keyed by thread ID, so choosing an adjacent conversation after an archive cannot be confused with following the removed row; the highlight and reader stay on the same conversation.
 - Startup and account switches select the newest conversation from the first non-empty list and restore cached detail when available. Later refreshes can insert newer conversations above it without changing the selected thread or switching the reader.
 - Closing the main window hides it and keeps Mica in the Dock. Dock activation restores the same window, while Quit still exits.
 - Settings opens from the application menu with Cmd+, and the main window is restored when necessary.

@@ -31,6 +31,7 @@ type App struct {
 	selectedLabel        string
 	selectedThread       string
 	selectedRow          int
+	threadSelection      ui.Selection[string]
 	startupSelectionDone bool
 	sidebarWidth         float32
 	listWidth            float32
@@ -118,6 +119,7 @@ func New(service mail.Service) *App {
 	}
 	a.resetMessageViews()
 	a.list.Selected = &a.selectedRow
+	a.list.Selection = &a.threadSelection
 	return a
 }
 
@@ -335,6 +337,7 @@ func (a *App) visibleThreads() []mail.ThreadSummary {
 func (a *App) syncThreadSelection(clearMissing bool) {
 	threads := a.visibleThreads()
 	if a.selectedThread == "" {
+		a.threadSelection.Clear()
 		if a.selectedRow >= len(threads) {
 			a.selectedRow = -1
 		}
@@ -343,10 +346,13 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 	for i := range threads {
 		if threads[i].ID == a.selectedThread {
 			a.selectedRow = i
+			a.threadSelection.Clear()
+			a.threadSelection.Add(a.selectedThread)
 			return
 		}
 	}
 	a.selectedRow = -1
+	a.threadSelection.Clear()
 	if !clearMissing {
 		return
 	}
@@ -424,13 +430,18 @@ func (a *App) clearThread() {
 	a.threadCall++
 	a.selectedRow = -1
 	a.selectedThread = ""
+	a.threadSelection.Clear()
 	a.thread = mail.Thread{}
 	a.threadErr = ""
 	a.threadLoading = false
 }
 
 func (a *App) selectThread(id string) {
-	if id == "" || id == a.selectedThread {
+	if id == "" {
+		return
+	}
+	if id == a.selectedThread {
+		a.syncThreadSelection(false)
 		return
 	}
 	a.startupSelectionDone = true
