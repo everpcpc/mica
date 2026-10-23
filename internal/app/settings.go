@@ -352,7 +352,11 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.unreadOnly = false
 	a.selectedLabel = mail.Inbox
 	a.err = ""
-	a.mutating = false
+	a.mutationQueue = nil
+	a.mutationRunning = false
+	a.mutationRefresh = false
+	a.mutationLabels = false
+	a.undo = nil
 	a.compose = nil
 	a.threadCache = nil
 	a.resetMessageViews()
