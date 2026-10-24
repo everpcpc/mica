@@ -92,6 +92,14 @@ func main() {
 			win.Show()
 		}
 	})
+	mygo.App.OnOpenURL(func(raw string) {
+		if err := a.OpenMailto(raw); err != nil {
+			log.Printf("open mailto: %v", err)
+		}
+		if win != nil {
+			win.Show()
+		}
+	})
 	quitting := false
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
