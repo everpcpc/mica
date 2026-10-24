@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 - 2026-10-24
+
+- Added multi-file attachments to composing, replying, and forwarding, with background reads, a 25 MB total limit, and byte-preserving retries.
+- Added Reply, Reply all, and Forward actions for individual messages, using the selected message's recipients, quote, threading headers, and attachments.
+- Added Gmail draft autosave, offline recovery, editing, discard, and draft-specific sending, with account-scoped SQLite snapshots and attachment preservation.
+
 ## 0.9.2 - 2026-10-24
 
 - Kept account photos static by showing the first frame of animated images without scheduling playback.
