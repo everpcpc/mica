@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-10-24
+
+- Prevented HTML messages from opening as a one-line strip while waiting for their body height, using the reader viewport until measurement completes at DOM readiness.
+
 ## 0.9.0 - 2026-10-24
 
 - Unified application styling with shared gradient primary actions, bordered dialog panels, rounded conversation selection, and shortcut keycaps.
