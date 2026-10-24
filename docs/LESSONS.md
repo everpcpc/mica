@@ -48,6 +48,12 @@
 - Do not fill missing reply headers from the thread's latest message when the caller selected a different message. An explicit resolved-threading marker distinguishes intentional empty headers from unresolved legacy calls.
 - ID-less inline attachments need a stable per-message position key; message ID alone would make their loading and error states collide.
 
+## Serialize draft saves and preserve identity
+
+- Sending an existing draft must wait for the current create or update to finish. A generation check can discard a stale UI callback, but it cannot cancel the older server write or prevent a deleted draft from reappearing.
+- When a create succeeds with newer unsaved edits, persist the new draft ID immediately so crash recovery cannot create a duplicate.
+- Empty-draft checks must include HTML and attachments, not only plain text.
+
 ## Verify visuals through real rendering
 
 - Do not validate animation only by its parameters. Inspect start, middle, and end frames for jumps, ghosting, and blank screens.
