@@ -29,7 +29,15 @@ type composerAttachment struct {
 
 func (a *App) chooseComposeAttachments() {
 	m := a.compose
-	if m == nil || m.sending {
+	if m == nil {
+		return
+	}
+	if m.sending {
+		m.err = locales.AttachmentsSending()
+		return
+	}
+	if m.pendingAction != composerActionNone {
+		m.err = locales.AttachmentsBusy()
 		return
 	}
 	openDialog := a.openDialog
@@ -67,6 +75,10 @@ func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource, edi
 	}
 	if m.sending {
 		m.err = locales.AttachmentsSending()
+		return
+	}
+	if m.pendingAction != composerActionNone {
+		m.err = locales.AttachmentsBusy()
 		return
 	}
 	for _, source := range sources {

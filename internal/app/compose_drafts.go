@@ -32,7 +32,7 @@ const (
 
 func (a *App) draftManager(m *composer) (mailmodel.DraftManager, bool) {
 	manager, ok := a.service.(mailmodel.DraftManager)
-	if !ok || a.storeAccount != "" && !strings.EqualFold(a.account.Email, a.storeAccount) {
+	if !ok || !a.accountVerified || a.storeAccount != "" && !strings.EqualFold(a.account.Email, a.storeAccount) {
 		return nil, false
 	}
 	if m != nil && m.recoveryAccount != "" && !strings.EqualFold(m.recoveryAccount, a.account.Email) {
@@ -335,6 +335,12 @@ func (a *App) sendComposeWithDraft() {
 
 func (a *App) beginSendCompose(m *composer) {
 	if a.compose != m {
+		return
+	}
+	if m.recoveryAccount != "" && (!a.accountVerified || !strings.EqualFold(m.recoveryAccount, a.account.Email)) {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.DraftSaveFailedReason("account is not verified")
 		return
 	}
 	compose, ready := a.composeSnapshot(m)

@@ -93,6 +93,7 @@ func newDraftHarness(t *testing.T) *draftHarness {
 	a := New(service)
 	h.app = a
 	a.account, _ = service.Account(context.Background())
+	a.accountVerified = true
 	a.schedule = func(fn func()) { h.jobs = append(h.jobs, fn) }
 	a.update = func(fn func()) { h.updates = append(h.updates, fn) }
 	a.after = func(_ time.Duration, fn func()) { h.timers = append(h.timers, fn) }
@@ -530,6 +531,61 @@ func TestComposerInputDisabledWhileBusy(t *testing.T) {
 				t.Fatalf("busy composer accepted input: %q", got)
 			}
 		})
+	}
+}
+
+func TestOfflineRecoveredDraftDoesNotSaveOrSendUntilVerified(t *testing.T) {
+	t.Run("save", func(t *testing.T) {
+		h := newDraftHarness(t)
+		h.app.accountVerified = false
+		h.app.openRecoveredDraft(mailmodel.DraftSnapshot{
+			DraftID: "draft-offline",
+			Compose: mailmodel.Compose{To: "to@example.com", Text: "offline body"},
+		}, h.app.account.Email)
+		h.startSave()
+		if len(h.jobs) != 0 || h.service.createCalls != 0 || h.service.updateCalls != 0 {
+			t.Fatalf("offline recovery scheduled a remote save: jobs=%d calls=%d/%d", len(h.jobs), h.service.createCalls, h.service.updateCalls)
+		}
+	})
+
+	t.Run("send", func(t *testing.T) {
+		h := newDraftHarness(t)
+		h.app.accountVerified = false
+		h.app.openRecoveredDraft(mailmodel.DraftSnapshot{
+			DraftID: "draft-offline",
+			Compose: mailmodel.Compose{To: "to@example.com", Text: "offline body"},
+		}, h.app.account.Email)
+		h.app.sendCompose()
+		for len(h.jobs) > 0 {
+			h.finishJob()
+		}
+		if h.service.sendDraftCalls != 0 || h.service.sendCalls != 0 {
+			t.Fatalf("offline recovery sent remotely: calls=%d/%d", h.service.sendDraftCalls, h.service.sendCalls)
+		}
+		m := h.app.compose
+		if m == nil || m.sending || m.pendingAction != composerActionNone || m.err == "" {
+			t.Fatalf("blocked send did not preserve an actionable composer: %+v", m)
+		}
+	})
+}
+
+func TestRecoveredDraftDoesNotSendToDifferentAccount(t *testing.T) {
+	h := newDraftHarness(t)
+	h.app.accountVerified = true
+	h.app.openRecoveredDraft(mailmodel.DraftSnapshot{
+		DraftID: "draft-other",
+		Compose: mailmodel.Compose{To: "to@example.com", Text: "recovered body"},
+	}, "other@example.com")
+	m := h.app.compose
+	h.app.sendCompose()
+	for len(h.jobs) > 0 {
+		h.finishJob()
+	}
+	if h.service.sendDraftCalls != 0 || h.service.sendCalls != 0 {
+		t.Fatalf("mismatched recovery sent remotely: calls=%d/%d", h.service.sendDraftCalls, h.service.sendCalls)
+	}
+	if h.app.compose != m || m.sending || m.pendingAction != composerActionNone || m.err == "" {
+		t.Fatalf("mismatched recovery did not preserve an actionable composer: %+v", h.app.compose)
 	}
 }
 

@@ -121,6 +121,7 @@
   "attachmentReading": "Reading…",
   "attachmentsReading": "Wait for attachments to finish reading",
   "attachmentsSending": "Wait for the current send to finish before adding attachments",
+  "attachmentsBusy": "Wait for the current action to finish before adding attachments",
   "attachmentReadFailed": "Couldn't read attachment: {error}",
   "@attachmentReadFailed": {"placeholders": {"error": {"type": "String", "example": "unavailable"}}},
   "attachmentRestoreFailed": "Attachment wasn't fully read before recovery",
