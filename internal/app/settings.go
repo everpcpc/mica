@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"mica/internal/gmail"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -169,6 +171,83 @@ func (a *App) connectCustomGmail() {
 	a.connectGmailWith(strings.TrimSpace(a.settings.clientID), strings.TrimSpace(a.settings.clientSecret), strings.TrimSpace(a.settings.projectID), true)
 }
 
+type pendingTokenStore struct {
+	token *oauth2.Token
+}
+
+func (s *pendingTokenStore) Load() (*oauth2.Token, error) {
+	if s.token == nil {
+		return nil, gmail.ErrNoSession
+	}
+	return s.token, nil
+}
+
+func (s *pendingTokenStore) Save(token *oauth2.Token) error {
+	s.token = token
+	return nil
+}
+
+func (s *pendingTokenStore) Delete() error {
+	s.token = nil
+	return nil
+}
+
+func loginGmailService(ctx context.Context, store mailStore, clientID, clientSecret, projectID, expectedEmail string) (mail.Service, string, error) {
+	generation := gmail.CredentialGeneration()
+	pending := &pendingTokenStore{}
+	oauth := gmail.NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, pending)
+	client, err := oauth.Login(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	service, err := oauth.Service(client)
+	if err != nil {
+		return nil, "", err
+	}
+	account, err := service.Account(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	if expectedEmail != "" && !strings.EqualFold(account.Email, expectedEmail) {
+		return nil, "", fmt.Errorf("gmail: signed in to %s, expected %s", account.Email, expectedEmail)
+	}
+	if pending.token == nil {
+		return nil, "", gmail.ErrNoSession
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	if store != nil {
+		if err := store.SaveAccount(ctx, account); err != nil {
+			return nil, "", err
+		}
+	}
+	commit, ok := gmail.BeginAccountCommit(account.Email, generation)
+	if !ok {
+		return nil, "", errors.New("gmail: authentication was cancelled")
+	}
+	defer commit()
+	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
+	if err := formal.SaveToken(pending.token); err != nil {
+		return nil, "", err
+	}
+	if err := gmail.NewActiveAccountStore().Save(account.Email); err != nil {
+		return nil, "", err
+	}
+	client, err = formal.Restore(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	service, err = formal.Service(client)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := gmail.NewOAuthWithProject(clientID, clientSecret, projectID).Logout(ctx); err != nil {
+		return nil, "", err
+	}
+	return service, account.Email, nil
+}
+
 func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom bool) {
 	s := a.settings
 	if s == nil || s.busy {
@@ -180,9 +259,17 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 	}
 	s.busy = true
 	s.err = ""
+	a.cancelAuthentication()
+	auth := a.authID
 	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
 	s.cancel = cancel
 	a.schedule(func() {
+		defer a.publish(func() {
+			if a.authID == auth {
+				a.authCancel = nil
+			}
+		})
 		if custom {
 			if err := saveOAuthCredentials(clientID, clientSecret, projectID); err != nil {
 				a.publish(func() {
@@ -195,12 +282,7 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 				return
 			}
 		}
-		oauth := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
-		client, err := oauth.Login(ctx)
-		var service mail.Service
-		if err == nil {
-			service, err = oauth.Service(client)
-		}
+		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, "")
 		a.publish(func() {
 			if a.settings != s {
 				return
@@ -211,11 +293,23 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 				s.err = locales.GmailConnectFailed(err.Error())
 				return
 			}
-			a.useService(service)
+			a.useService(service, email)
 			a.settings = nil
 			a.notice = locales.GmailConnected()
 		})
 	})
+}
+
+func (a *App) cancelAuthentication() {
+	if service, ok := a.service.(interface{ Deactivate() }); ok {
+		service.Deactivate()
+	}
+	a.authID++
+	gmail.InvalidateCredentials()
+	if a.authCancel != nil {
+		a.authCancel()
+		a.authCancel = nil
+	}
 }
 
 func (a *App) restoreGmail() {
@@ -223,6 +317,10 @@ func (a *App) restoreGmail() {
 		return
 	}
 	a.restoreAttempted = true
+	a.cancelAuthentication()
+	auth := a.authID
+	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
 	version := a.serviceVersion
 	store := a.store
 	a.schedule(func() {
@@ -234,37 +332,120 @@ func (a *App) restoreGmail() {
 		if err != nil {
 			return
 		}
-		oauth := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
-		client, err := oauth.Restore(context.Background())
+		cachedEmail, err := gmail.NewActiveAccountStore().Load()
 		if err != nil {
-			if !errors.Is(err, gmail.ErrNoSession) {
-				a.publish(func() {
-					if version == a.serviceVersion {
-						a.notice = locales.OauthRestoreFailed(err.Error())
-					}
-				})
-			}
+			a.publish(func() {
+				if version == a.serviceVersion {
+					a.notice = locales.OauthRestoreFailed(err.Error())
+				}
+			})
 			return
 		}
-		service, err := oauth.Service(client)
-		cachedEmail := ""
-		if err == nil && store != nil {
-			account, found, cacheErr := store.LastAccount(context.Background())
+		if cachedEmail == "" && store != nil {
+			account, found, cacheErr := store.LastAccount(ctx)
 			logCacheError(cacheErr)
 			if cacheErr == nil && found {
 				cachedEmail = account.Email
 			}
 		}
+		var service mail.Service
+		if cachedEmail != "" {
+			service, err = restoreAccountGmail(ctx, clientID, clientSecret, projectID, cachedEmail)
+			if errors.Is(err, gmail.ErrNoSession) {
+				service, err = nil, nil
+			}
+		}
+		email := cachedEmail
+		if service == nil && err == nil {
+			service, email, err = migrateLegacyGmail(ctx, store, clientID, clientSecret, projectID)
+		}
 		a.publish(func() {
-			if version == a.serviceVersion {
-				if err != nil {
+			if version == a.serviceVersion && a.authID == auth {
+				a.authCancel = nil
+			}
+			if version != a.serviceVersion {
+				return
+			}
+			if err != nil {
+				if !errors.Is(err, gmail.ErrNoSession) {
 					a.notice = locales.OauthRestoreFailed(err.Error())
-					return
 				}
-				a.useService(service, cachedEmail)
+				return
+			}
+			if service != nil {
+				a.useService(service, email)
 			}
 		})
 	})
+}
+
+func restoreAccountGmail(ctx context.Context, clientID, clientSecret, projectID, email string) (mail.Service, error) {
+	oauth := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, email)
+	client, err := oauth.Restore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return oauth.Service(client)
+}
+
+func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSecret, projectID string) (mail.Service, string, error) {
+	generation := gmail.CredentialGeneration()
+	legacy := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
+	client, err := legacy.Restore(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	service, err := legacy.Service(client)
+	if err != nil {
+		return nil, "", err
+	}
+	account, err := service.Account(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	if store != nil {
+		if err := store.SaveAccount(ctx, account); err != nil {
+			return nil, "", err
+		}
+	}
+	source, err := legacy.TokenSource(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	token, err := source.Token()
+	if err != nil {
+		return nil, "", err
+	}
+	if token == nil {
+		return nil, "", gmail.ErrNoSession
+	}
+	commit, ok := gmail.BeginAccountCommit(account.Email, generation)
+	if !ok {
+		return nil, "", errors.New("gmail: authentication was cancelled")
+	}
+	defer commit()
+	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
+	if err := formal.SaveToken(token); err != nil {
+		return nil, "", err
+	}
+	if err := gmail.NewActiveAccountStore().Save(account.Email); err != nil {
+		return nil, "", err
+	}
+	client, err = formal.Restore(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	service, err = formal.Service(client)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := legacy.Logout(ctx); err != nil {
+		return nil, "", err
+	}
+	return service, account.Email, nil
 }
 
 func (a *App) reauthorizeGmail() {
@@ -276,15 +457,18 @@ func (a *App) reauthorizeGmail() {
 	if err != nil {
 		return
 	}
+	a.cancelAuthentication()
+	auth := a.authID
+	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
 	version := a.serviceVersion
+	expectedEmail := a.account.Email
 	a.schedule(func() {
-		oauth := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
-		client, err := oauth.Login(context.Background())
-		var service mail.Service
-		if err == nil {
-			service, err = oauth.Service(client)
-		}
+		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, expectedEmail)
 		a.publish(func() {
+			if version == a.serviceVersion && a.authID == auth {
+				a.authCancel = nil
+			}
 			if version != a.serviceVersion {
 				return
 			}
@@ -292,7 +476,7 @@ func (a *App) reauthorizeGmail() {
 				a.notice = locales.GmailConnectFailed(err.Error())
 				return
 			}
-			a.useService(service)
+			a.useService(service, email)
 		})
 	})
 }
@@ -304,11 +488,29 @@ func (a *App) logoutGmail() {
 	}
 	s.busy = true
 	s.err = ""
+	email := a.storeAccount
+	if email == "" {
+		email = a.account.Email
+	}
+	if email == "" {
+		s.busy = false
+		s.err = locales.LogoutFailed("account email is unavailable")
+		return
+	}
+	if a.account.Email != "" && !strings.EqualFold(email, a.account.Email) {
+		s.busy = false
+		s.err = locales.LogoutFailed("account identity changed")
+		return
+	}
+	a.cancelAuthentication()
 	version := a.serviceVersion
 	a.schedule(func() {
-		err := gmail.NewOAuth("", "").Logout(context.Background())
+		err := gmail.NewOAuthForAccount("", "", "", email).Logout(context.Background())
 		if err == nil {
-			err = deleteOAuthCredentials()
+			err = gmail.NewOAuthWithProject("", "", "").Logout(context.Background())
+		}
+		if err == nil {
+			err = gmail.NewActiveAccountStore().Delete()
 		}
 		a.publish(func() {
 			if version != a.serviceVersion {
@@ -331,6 +533,7 @@ func (a *App) logoutGmail() {
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
+	a.cancelAuthentication()
 	recovered := a.compose
 	preserveRecovered := recovered != nil && !recovered.sending && recovered.recoveryAccount != "" && len(cachedAccount) > 0 && strings.EqualFold(recovered.recoveryAccount, cachedAccount[0])
 	if preserveRecovered && (recovered.draftSaving || recovered.saveState == draftSaveSaving) {
@@ -441,16 +644,6 @@ func saveOAuthCredentials(clientID, clientSecret, projectID string) error {
 		return err
 	}
 	return mygo.Secrets.Set(oauthProjectIDKey, []byte(projectID))
-}
-
-func deleteOAuthCredentials() error {
-	if err := mygo.Secrets.Delete(oauthClientIDKey); err != nil {
-		return err
-	}
-	if err := mygo.Secrets.Delete(oauthClientSecretKey); err != nil {
-		return err
-	}
-	return mygo.Secrets.Delete(oauthProjectIDKey)
 }
 
 func (a *App) appearanceLabel() string {

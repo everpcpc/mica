@@ -266,6 +266,191 @@ func TestKeychainTokenStoreEncoding(t *testing.T) {
 	}
 }
 
+func TestAccountTokenStoresAreIndependent(t *testing.T) {
+	secrets := newMemorySecrets()
+	legacy := &keychainTokenStore{secrets: secrets}
+	credentialStateFor(legacy.tokenKey()).allow()
+	if err := legacy.Save(&oauth2.Token{AccessToken: "legacy"}); err != nil {
+		t.Fatal(err)
+	}
+	authA := NewOAuthForAccount("client", "secret", "project", " User@Example.COM ")
+	authB := NewOAuthForAccount("client", "secret", "project", "other@example.com")
+	storeA := authA.store.(*keychainTokenStore)
+	storeB := authB.store.(*keychainTokenStore)
+	storeA.secrets = secrets
+	storeB.secrets = secrets
+	if storeA.key != "gmail-oauth2-token:user@example.com" {
+		t.Fatalf("account key = %q", storeA.key)
+	}
+	if err := authA.SaveToken(&oauth2.Token{AccessToken: "a-1", RefreshToken: "a-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := authB.SaveToken(&oauth2.Token{AccessToken: "b-1", RefreshToken: "b-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := authA.SaveToken(&oauth2.Token{AccessToken: "a-2", RefreshToken: "a-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	gotA, err := storeA.Load()
+	if err != nil || gotA.AccessToken != "a-2" {
+		t.Fatalf("account A token = %+v, %v", gotA, err)
+	}
+	gotB, err := storeB.Load()
+	if err != nil || gotB.AccessToken != "b-1" {
+		t.Fatalf("account B token = %+v, %v", gotB, err)
+	}
+	gotLegacy, err := legacy.Load()
+	if err != nil || gotLegacy.AccessToken != "legacy" {
+		t.Fatalf("legacy token = %+v, %v", gotLegacy, err)
+	}
+	if err := authA.Logout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storeA.Load(); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("account A after logout = %v", err)
+	}
+	if gotB, err := storeB.Load(); err != nil || gotB.AccessToken != "b-1" {
+		t.Fatalf("account B after A logout = %+v, %v", gotB, err)
+	}
+	if gotLegacy, err := legacy.Load(); err != nil || gotLegacy.AccessToken != "legacy" {
+		t.Fatalf("legacy token after A logout = %+v, %v", gotLegacy, err)
+	}
+}
+
+func TestActiveAccountStore(t *testing.T) {
+	store := &activeAccountStore{secrets: newMemorySecrets()}
+	if got, err := store.Load(); err != nil || got != "" {
+		t.Fatalf("empty active account = %q, %v", got, err)
+	}
+	if err := store.Save(" "); err == nil {
+		t.Fatal("empty active account was accepted")
+	}
+	if err := store.Save("user@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Load(); err != nil || got != "user@example.com" {
+		t.Fatalf("active account = %q, %v", got, err)
+	}
+	if err := store.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Load(); err != nil || got != "" {
+		t.Fatalf("deleted active account = %q, %v", got, err)
+	}
+}
+
+func allowTestAccount(t *testing.T, email string) {
+	t.Helper()
+	commit, ok := BeginAccountCommit(email, CredentialGeneration())
+	if !ok {
+		t.Fatal("account commit was rejected")
+	}
+	commit()
+}
+
+func TestCredentialStoresRejectLateWrites(t *testing.T) {
+	secrets := newMemorySecrets()
+	email := "late@example.com"
+	auth := NewOAuthForAccount("client", "secret", "project", email)
+	store := auth.store.(*keychainTokenStore)
+	store.secrets = secrets
+	allowTestAccount(t, email)
+	if err := auth.SaveToken(&oauth2.Token{AccessToken: "token"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.Logout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveToken(&oauth2.Token{AccessToken: "late"}); err == nil {
+		t.Fatal("token refresh was allowed after logout")
+	}
+	active := &activeAccountStore{secrets: secrets}
+	allowTestAccount(t, email)
+	if err := active.Save(email); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Save(email); err == nil {
+		t.Fatal("active marker was allowed after logout")
+	}
+	stale := CredentialGeneration()
+	InvalidateCredentials()
+	if commit, ok := BeginAccountCommit(email, stale); ok {
+		commit()
+		t.Fatal("stale authentication reopened credentials")
+	}
+	allowTestAccount(t, email)
+	if err := auth.SaveToken(&oauth2.Token{AccessToken: "new login"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Save(email); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Delete(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServiceDeactivateDisablesHTTPAndPushSources(t *testing.T) {
+	store := newMemoryTokenStore()
+	if err := store.Save(&oauth2.Token{AccessToken: "access", RefreshToken: "refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	auth := NewOAuthWithStore("client", "secret", store)
+	client, err := auth.Restore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := auth.Service(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpSource := client.Transport.(*oauth2.Transport).Source
+	service.Deactivate()
+	if _, err := httpSource.Token(); !errors.Is(err, errTokenSourceInactive) {
+		t.Fatalf("HTTP refresh after deactivation = %v", err)
+	}
+	if _, err := service.tokenSource.Token(); !errors.Is(err, errTokenSourceInactive) {
+		t.Fatalf("Pub/Sub refresh after deactivation = %v", err)
+	}
+}
+
+type blockingTokenSource struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingTokenSource) Token() (*oauth2.Token, error) {
+	select {
+	case s.started <- struct{}{}:
+	default:
+	}
+	<-s.release
+	return &oauth2.Token{AccessToken: "stale"}, nil
+}
+
+func TestSavingTokenSourceRejectsDeactivatedRefresh(t *testing.T) {
+	source := &blockingTokenSource{started: make(chan struct{}, 1), release: make(chan struct{})}
+	store := newMemoryTokenStore()
+	saving := &savingTokenSource{source: source, store: store}
+	result := make(chan error, 1)
+	go func() {
+		_, err := saving.Token()
+		result <- err
+	}()
+	<-source.started
+	saving.Deactivate()
+	close(source.release)
+	if err := <-result; !errors.Is(err, errTokenSourceInactive) {
+		t.Fatalf("deactivated refresh error = %v", err)
+	}
+	if _, err := store.Load(); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("deactivated refresh wrote a token: %v", err)
+	}
+}
+
 type memoryTokenStore struct {
 	mu    sync.Mutex
 	token *oauth2.Token

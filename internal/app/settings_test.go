@@ -1,12 +1,36 @@
 package app
 
 import (
+	"errors"
 	"testing"
 
+	"mica/internal/gmail"
 	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
+	"golang.org/x/oauth2"
 )
+
+func TestPendingTokenStore(t *testing.T) {
+	store := &pendingTokenStore{}
+	if _, err := store.Load(); !errors.Is(err, gmail.ErrNoSession) {
+		t.Fatalf("empty pending store = %v", err)
+	}
+	want := &oauth2.Token{AccessToken: "pending", RefreshToken: "refresh"}
+	if err := store.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Load()
+	if err != nil || got != want {
+		t.Fatalf("pending token = %+v, %v", got, err)
+	}
+	if err := store.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(); !errors.Is(err, gmail.ErrNoSession) {
+		t.Fatalf("deleted pending store = %v", err)
+	}
+}
 
 func TestSettingsLanguageUsesDisplayLabels(t *testing.T) {
 	for _, tc := range []struct {
@@ -31,6 +55,60 @@ func TestSettingsLanguageUsesDisplayLabels(t *testing.T) {
 			}
 			if count != tc.count {
 				t.Fatalf("display label %q appears %d times, want %d; rendered texts: %q", tc.want, count, tc.count, tt.Texts())
+			}
+		})
+	}
+}
+
+type deactivatingService struct {
+	*fakeService
+	deactivated bool
+}
+
+func (s *deactivatingService) Deactivate() {
+	s.deactivated = true
+}
+
+func TestCancelAuthenticationDeactivatesService(t *testing.T) {
+	service := &deactivatingService{fakeService: newFakeService()}
+	a := New(service)
+	a.cancelAuthentication()
+	if !service.deactivated {
+		t.Fatal("service was not deactivated before authentication changed")
+	}
+}
+
+func TestLogoutCancelsAuthentication(t *testing.T) {
+	a := newTestApp(newFakeService())
+	a.storeAccount = "user@example.com"
+	a.account.Email = "user@example.com"
+	a.settings = &settingsState{open: true}
+	cancelled := false
+	a.authCancel = func() { cancelled = true }
+	a.schedule = func(func()) {}
+	a.logoutGmail()
+	if !cancelled || a.authCancel != nil {
+		t.Fatalf("logout did not cancel authentication: cancelled=%v", cancelled)
+	}
+}
+
+func TestLogoutRejectsUnconfirmedIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		storeAccount string
+		email        string
+	}{
+		{name: "empty email"},
+		{name: "mismatched profile", storeAccount: "a@example.com", email: "b@example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.storeAccount = tc.storeAccount
+			a.account.Email = tc.email
+			a.settings = &settingsState{open: true}
+			a.logoutGmail()
+			if a.settings.err == "" || a.settings.busy {
+				t.Fatalf("logout with unconfirmed identity did not fail safely: %+v", a.settings)
 			}
 		})
 	}

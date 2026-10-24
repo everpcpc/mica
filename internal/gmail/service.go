@@ -37,6 +37,7 @@ type Service struct {
 	maxParallel  int
 	projectID    string
 	tokenSource  oauth2.TokenSource
+	deactivate   func()
 	sleep        func(context.Context, time.Duration) error
 	requestGroup singleflight.Group
 }
@@ -118,6 +119,16 @@ func NewWithProject(client *http.Client, projectID string, source oauth2.TokenSo
 		client = http.DefaultClient
 	}
 	return &Service{client: client, baseURL: gmailAPIURL, userinfoURL: googleUserinfoURL, userID: "me", maxParallel: listParallel, projectID: projectID, tokenSource: source, sleep: sleepContext}
+}
+
+func (s *Service) Deactivate() {
+	if s.deactivate != nil {
+		s.deactivate()
+		return
+	}
+	if source, ok := s.tokenSource.(interface{ Deactivate() }); ok {
+		source.Deactivate()
+	}
 }
 
 func (s *Service) Account(ctx context.Context) (mail.Account, error) {

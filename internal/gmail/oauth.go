@@ -11,7 +11,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -22,6 +24,7 @@ const (
 	googleAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
 	googleTokenURL = "https://oauth2.googleapis.com/token"
 	oauthTokenKey  = "gmail-oauth2-token"
+	activeEmailKey = "gmail-active-account"
 	oauthCallback  = "/oauth/callback"
 )
 
@@ -41,6 +44,7 @@ type OAuth struct {
 	random       io.Reader
 	projectID    string
 	loginMu      sync.Mutex
+	sources      sync.Map
 }
 
 type secretStore interface {
@@ -49,8 +53,59 @@ type secretStore interface {
 	Delete(string) error
 }
 
+type credentialState struct {
+	mu     sync.RWMutex
+	closed bool
+}
+
+var credentialStates sync.Map
+
+func credentialStateFor(key string) *credentialState {
+	state, _ := credentialStates.LoadOrStore(key, &credentialState{})
+	return state.(*credentialState)
+}
+
+func accountTokenKey(email string) string {
+	return oauthTokenKey + ":" + strings.ToLower(strings.TrimSpace(email))
+}
+
+var credentialLifecycle struct {
+	mu         sync.RWMutex
+	generation uint64
+}
+
+func CredentialGeneration() uint64 {
+	credentialLifecycle.mu.RLock()
+	defer credentialLifecycle.mu.RUnlock()
+	return credentialLifecycle.generation
+}
+
+func InvalidateCredentials() {
+	credentialLifecycle.mu.Lock()
+	credentialLifecycle.generation++
+	credentialLifecycle.mu.Unlock()
+}
+
+func BeginAccountCommit(email string, generation uint64) (func(), bool) {
+	credentialLifecycle.mu.Lock()
+	if generation != credentialLifecycle.generation {
+		credentialLifecycle.mu.Unlock()
+		return nil, false
+	}
+	credentialStateFor(accountTokenKey(email)).allow()
+	credentialStateFor(activeEmailKey).allow()
+	return credentialLifecycle.mu.Unlock, true
+}
+
+func (s *credentialState) allow() {
+	s.mu.Lock()
+	s.closed = false
+	s.mu.Unlock()
+}
+
 type keychainTokenStore struct {
 	secrets secretStore
+	key     string
 }
 
 func NewOAuth(clientID, clientSecret string) *OAuth {
@@ -58,7 +113,15 @@ func NewOAuth(clientID, clientSecret string) *OAuth {
 }
 
 func NewOAuthWithProject(clientID, clientSecret, projectID string) *OAuth {
-	a := NewOAuth(clientID, clientSecret)
+	return NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, &keychainTokenStore{secrets: mygo.Secrets})
+}
+
+func NewOAuthForAccount(clientID, clientSecret, projectID, email string) *OAuth {
+	return NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, &keychainTokenStore{secrets: mygo.Secrets, key: accountTokenKey(email)})
+}
+
+func NewOAuthWithProjectAndStore(clientID, clientSecret, projectID string, store TokenStore) *OAuth {
+	a := NewOAuthWithStore(clientID, clientSecret, store)
 	a.projectID = projectID
 	return a
 }
@@ -89,8 +152,21 @@ func NewOAuthWithStore(clientID, clientSecret string, store TokenStore) *OAuth {
 	}
 }
 
+func (s *keychainTokenStore) tokenKey() string {
+	if s.key != "" {
+		return s.key
+	}
+	return oauthTokenKey
+}
+
 func (s *keychainTokenStore) Load() (*oauth2.Token, error) {
-	value, err := s.secrets.Get(oauthTokenKey)
+	state := credentialStateFor(s.tokenKey())
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return nil, ErrNoSession
+	}
+	value, err := s.secrets.Get(s.tokenKey())
 	if errors.Is(err, mygo.ErrSecretNotFound) {
 		return nil, ErrNoSession
 	}
@@ -105,21 +181,88 @@ func (s *keychainTokenStore) Load() (*oauth2.Token, error) {
 }
 
 func (s *keychainTokenStore) Save(token *oauth2.Token) error {
+	state := credentialStateFor(s.tokenKey())
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return errors.New("gmail: account is signed out")
+	}
 	value, err := json.Marshal(token)
 	if err != nil {
 		return fmt.Errorf("gmail: encode OAuth token: %w", err)
 	}
-	if err := s.secrets.Set(oauthTokenKey, value); err != nil {
+	if err := s.secrets.Set(s.tokenKey(), value); err != nil {
 		return fmt.Errorf("gmail: save OAuth token: %w", err)
 	}
 	return nil
 }
 
 func (s *keychainTokenStore) Delete() error {
-	if err := s.secrets.Delete(oauthTokenKey); err != nil {
+	state := credentialStateFor(s.tokenKey())
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.closed = true
+	if err := s.secrets.Delete(s.tokenKey()); err != nil {
 		return fmt.Errorf("gmail: delete OAuth token: %w", err)
 	}
 	return nil
+}
+
+type activeAccountStore struct {
+	secrets secretStore
+}
+
+func NewActiveAccountStore() *activeAccountStore {
+	return &activeAccountStore{secrets: mygo.Secrets}
+}
+
+func (s *activeAccountStore) Load() (string, error) {
+	state := credentialStateFor(activeEmailKey)
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return "", nil
+	}
+	value, err := s.secrets.Get(activeEmailKey)
+	if errors.Is(err, mygo.ErrSecretNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("gmail: read active account: %w", err)
+	}
+	return string(value), nil
+}
+
+func (s *activeAccountStore) Save(email string) error {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return errors.New("gmail: empty account email")
+	}
+	state := credentialStateFor(activeEmailKey)
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return errors.New("gmail: account is signed out")
+	}
+	if err := s.secrets.Set(activeEmailKey, []byte(email)); err != nil {
+		return fmt.Errorf("gmail: save active account: %w", err)
+	}
+	return nil
+}
+
+func (s *activeAccountStore) Delete() error {
+	state := credentialStateFor(activeEmailKey)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.closed = true
+	if err := s.secrets.Delete(activeEmailKey); err != nil {
+		return fmt.Errorf("gmail: delete active account: %w", err)
+	}
+	return nil
+}
+
+func (a *OAuth) SaveToken(token *oauth2.Token) error {
+	return a.store.Save(token)
 }
 
 func (a *OAuth) Restore(ctx context.Context) (*http.Client, error) {
@@ -249,7 +392,10 @@ func (a *OAuth) httpContext(ctx context.Context) context.Context {
 
 func (a *OAuth) authenticatedClient(ctx context.Context, token *oauth2.Token) *http.Client {
 	ctx = context.WithoutCancel(a.httpContext(ctx))
-	return oauth2.NewClient(ctx, a.tokenSource(ctx, token))
+	source := a.tokenSource(ctx, token)
+	client := oauth2.NewClient(ctx, source)
+	a.sources.Store(client, source)
+	return client
 }
 
 func (a *OAuth) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
@@ -264,11 +410,29 @@ func (a *OAuth) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 }
 
 func (a *OAuth) Service(client *http.Client) (*Service, error) {
-	source, err := a.TokenSource(context.Background())
-	if err != nil {
-		return nil, err
+	var source oauth2.TokenSource
+	if client != nil {
+		if cached, ok := a.sources.Load(client); ok {
+			source = cached.(oauth2.TokenSource)
+		}
 	}
-	return NewWithProject(client, a.projectID, source), nil
+	if source == nil {
+		var err error
+		source, err = a.TokenSource(context.Background())
+		if err != nil {
+			return nil, err
+		}
+	}
+	service := NewWithProject(client, a.projectID, source)
+	service.deactivate = func() {
+		if deactivator, ok := source.(interface{ Deactivate() }); ok {
+			deactivator.Deactivate()
+		}
+		if client != nil {
+			a.sources.Delete(client)
+		}
+	}
+	return service, nil
 }
 
 func (a *OAuth) tokenSource(ctx context.Context, token *oauth2.Token) oauth2.TokenSource {
@@ -281,18 +445,36 @@ func (a *OAuth) tokenSource(ctx context.Context, token *oauth2.Token) oauth2.Tok
 	}
 }
 
+var errTokenSourceInactive = errors.New("gmail: token source is inactive")
+
 type savingTokenSource struct {
-	mu      sync.Mutex
-	source  oauth2.TokenSource
-	store   TokenStore
-	access  string
-	refresh string
-	expiry  time.Time
+	mu       sync.Mutex
+	inactive atomic.Bool
+	source   oauth2.TokenSource
+	store    TokenStore
+	access   string
+	refresh  string
+	expiry   time.Time
+}
+
+func (s *savingTokenSource) Deactivate() {
+	s.inactive.Store(true)
 }
 
 func (s *savingTokenSource) Token() (*oauth2.Token, error) {
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
+	}
+	credentialLifecycle.mu.RLock()
+	defer credentialLifecycle.mu.RUnlock()
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
+	}
 	token, err := s.source.Token()
 	if err != nil {
 		return nil, err
@@ -302,6 +484,9 @@ func (s *savingTokenSource) Token() (*oauth2.Token, error) {
 	}
 	if token.AccessToken == s.access && token.RefreshToken == s.refresh && token.Expiry.Equal(s.expiry) {
 		return token, nil
+	}
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
 	}
 	if err := s.store.Save(token); err != nil {
 		return nil, err
