@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0 - 2026-10-24
+
+- Added an expandable All Inboxes group with per-account Inbox rows, accessible disclosure state, and keyboard navigation.
+- Preserved account selection through activation and reauthentication, with consistent cleanup after failures, cancellation, and account removal.
+- Blocked remote images by default, with per-message permission and an optional global automatic-loading preference.
+- Added `mailto:` draft links and an explicit macOS default email app setting, including cold-start and draft-restoration handling.
+
 ## 0.13.0 - 2026-10-24
 
 - Added Unified Inbox across saved Gmail accounts, with deterministic merging, independent per-account pagination, and complete offline snapshots.
