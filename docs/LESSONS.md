@@ -13,6 +13,7 @@
 - A privacy toggle must be enforced by the protocol handler, not only by a visible button. Default-block remote HTTP before any request and prove a zero-request path, while keeping inline data, Content-ID attachments, and account avatars on their separate loaders.
 - Per-message permission needs an owner/thread/message key and must not become a global allow. Persist only the explicit global auto-load preference, and keep message permission session-only.
 - Protocol-relative URLs are remote content too: normalize them to HTTPS, skip hidden subtrees when offering permission, and wait for preference writes before closing the cache. Otherwise single-message enablement misses valid images, hidden content gets a useless button, and quitting can restore an older preference.
+- Tracking-pixel filtering applies to actual `img` elements, not arbitrary containers with small dimensions; otherwise a valid CSS background loses its permission action.
 
 ## Design optimistic updates together with request ordering
 
