@@ -31,6 +31,7 @@
 - A multi-selection is not the reader. Programmatic opens may collapse it, but list input must preserve it; filters and history should prune only invisible keys without clearing the remaining set.
 - `Selection.All()` is unordered and retains disappeared keys. Resolve action targets in visible-list order, and represent a batch Undo as one action with ordered items rather than looping over a single-slot Undo.
 - Batch Archive must preserve the single action's view membership: only Inbox removes rows. For non-contiguous removal, choose the next survivor after the reader in the original list, then the previous survivor; reusing the old row index skips a conversation.
+- Mixed-state batches need one target state and must filter out items already in that state before recording Undo. Applying a uniform inverse to originally mixed items can remove a star or read state that the user already had.
 
 ## Label assignment and label lifecycle are different operations
 
