@@ -103,7 +103,10 @@
 
 - A local wake time is not a Gmail field. Persist it before the remote archive, keep the virtual SNOOZED label out of API mutations, and use only idempotent INBOX changes for waking. Failed persistence must not reach the remote mutation, and failures must restore the previous schedule or inbox state.
 - Reuse the account-loading job for startup restoration. A later profile callback can request a deduplicated follow-up, but it must not overwrite a newer local action. Account generation, restore-load identity, and per-thread local versions are separate guards.
-- Single-account views use raw thread selection IDs, while owner-routed views use composite IDs. A wake path must derive its selection from the stored summary rather than always constructing a composite key.
+- Single-account views use raw thread selection IDs, while owner-routed views use composite IDs. Remote work must resolve service from the record owner, not from the current view's selection key; a timer can outlive Unified. Apply local updates only when that owner is visible.
+- Invalidate a changed schedule's timer before entering the FIFO, and install its replacement after success. A stale callback must not clear a newer runtime record or timer.
+- A stored summary is a fallback, not an authority over newer mail metadata. Merge wake metadata into the current summary, reinsert restored mail into the visible Inbox or Unified view, and filter completed local schedules out of offline snapshots.
+- Capture the cache operation and owner generation before starting a background refresh. Reading the account registry from that worker can race client replacement even when ordinary tests pass.
 - Supersede timer callbacks with per-thread tokens and verify the exact wake time before changing Gmail. Retry overdue failures with a delay, and close new cache work on quit while admitted operations finish.
 - Not every MyGo application getter is safe off the main thread. Formatting in a background workflow must use the current i18n locale rather than `App.Region`, which deadlocked a direct Snooze action. Verify menu behavior and real rendered English output after adding a toolbar action.
 
