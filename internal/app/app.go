@@ -609,41 +609,51 @@ func (a *App) reloadLabels() {
 }
 
 func (a *App) toggleStar() {
-	summary := a.selectedSummary()
-	if summary == nil {
+	summaries := a.actionSummaries()
+	if len(summaries) == 0 {
 		return
 	}
-	starred := !summary.Starred
+	starred := !summaries[0].Starred
+	targets := make([]mail.ThreadSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.Starred != starred {
+			targets = append(targets, summary)
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
 	add, remove := []string{mail.Starred}, []string(nil)
 	if !starred {
 		add, remove = remove, add
 	}
-	a.recordUndo(summary.ID, remove, add)
-	a.mutate(summary.ID, add, remove, false, func() string {
-		if starred {
-			return locales.StarAdded()
-		}
-		return locales.StarRemoved()
+	if len(targets) == 1 {
+		summary := targets[0]
+		a.recordUndo(summary.ID, remove, add)
+		a.mutate(summary.ID, add, remove, false, func() string {
+			if starred {
+				return locales.StarAdded()
+			}
+			return locales.StarRemoved()
+		})
+		return
+	}
+	message := locales.ConversationsUnstarred
+	if starred {
+		message = locales.ConversationsStarred
+	}
+	a.mutateThreads(targets, batchMutation{
+		add: add, remove: remove, inverseAdd: remove, inverseRemove: add,
+		message: message, failure: locales.ActionFailed,
 	})
 }
 
 func (a *App) toggleUnread() {
-	summary := a.selectedSummary()
-	if summary == nil {
+	summaries := a.actionSummaries()
+	if len(summaries) == 0 {
 		return
 	}
-	unread := !summary.Unread
-	add, remove := []string{mail.Unread}, []string(nil)
-	if !unread {
-		add, remove = remove, add
-	}
-	a.recordUndo(summary.ID, remove, add)
-	a.mutate(summary.ID, add, remove, false, func() string {
-		if unread {
-			return locales.MarkedUnread()
-		}
-		return locales.MarkedRead()
-	})
+	a.setUnread(!summaries[0].Unread)
 }
 
 func (a *App) actionSummaries() []mail.ThreadSummary {
@@ -677,39 +687,99 @@ func (a *App) archive() {
 	a.archiveThreads(summaries)
 }
 
-func (a *App) archiveThreads(summaries []mail.ThreadSummary) {
+type batchRemoval int
+
+const (
+	batchRemoveNever batchRemoval = iota
+	batchRemoveInbox
+	batchRemoveAll
+	batchRemoveHidden
+)
+
+type batchMutation struct {
+	kind          threadMutation
+	add           []string
+	remove        []string
+	inverseKind   threadMutation
+	inverseAdd    []string
+	inverseRemove []string
+	removal       batchRemoval
+	message       func(int) string
+	failure       func(string) string
+}
+
+func (a *App) mutateThreads(summaries []mail.ThreadSummary, mutation batchMutation) {
+	if len(summaries) == 0 {
+		return
+	}
 	action := &undoAction{items: make([]undoItem, 0, len(summaries))}
 	a.undo = action
 	ids := make([]string, 0, len(summaries))
 	for _, summary := range summaries {
-		action.items = append(action.items, undoItem{id: summary.ID, add: []string{mail.Inbox}})
+		action.items = append(action.items, undoItem{
+			id: summary.ID, kind: mutation.inverseKind, add: mutation.inverseAdd, remove: mutation.inverseRemove,
+		})
 		ids = append(ids, summary.ID)
 	}
 	for _, id := range ids {
-		a.updateThreadLabels(id, nil, []string{mail.Inbox})
+		a.updateThreadLabels(id, mutation.add, mutation.remove)
 		a.captureUndoSummary(id)
 	}
-	if a.selectedLabel == mail.Inbox {
-		a.removeThreads(ids)
+	var removeIDs []string
+	switch mutation.removal {
+	case batchRemoveInbox:
+		if a.selectedLabel == mail.Inbox {
+			removeIDs = ids
+		}
+	case batchRemoveAll:
+		removeIDs = ids
+	case batchRemoveHidden:
+		query := a.currentQuery()
+		if query.Search != "" {
+			removeIDs = ids
+			break
+		}
+		for _, summary := range summaries {
+			summary.LabelIDs = modifyLabelIDs(summary.LabelIDs, mutation.add, mutation.remove)
+			if !historyListContains(query, summary) {
+				removeIDs = append(removeIDs, summary.ID)
+			}
+		}
 	}
-	a.notice = locales.ConversationsArchived(len(ids))
+	if len(removeIDs) > 0 {
+		a.removeThreads(removeIDs)
+	}
+	a.notice = mutation.message(len(ids))
+	failure := mutation.failure
+	if failure == nil {
+		failure = locales.ActionFailed
+	}
 	for _, id := range ids {
 		a.enqueueMutation(mutationJob{
 			service: a.service,
 			id:      id,
-			remove:  []string{mail.Inbox},
+			kind:    mutation.kind,
+			add:     mutation.add,
+			remove:  mutation.remove,
 			undo:    action,
-			failure: locales.ActionFailed,
+			failure: failure,
 		})
 	}
 }
 
+func (a *App) archiveThreads(summaries []mail.ThreadSummary) {
+	a.mutateThreads(summaries, batchMutation{
+		remove: []string{mail.Inbox}, inverseAdd: []string{mail.Inbox}, removal: batchRemoveInbox,
+		message: locales.ConversationsArchived, failure: locales.ActionFailed,
+	})
+}
+
 func (a *App) toggleTrash() {
-	summary := a.selectedSummary()
-	if summary == nil {
+	summaries := a.actionSummaries()
+	if len(summaries) == 0 {
 		return
 	}
-	if containsLabel(summary.LabelIDs, mail.Trash) {
+	if containsLabel(summaries[0].LabelIDs, mail.Trash) {
 		a.untrash()
 		return
 	}
@@ -717,42 +787,72 @@ func (a *App) toggleTrash() {
 }
 
 func (a *App) trash() {
-	summary := a.selectedSummary()
-	if summary == nil || containsLabel(summary.LabelIDs, mail.Trash) {
+	summaries := a.actionSummaries()
+	targets := make([]mail.ThreadSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if !containsLabel(summary.LabelIDs, mail.Trash) {
+			targets = append(targets, summary)
+		}
+	}
+	if len(targets) == 0 {
 		return
 	}
-	id := summary.ID
-	a.recordUndoKind(id, mutationUntrash, nil, []string{mail.Trash})
-	a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
-	a.captureUndoSummary(id)
-	a.removeThread(id)
-	a.notice = locales.Trashed()
-	a.enqueueMutation(mutationJob{
-		service: a.service,
-		id:      id,
-		kind:    mutationTrash,
-		undo:    a.undo,
-		failure: locales.TrashFailed,
+	if len(targets) == 1 {
+		summary := targets[0]
+		id := summary.ID
+		a.recordUndoKind(id, mutationUntrash, nil, []string{mail.Trash})
+		a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
+		a.captureUndoSummary(id)
+		a.removeThread(id)
+		a.notice = locales.Trashed()
+		a.enqueueMutation(mutationJob{
+			service: a.service,
+			id:      id,
+			kind:    mutationTrash,
+			undo:    a.undo,
+			failure: locales.TrashFailed,
+		})
+		return
+	}
+	a.mutateThreads(targets, batchMutation{
+		kind: mutationTrash, add: []string{mail.Trash}, remove: []string{mail.Inbox},
+		inverseKind: mutationUntrash, inverseRemove: []string{mail.Trash}, removal: batchRemoveAll,
+		message: locales.ConversationsTrashed, failure: locales.TrashFailed,
 	})
 }
 
 func (a *App) untrash() {
-	summary := a.selectedSummary()
-	if summary == nil || !containsLabel(summary.LabelIDs, mail.Trash) {
+	summaries := a.actionSummaries()
+	targets := make([]mail.ThreadSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if containsLabel(summary.LabelIDs, mail.Trash) {
+			targets = append(targets, summary)
+		}
+	}
+	if len(targets) == 0 {
 		return
 	}
-	id := summary.ID
-	a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
-	a.updateThreadLabels(id, nil, []string{mail.Trash})
-	a.captureUndoSummary(id)
-	a.removeThreadIfHidden(id)
-	a.notice = locales.Untrashed()
-	a.enqueueMutation(mutationJob{
-		service: a.service,
-		id:      id,
-		kind:    mutationUntrash,
-		undo:    a.undo,
-		failure: locales.UntrashFailed,
+	if len(targets) == 1 {
+		summary := targets[0]
+		id := summary.ID
+		a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
+		a.updateThreadLabels(id, nil, []string{mail.Trash})
+		a.captureUndoSummary(id)
+		a.removeThreadIfHidden(id)
+		a.notice = locales.Untrashed()
+		a.enqueueMutation(mutationJob{
+			service: a.service,
+			id:      id,
+			kind:    mutationUntrash,
+			undo:    a.undo,
+			failure: locales.UntrashFailed,
+		})
+		return
+	}
+	a.mutateThreads(targets, batchMutation{
+		kind: mutationUntrash, remove: []string{mail.Trash},
+		inverseKind: mutationTrash, inverseAdd: []string{mail.Trash}, inverseRemove: []string{mail.Inbox}, removal: batchRemoveHidden,
+		message: locales.ConversationsUntrashed, failure: locales.UntrashFailed,
 	})
 }
 

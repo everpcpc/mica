@@ -40,24 +40,24 @@ func (a *App) reader(c *ui.Context) {
 		})
 		ui.Toolbar(c, func() {
 			trashLabel, spamLabel := a.recoveryActionLabels()
-			archiveTargets := a.actionSummaries()
+			actionTargets := a.actionSummaries()
 			archiveLabel := locales.Archive()
-			if len(archiveTargets) > 1 {
-				archiveLabel = locales.ArchiveSelected(len(archiveTargets))
+			if len(actionTargets) > 1 {
+				archiveLabel = locales.ArchiveSelected(len(actionTargets))
 			}
-			iconButton(c, archiveLabel, iconArchive, a.archive).Disabled(len(archiveTargets) == 0 || a.selectedLabel == mail.Draft)
-			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
-			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
-			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
+			iconButton(c, archiveLabel, iconArchive, a.archive).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
+			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
+			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
+			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
 			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(a.selectedLabel == mail.Draft).Padding(5, 6).Children(func() {
 				ui.Icon(c, iconLabel).Size(16, 16)
 			}).Menu(a.labelMenu)
 			starLabel := locales.AddStar()
-			if summary := a.selectedSummary(); summary != nil && summary.Starred {
+			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				starLabel = locales.RemoveStar()
 			}
-			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
-			if summary := a.selectedSummary(); summary != nil && summary.Starred {
+			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
+			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				star.TextColor(t.Warning)
 			}
 			ui.Spacer(c)

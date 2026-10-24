@@ -23,6 +23,8 @@ type fakeService struct {
 	remove        []string
 	trashed       string
 	untrashed     string
+	trashCalls    []string
+	untrashCalls  []string
 	sent          mail.Compose
 	sendErr       error
 	createdLabels []string
@@ -79,10 +81,12 @@ func (f *fakeService) ModifyThread(_ context.Context, id string, add, remove []s
 }
 func (f *fakeService) TrashThread(_ context.Context, id string) error {
 	f.trashed = id
+	f.trashCalls = append(f.trashCalls, id)
 	return nil
 }
 func (f *fakeService) UntrashThread(_ context.Context, id string) error {
 	f.untrashed = id
+	f.untrashCalls = append(f.untrashCalls, id)
 	return nil
 }
 func (f *fakeService) CreateLabel(_ context.Context, name string) (mail.Label, error) {
@@ -351,6 +355,177 @@ func TestBatchArchiveSelectsNextSurvivor(t *testing.T) {
 	a.archive()
 	if a.selectedThread != "D" || a.selectedRow != 1 || a.thread.ID != "D" {
 		t.Fatalf("non-contiguous archive selected %q at row %d with detail %q, want D at row 1", a.selectedThread, a.selectedRow, a.thread.ID)
+	}
+}
+
+func newBatchActionFixture() (*fakeService, *App) {
+	service := newFakeService()
+	service.threads = nil
+	base := time.Now()
+	for i, id := range []string{"thread-1", "thread-2", "thread-3"} {
+		service.threads = append(service.threads, mail.ThreadSummary{
+			ID: id, Subject: id, LabelIDs: []string{mail.Inbox}, Updated: base.Add(-time.Duration(i) * time.Minute),
+		})
+	}
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	return service, newTestApp(service)
+}
+
+func selectAllBatchThreads(a *App) {
+	a.selectThread("thread-1")
+	for _, thread := range a.threads {
+		a.threadSelection.Add(thread.ID)
+	}
+}
+
+func TestBatchStarMixedState(t *testing.T) {
+	service, a := newBatchActionFixture()
+	selectAllBatchThreads(a)
+	a.threads[1].LabelIDs = []string{mail.Inbox, mail.Starred}
+	a.threads[1].Starred = true
+	service.modified = nil
+	a.toggleStar()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-3" {
+		t.Fatalf("batch star requests = %v", service.modified)
+	}
+	for _, thread := range a.threads {
+		if !thread.Starred {
+			t.Fatalf("batch star left %s unstarred", thread.ID)
+		}
+	}
+	a.undoLast()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-3,thread-1,thread-3" {
+		t.Fatalf("batch star undo requests = %v", service.modified)
+	}
+	for i, thread := range a.threads {
+		if thread.Starred != (i == 1) {
+			t.Fatalf("batch star undo changed the wrong state for %s", thread.ID)
+		}
+	}
+}
+
+func TestBatchUnreadMixedState(t *testing.T) {
+	service, a := newBatchActionFixture()
+	selectAllBatchThreads(a)
+	for i := range a.threads {
+		a.threads[i].Unread = i != 1
+		a.threads[i].LabelIDs = []string{mail.Inbox}
+		if a.threads[i].Unread {
+			a.threads[i].LabelIDs = append(a.threads[i].LabelIDs, mail.Unread)
+		}
+	}
+	service.modified = nil
+	a.setUnread(false)
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-3" {
+		t.Fatalf("batch read requests = %v", service.modified)
+	}
+	for _, thread := range a.threads {
+		if thread.Unread {
+			t.Fatalf("batch read left %s unread", thread.ID)
+		}
+	}
+	a.undoLast()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-3,thread-1,thread-3" {
+		t.Fatalf("batch read undo requests = %v", service.modified)
+	}
+	for i, thread := range a.threads {
+		if thread.Unread != (i != 1) {
+			t.Fatalf("batch read undo changed the wrong state for %s", thread.ID)
+		}
+	}
+}
+
+func TestBatchTrashMixedState(t *testing.T) {
+	service, a := newBatchActionFixture()
+	selectAllBatchThreads(a)
+	a.threads[1].LabelIDs = []string{mail.Trash}
+	a.selectedLabel = mail.All
+	a.toggleTrash()
+	if got := strings.Join(service.trashCalls, ","); got != "thread-1,thread-3" {
+		t.Fatalf("batch trash requests = %v", service.trashCalls)
+	}
+	a.undoLast()
+	if got := strings.Join(service.untrashCalls, ","); got != "thread-1,thread-3" {
+		t.Fatalf("batch trash undo requests = %v", service.untrashCalls)
+	}
+	for _, thread := range a.threads {
+		if containsLabel(thread.LabelIDs, mail.Trash) != (thread.ID == "thread-2") {
+			t.Fatalf("batch trash undo changed the wrong state for %s: %v", thread.ID, thread.LabelIDs)
+		}
+	}
+}
+
+func TestBatchUntrashKeepsMatchingThreads(t *testing.T) {
+	service, a := newBatchActionFixture()
+	selectAllBatchThreads(a)
+	for i := range a.threads {
+		a.threads[i].LabelIDs = []string{mail.Trash, mail.Spam}
+	}
+	a.selectedLabel = mail.Spam
+	a.untrash()
+	if got := strings.Join(service.untrashCalls, ","); got != "thread-1,thread-2,thread-3" {
+		t.Fatalf("batch untrash requests = %v", service.untrashCalls)
+	}
+	if len(a.threads) != 3 {
+		t.Fatalf("batch untrash removed conversations still matching Spam: %+v", a.threads)
+	}
+	a.undoLast()
+	if got := strings.Join(service.trashCalls, ","); got != "thread-1,thread-2,thread-3" {
+		t.Fatalf("batch untrash undo requests = %v", service.trashCalls)
+	}
+	for _, thread := range a.threads {
+		if !containsLabel(thread.LabelIDs, mail.Trash) || !containsLabel(thread.LabelIDs, mail.Spam) {
+			t.Fatalf("batch untrash undo did not restore labels for %s: %v", thread.ID, thread.LabelIDs)
+		}
+	}
+}
+
+func TestBatchReportSpam(t *testing.T) {
+	service, a := newBatchActionFixture()
+	selectAllBatchThreads(a)
+	a.selectedLabel = mail.All
+	service.modified = nil
+	a.reportSpam()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-2,thread-3" {
+		t.Fatalf("batch spam requests = %v", service.modified)
+	}
+	if len(a.threads) != 0 || len(service.add) != 1 || service.add[0] != mail.Spam || len(service.remove) != 1 || service.remove[0] != mail.Inbox {
+		t.Fatalf("batch spam state: threads=%+v add=%v remove=%v", a.threads, service.add, service.remove)
+	}
+	a.undoLast()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-2,thread-3,thread-1,thread-2,thread-3" {
+		t.Fatalf("batch spam undo requests = %v", service.modified)
+	}
+	if len(a.threads) != 3 || len(service.add) != 1 || service.add[0] != mail.Inbox || len(service.remove) != 1 || service.remove[0] != mail.Spam {
+		t.Fatalf("batch spam undo state: threads=%+v add=%v remove=%v", a.threads, service.add, service.remove)
+	}
+}
+
+func TestBatchNotSpamKeepsMatchingThreads(t *testing.T) {
+	service, a := newBatchActionFixture()
+	selectAllBatchThreads(a)
+	for i := range a.threads {
+		a.threads[i].LabelIDs = []string{mail.Trash, mail.Spam}
+	}
+	a.selectedLabel = mail.Trash
+	service.modified = nil
+	a.notSpam()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-2,thread-3" {
+		t.Fatalf("batch not-spam requests = %v", service.modified)
+	}
+	if len(a.threads) != 3 || len(service.add) != 1 || service.add[0] != mail.Inbox || len(service.remove) != 1 || service.remove[0] != mail.Spam {
+		t.Fatalf("batch not-spam state: threads=%+v add=%v remove=%v", a.threads, service.add, service.remove)
+	}
+	a.undoLast()
+	if got := strings.Join(service.modified, ","); got != "thread-1,thread-2,thread-3,thread-1,thread-2,thread-3" {
+		t.Fatalf("batch not-spam undo requests = %v", service.modified)
+	}
+	for _, thread := range a.threads {
+		if !containsLabel(thread.LabelIDs, mail.Trash) || !containsLabel(thread.LabelIDs, mail.Spam) {
+			t.Fatalf("batch not-spam undo did not restore labels for %s: %v", thread.ID, thread.LabelIDs)
+		}
 	}
 }
 
