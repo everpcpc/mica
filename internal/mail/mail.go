@@ -75,8 +75,10 @@ type Message struct {
 	ReplyTo     string
 	To          string
 	Cc          string
+	Bcc         string
 	Subject     string
 	MessageID   string
+	InReplyTo   string
 	References  string
 	Date        time.Time
 	Text        string

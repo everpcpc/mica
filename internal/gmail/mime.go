@@ -27,8 +27,10 @@ func makeMessage(threadID string, message apiMessage) (mail.Message, error) {
 		ReplyTo:    decodedHeader(message.Payload, "Reply-To"),
 		To:         decodedHeader(message.Payload, "To"),
 		Cc:         decodedHeader(message.Payload, "Cc"),
+		Bcc:        decodedHeader(message.Payload, "Bcc"),
 		Subject:    decodedHeader(message.Payload, "Subject"),
 		MessageID:  header(message.Payload, "Message-ID"),
+		InReplyTo:  header(message.Payload, "In-Reply-To"),
 		References: header(message.Payload, "References"),
 		Date:       messageTime(message),
 		LabelIDs:   append([]string(nil), message.LabelIDs...),
@@ -142,9 +144,6 @@ func displayName(value string) string {
 }
 
 func buildRFC5322(compose mail.Compose) ([]byte, error) {
-	if compose.To == "" && compose.Cc == "" && compose.Bcc == "" {
-		return nil, errors.New("gmail: at least one recipient is required")
-	}
 	var buffer bytes.Buffer
 	for _, field := range []struct {
 		name  string

@@ -331,6 +331,11 @@ func (a *App) logoutGmail() {
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
+	recovered := a.compose
+	preserveRecovered := recovered != nil && !recovered.sending && recovered.recoveryAccount != "" && len(cachedAccount) > 0 && strings.EqualFold(recovered.recoveryAccount, cachedAccount[0])
+	if preserveRecovered && recovered.saveState == draftSaveSaving {
+		recovered.saveState = draftSaveScheduled
+	}
 	a.serviceVersion++
 	a.cacheState.mu.Lock()
 	a.cacheState.version = a.serviceVersion
@@ -364,7 +369,12 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.mutationRefresh = false
 	a.mutationLabels = false
 	a.undo = nil
-	a.compose = nil
+	if preserveRecovered {
+		a.compose = recovered
+	} else {
+		a.compose = nil
+	}
+	a.draftRestoreAccount = ""
 	a.labelDialog = nil
 	a.threadCache = nil
 	a.resetMessageViews()

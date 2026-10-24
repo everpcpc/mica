@@ -31,6 +31,7 @@ type Demo struct {
 	mu             sync.RWMutex
 	account        Account
 	threads        map[string]*Thread
+	drafts         map[string]DraftRecord
 	attachmentData map[string][]byte
 	labelNames     map[string]string
 	labelColors    map[string]LabelColor
@@ -44,6 +45,7 @@ func NewDemo() *Demo {
 	d := &Demo{
 		account:        Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
 		threads:        make(map[string]*Thread),
+		drafts:         make(map[string]DraftRecord),
 		attachmentData: make(map[string][]byte),
 		labelNames:     make(map[string]string, len(demoLabelNames)),
 		labelColors:    make(map[string]LabelColor),
@@ -395,8 +397,8 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if strings.TrimSpace(compose.To) == "" && strings.TrimSpace(compose.Cc) == "" && strings.TrimSpace(compose.Bcc) == "" {
-		return errors.New("mail: at least one recipient is required")
+	if err := ValidateComposeForSend(compose); err != nil {
+		return err
 	}
 	d.nextID++
 	id := fmt.Sprintf("demo-message-%d", d.nextID)
@@ -406,8 +408,10 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 		From:       (&stdmail.Address{Name: d.account.Name, Address: d.account.Email}).String(),
 		To:         strings.TrimSpace(compose.To),
 		Cc:         strings.TrimSpace(compose.Cc),
+		Bcc:        strings.TrimSpace(compose.Bcc),
 		Subject:    strings.TrimSpace(compose.Subject),
 		MessageID:  fmt.Sprintf("<%s@mica.example>", id),
+		InReplyTo:  strings.TrimSpace(compose.InReplyTo),
 		References: strings.TrimSpace(compose.References),
 		Date:       d.now(),
 		Text:       compose.Text,

@@ -12,9 +12,10 @@ import (
 )
 
 type cacheState struct {
-	mu        sync.Mutex
-	version   int
-	widthSave int
+	mu         sync.Mutex
+	version    int
+	widthSave  int
+	draftWrite uint64
 }
 
 type mailStore interface {
@@ -43,6 +44,9 @@ func (a *App) persistAccount(account mail.Account) {
 		return
 	}
 	a.storeAccount = account.Email
+	if a.compose != nil && a.compose.revision > a.compose.savedRevision {
+		a.persistDraftSnapshot(a.compose)
+	}
 	a.persist(func(store mailStore, email string) error {
 		return store.SaveAccount(context.Background(), account)
 	})

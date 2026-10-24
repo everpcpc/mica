@@ -46,6 +46,11 @@ var migrations = [][]string{{
 		key TEXT PRIMARY KEY,
 		data TEXT NOT NULL
 	)`,
+}, {
+	`CREATE TABLE draft_snapshots (
+			account_email TEXT PRIMARY KEY,
+			data BLOB NOT NULL
+		)`,
 }}
 
 type Store struct {

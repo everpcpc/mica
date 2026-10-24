@@ -57,10 +57,10 @@ func (a *App) addComposeAttachments(paths []string) {
 			sources = append(sources, localComposeAttachmentSource{path: path})
 		}
 	}
-	a.addComposeAttachmentSources(sources)
+	a.addComposeAttachmentSources(sources, true)
 }
 
-func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource) {
+func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource, edited bool) {
 	m := a.compose
 	if m == nil {
 		return
@@ -82,6 +82,9 @@ func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource) {
 		return
 	}
 	m.err = ""
+	if edited {
+		a.markComposerEdited(m)
+	}
 	a.pumpComposeAttachments(m)
 }
 
@@ -140,10 +143,25 @@ func (a *App) finishComposeAttachment(m *composer, id uint64, attachment mailmod
 			} else {
 				item.err = locales.AttachmentReadFailed(err.Error())
 			}
+			if m.revision > m.savedRevision {
+				m.saveState = draftSaveFailed
+				if m.pendingAction == composerActionClose {
+					m.pendingAction = composerActionNone
+				}
+			}
 			return
 		}
 		item.attachment = attachment
 		item.err = ""
+		if m.revision > m.savedRevision {
+			m.saveState = draftSaveScheduled
+			a.persistDraftSnapshot(m)
+			if m.pendingAction == composerActionClose {
+				a.pumpDraftSave(m)
+			} else {
+				a.scheduleDraftSave(m)
+			}
+		}
 		return
 	}
 }
@@ -161,6 +179,7 @@ func (a *App) removeComposeAttachment(id uint64) {
 		m.attachments[len(m.attachments)-1] = composerAttachment{}
 		m.attachments = m.attachments[:len(m.attachments)-1]
 		m.err = ""
+		a.markComposerEdited(m)
 		return
 	}
 }
