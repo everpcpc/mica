@@ -416,11 +416,10 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 	}
 	for i, attachment := range compose.Attachments {
 		message.Attachments = append(message.Attachments, Attachment{
-			ID:        fmt.Sprintf("%s-attachment-%d", id, i+1),
-			Name:      attachment.Name,
-			MIMEType:  attachment.MIMEType,
-			Size:      int64(len(attachment.Data)),
-			ContentID: attachment.ContentID,
+			ID:       fmt.Sprintf("%s-attachment-%d", id, i+1),
+			Name:     attachment.Name,
+			MIMEType: attachment.MIMEType,
+			Size:     int64(len(attachment.Data)),
 		})
 	}
 

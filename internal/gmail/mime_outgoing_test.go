@@ -24,7 +24,7 @@ func TestBuildRFC5322Attachments(t *testing.T) {
 		Text:    "Plain body\n第二行",
 		HTML:    "<p>HTML body</p>",
 		Attachments: []mail.OutgoingAttachment{
-			{Name: "报告.bin", MIMEType: "application/octet-stream", Data: binary, ContentID: "binary@example"},
+			{Name: "报告.bin", MIMEType: "application/octet-stream", Data: binary},
 			{Name: "notes.txt", MIMEType: "text/plain; charset=utf-8", Data: []byte("first\r\nsecond\x00third")},
 		},
 	})
@@ -61,12 +61,11 @@ func TestBuildRFC5322Attachments(t *testing.T) {
 	}
 
 	for i, want := range []struct {
-		name      string
-		mimeType  string
-		data      []byte
-		contentID string
+		name     string
+		mimeType string
+		data     []byte
 	}{
-		{name: "报告.bin", mimeType: "application/octet-stream", data: binary, contentID: "<binary@example>"},
+		{name: "报告.bin", mimeType: "application/octet-stream", data: binary},
 		{name: "notes.txt", mimeType: "text/plain", data: []byte("first\r\nsecond\x00third")},
 	} {
 		part, err := mixed.NextRawPart()
@@ -85,9 +84,6 @@ func TestBuildRFC5322Attachments(t *testing.T) {
 		}
 		if got := part.Header.Get("Content-Transfer-Encoding"); got != "base64" {
 			t.Errorf("attachment %d transfer encoding = %q", i, got)
-		}
-		if got := part.Header.Get("Content-ID"); got != want.contentID {
-			t.Errorf("attachment %d Content-ID = %q, want %q", i, got, want.contentID)
 		}
 		encoded, err := io.ReadAll(part)
 		if err != nil {
@@ -190,7 +186,6 @@ func TestBuildRFC5322RejectsInvalidAttachments(t *testing.T) {
 		{name: "control character", attachment: mail.OutgoingAttachment{Name: "report\x00.pdf", MIMEType: "application/pdf"}},
 		{name: "invalid MIME", attachment: mail.OutgoingAttachment{Name: "report.pdf", MIMEType: "not a MIME type"}},
 		{name: "MIME header injection", attachment: mail.OutgoingAttachment{Name: "report.pdf", MIMEType: "application/pdf\r\nX-Injected: yes"}},
-		{name: "Content-ID injection", attachment: mail.OutgoingAttachment{Name: "report.pdf", MIMEType: "application/pdf", ContentID: "cid>\r\nX-Injected: yes"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			raw, err := buildRFC5322(mail.Compose{To: "maya@example.com", Text: "body", Attachments: []mail.OutgoingAttachment{tc.attachment}})

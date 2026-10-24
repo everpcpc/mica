@@ -1006,6 +1006,16 @@ func (msgs Messages) AttachmentsReading() string {
 	return Catalog.Format(msgs.locale, "attachmentsReading", nil)
 }
 
+// AttachmentsSending says "Wait for the current send to finish before adding attachments"
+// in the language the app shows.
+func AttachmentsSending() string { return In(i18n.Locale()).AttachmentsSending() }
+
+// AttachmentsSending says "Wait for the current send to finish before adding attachments"
+// in the language of msgs.
+func (msgs Messages) AttachmentsSending() string {
+	return Catalog.Format(msgs.locale, "attachmentsSending", nil)
+}
+
 // AttachmentReadFailed says "Couldn't read attachment: {error}"
 // in the language the app shows.
 func AttachmentReadFailed(error string) string { return In(i18n.Locale()).AttachmentReadFailed(error) }

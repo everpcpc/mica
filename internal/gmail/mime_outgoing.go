@@ -71,22 +71,7 @@ func outgoingAttachmentHeader(attachment mail.OutgoingAttachment) (textproto.MIM
 	header.Set("Content-Type", contentType)
 	header.Set("Content-Disposition", disposition)
 	header.Set("Content-Transfer-Encoding", "base64")
-	if attachment.ContentID != "" {
-		if !validContentID(attachment.ContentID) {
-			return nil, errors.New("gmail: invalid attachment Content-ID")
-		}
-		header.Set("Content-ID", "<"+attachment.ContentID+">")
-	}
 	return header, nil
-}
-
-func validContentID(value string) bool {
-	for _, r := range value {
-		if r <= ' ' || r >= 0x7f || r == '<' || r == '>' {
-			return false
-		}
-	}
-	return true
 }
 
 func writeMixedBody(writer *multipart.Writer, compose mail.Compose) error {

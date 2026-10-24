@@ -21,6 +21,7 @@ var errComposeAttachmentTooLarge = errors.New("attachment exceeds 25 MiB")
 
 type composerAttachment struct {
 	id         uint64
+	path       string
 	attachment mailmodel.OutgoingAttachment
 	loading    bool
 	err        string
@@ -51,43 +52,54 @@ func (a *App) chooseComposeAttachments() {
 
 func (a *App) addComposeAttachments(paths []string) {
 	m := a.compose
-	if m == nil || m.sending {
+	if m == nil {
 		return
 	}
-	type pendingAttachment struct {
-		id   uint64
-		path string
+	if m.sending {
+		m.err = locales.AttachmentsSending()
+		return
 	}
-	var pending []pendingAttachment
 	for _, path := range paths {
 		if path == "" {
 			continue
 		}
 		m.nextAttachmentID++
-		id := m.nextAttachmentID
 		m.attachments = append(m.attachments, composerAttachment{
-			id:         id,
+			id:         m.nextAttachmentID,
+			path:       path,
 			attachment: mailmodel.OutgoingAttachment{Name: filepath.Base(path)},
 			loading:    true,
 		})
-		pending = append(pending, pendingAttachment{id: id, path: path})
 	}
-	if len(pending) == 0 {
+	if len(paths) == 0 {
 		return
 	}
 	m.err = ""
-	remaining := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
-	a.schedule(func() {
-		for _, item := range pending {
-			attachment, err := readOutgoingAttachmentLimit(item.path, remaining)
-			if err == nil {
-				remaining -= int64(len(attachment.Data))
-			}
-			a.publish(func() {
-				a.finishComposeAttachment(m, item.id, attachment, err)
-			})
+	a.pumpComposeAttachments(m)
+}
+
+func (a *App) pumpComposeAttachments(m *composer) {
+	if a.compose != m || m.sending || m.readingAttachment {
+		return
+	}
+	for i := range m.attachments {
+		item := &m.attachments[i]
+		if !item.loading {
+			continue
 		}
-	})
+		m.readingAttachment = true
+		remaining := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
+		id, path := item.id, item.path
+		a.schedule(func() {
+			attachment, err := readOutgoingAttachmentLimit(path, remaining)
+			a.publish(func() {
+				m.readingAttachment = false
+				a.finishComposeAttachment(m, id, attachment, err)
+				a.pumpComposeAttachments(m)
+			})
+		})
+		return
+	}
 }
 
 func (a *App) finishComposeAttachment(m *composer, id uint64, attachment mailmodel.OutgoingAttachment, err error) {

@@ -41,6 +41,7 @@ func TestComposeChooseMultipleAttachmentsAndRemove(t *testing.T) {
 		}
 	}
 	runNextComposeJob(t, &jobs)
+	runNextComposeJob(t, &jobs)
 	tt.Frame()
 	if tt.HasText("Reading…") || !tt.HasText("5 B") || !tt.HasText("3 B") {
 		t.Fatalf("loaded attachment state is wrong: %v", tt.Texts())
@@ -84,11 +85,33 @@ func TestComposeDropFiles(t *testing.T) {
 		t.Fatalf("dropped attachments = %+v, jobs = %d", a.compose.attachments, len(jobs))
 	}
 	runNextComposeJob(t, &jobs)
+	runNextComposeJob(t, &jobs)
 	tt.Frame()
 	for _, want := range []string{"first.txt", "second.txt", "5 B", "6 B"} {
 		if !tt.HasText(want) {
 			t.Fatalf("dropped attachments do not show %q: %v", want, tt.Texts())
 		}
+	}
+}
+
+func TestComposeDropFilesWhileSendingShowsError(t *testing.T) {
+	path := writeComposeAttachment(t, "during-send.txt", []byte("during send"))
+	a := newTestApp(newFakeService())
+	a.openCompose(nil)
+	a.compose.sending = true
+	tt := ui.NewTester(a.View, 1280, 900)
+	target, ok := tt.Find("Attach files")
+	if !ok {
+		t.Fatal("attachment drop target is missing")
+	}
+	if !tt.DropFiles(target.X+target.W/2, target.Y+target.H/2, path) {
+		t.Fatal("composer did not report the dropped files")
+	}
+	if len(a.compose.attachments) != 0 {
+		t.Fatal("attachments changed while sending")
+	}
+	if !tt.HasText("Wait for the current send to finish before adding attachments") {
+		t.Fatalf("sending drop was silently discarded: %v", tt.Texts())
 	}
 }
 
@@ -156,6 +179,52 @@ func TestComposeLateAttachmentResultDoesNotOverwriteNewState(t *testing.T) {
 	runNextComposeJob(t, &jobs)
 	if len(a.compose.attachments) != 1 || a.compose.attachments[0].attachment.Name != "new.txt" || string(a.compose.attachments[0].attachment.Data) != "new" {
 		t.Fatalf("replacement attachment = %+v", a.compose.attachments)
+	}
+}
+
+func TestComposeAttachmentReadsAreSerialized(t *testing.T) {
+	first := writeComposeAttachment(t, "first.txt", []byte("first"))
+	second := writeComposeAttachment(t, "second.txt", []byte("second"))
+	a := newTestApp(newFakeService())
+	a.openCompose(nil)
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.addComposeAttachments([]string{first})
+	a.addComposeAttachments([]string{second})
+	if len(jobs) != 1 {
+		t.Fatalf("two batches scheduled %d readers, want 1", len(jobs))
+	}
+	runNextComposeJob(t, &jobs)
+	if len(jobs) != 1 {
+		t.Fatalf("next attachment was not scheduled after the first read: %d jobs", len(jobs))
+	}
+	runNextComposeJob(t, &jobs)
+	for i, item := range a.compose.attachments {
+		if item.loading || item.err != "" {
+			t.Fatalf("attachment %d did not finish: %+v", i, item)
+		}
+	}
+}
+
+func TestComposeRemovedAttachmentDoesNotConsumeAllowance(t *testing.T) {
+	large := writeComposeAttachment(t, "large.bin", make([]byte, 25<<20-1))
+	small := writeComposeAttachment(t, "small.txt", []byte("ok"))
+	a := newTestApp(newFakeService())
+	a.openCompose(nil)
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.addComposeAttachments([]string{large, small})
+	removedID := a.compose.attachments[0].id
+	a.removeComposeAttachment(removedID)
+	for len(jobs) > 0 {
+		runNextComposeJob(t, &jobs)
+	}
+	if len(a.compose.attachments) != 1 {
+		t.Fatalf("attachments = %+v, want only small.txt", a.compose.attachments)
+	}
+	item := a.compose.attachments[0]
+	if item.err != "" || string(item.attachment.Data) != "ok" {
+		t.Fatalf("removed attachment consumed the remaining allowance: %+v", item)
 	}
 }
 

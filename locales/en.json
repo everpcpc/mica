@@ -110,6 +110,7 @@
   "attachmentDropHint": "or drop files here",
   "attachmentReading": "Reading…",
   "attachmentsReading": "Wait for attachments to finish reading",
+  "attachmentsSending": "Wait for the current send to finish before adding attachments",
   "attachmentReadFailed": "Couldn't read attachment: {error}",
   "@attachmentReadFailed": {"placeholders": {"error": {"type": "String", "example": "unavailable"}}},
   "attachmentsReadFailed": "Remove attachments that couldn't be read before sending",

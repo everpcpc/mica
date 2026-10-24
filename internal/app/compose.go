@@ -13,24 +13,25 @@ import (
 )
 
 type composer struct {
-	open             bool
-	forward          bool
-	showCc           bool
-	showBcc          bool
-	to               string
-	cc               string
-	bcc              string
-	subject          string
-	doc              *richtext.Document
-	quote            *mailmodel.Message
-	quoteOpen        bool
-	threadID         string
-	inReplyTo        string
-	references       string
-	attachments      []composerAttachment
-	nextAttachmentID uint64
-	sending          bool
-	err              string
+	open              bool
+	forward           bool
+	showCc            bool
+	showBcc           bool
+	to                string
+	cc                string
+	bcc               string
+	subject           string
+	doc               *richtext.Document
+	quote             *mailmodel.Message
+	quoteOpen         bool
+	threadID          string
+	inReplyTo         string
+	references        string
+	attachments       []composerAttachment
+	nextAttachmentID  uint64
+	readingAttachment bool
+	sending           bool
+	err               string
 }
 
 func (a *App) openCompose(reply *mailmodel.Message) {

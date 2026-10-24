@@ -96,10 +96,9 @@ type Attachment struct {
 const MaxComposeAttachmentBytes int64 = 25 << 20
 
 type OutgoingAttachment struct {
-	Name      string
-	MIMEType  string
-	Data      []byte
-	ContentID string
+	Name     string
+	MIMEType string
+	Data     []byte
 }
 
 type Query struct {

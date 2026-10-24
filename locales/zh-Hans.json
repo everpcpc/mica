@@ -106,6 +106,7 @@
   "attachmentDropHint": "或把文件拖到这里",
   "attachmentReading": "正在读取…",
   "attachmentsReading": "请等待附件读取完成",
+  "attachmentsSending": "请等待当前邮件发送完成后再添加附件",
   "attachmentReadFailed": "读取附件失败：{error}",
   "attachmentsReadFailed": "请先移除读取失败的附件再发送",
   "attachmentSizeLimit": "附件总大小不能超过 25 MB",
