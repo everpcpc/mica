@@ -14,26 +14,27 @@ import (
 )
 
 type fakeService struct {
-	account       mail.Account
-	labels        []mail.Label
-	threads       []mail.ThreadSummary
-	thread        mail.Thread
-	threadFunc    func(string) (mail.Thread, error)
-	modified      []string
-	add           []string
-	remove        []string
-	trashed       string
-	untrashed     string
-	trashCalls    []string
-	untrashCalls  []string
-	sent          mail.Compose
-	sendErr       error
-	createdLabels []string
-	deletedLabels []string
-	labelColors   map[string]mail.LabelColor
-	watchID       uint64
-	historyFunc   func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
-	stream        func(context.Context, func(gmail.PushNotification) error) error
+	account               mail.Account
+	labels                []mail.Label
+	threads               []mail.ThreadSummary
+	thread                mail.Thread
+	threadFunc            func(string) (mail.Thread, error)
+	modified              []string
+	add                   []string
+	remove                []string
+	trashed               string
+	untrashed             string
+	trashCalls            []string
+	untrashCalls          []string
+	sent                  mail.Compose
+	sendErr               error
+	sentMessageExistsFunc func(string) (bool, error)
+	createdLabels         []string
+	deletedLabels         []string
+	labelColors           map[string]mail.LabelColor
+	watchID               uint64
+	historyFunc           func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
+	stream                func(context.Context, func(gmail.PushNotification) error) error
 }
 
 func newFakeService() *fakeService {
@@ -124,8 +125,16 @@ func (f *fakeService) Send(_ context.Context, compose mail.Compose) error {
 	return f.sendErr
 }
 
+func (f *fakeService) SentMessageExists(_ context.Context, messageID string) (bool, error) {
+	if f.sentMessageExistsFunc != nil {
+		return f.sentMessageExistsFunc(messageID)
+	}
+	return false, nil
+}
+
 func newTestApp(service *fakeService) *App {
 	a := New(service)
+	a.outbox = newFakeMailStore()
 	a.schedule = func(fn func()) { fn() }
 	a.after = func(time.Duration, func()) {}
 	a.restoreAttempted = true

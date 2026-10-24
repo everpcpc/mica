@@ -248,6 +248,7 @@ func newIndividualMessageFixture() (*App, *individualAttachmentService) {
 		errs: make(map[string]error),
 	}
 	a := New(service)
+	a.outbox = newFakeMailStore()
 	a.schedule = func(fn func()) { fn() }
 	a.restoreAttempted = true
 	a.startupSelectionDone = true

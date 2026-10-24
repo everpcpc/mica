@@ -20,6 +20,11 @@ const threadPageSize = 25
 type App struct {
 	service                  mail.Service
 	store                    mailStore
+	outbox                   outboxStore
+	outboxRecords            map[string]mail.OutboxMessage
+	outboxBusy               string
+	outboxDeleteID           string
+	outboxDeleteOpen         bool
 	cacheState               cacheState
 	accountClients           map[string]*accountClient
 	accountGenerationCounter uint64
@@ -343,6 +348,10 @@ func listThreadPage(ctx context.Context, service mail.Service, query mail.Query)
 }
 
 func (a *App) refreshList() {
+	if a.selectedLabel == mail.Outbox {
+		a.refreshOutbox()
+		return
+	}
 	if a.selectedLabel == mail.Unified {
 		a.refreshUnified()
 		return
@@ -561,7 +570,9 @@ func (a *App) selectLabel() {
 			a.accountInboxPending = a.selectedLabel
 		}
 	}
-	if a.compositeThreads != (a.selectedLabel == mail.Unified) || activate != "" {
+	viewChanged := a.compositeThreads != (a.selectedLabel == mail.Unified) || activate != "" || a.selectedLabel == mail.Outbox || a.outboxRecords != nil
+	if viewChanged {
+		a.outboxRecords = nil
 		a.request++
 		a.threads = nil
 		a.threadCache = nil
@@ -643,6 +654,16 @@ func (a *App) loadThread(id string) {
 	a.selectedThread = id
 	a.syncThreadSelection(false)
 	a.threadErr = ""
+	if a.selectedLabel == mail.Outbox {
+		record, found := a.outboxRecords[outboxRecordKey(id)]
+		if !found {
+			a.threadLoading = false
+			a.threadErr = errOutboxUnavailable.Error()
+			return
+		}
+		a.showThread(id, outboxThread(record))
+		return
+	}
 	if a.selectedLabel == mail.Draft {
 		a.selectDraft(id, call)
 		return
@@ -842,7 +863,7 @@ func (a *App) toggleUnread() {
 }
 
 func (a *App) actionSummaries() []mail.ThreadSummary {
-	if a.accountTransition != nil {
+	if a.accountTransition != nil || a.selectedLabel == mail.Outbox {
 		return nil
 	}
 	threads := a.visibleThreads()
@@ -1258,6 +1279,8 @@ func (a *App) labelName(id string) string {
 		return locales.Sent()
 	case mail.Draft:
 		return locales.Drafts()
+	case mail.Outbox:
+		return locales.Outbox()
 	case mail.Important:
 		return locales.Important()
 	case mail.All:

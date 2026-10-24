@@ -16,17 +16,18 @@ import (
 
 type draftTestService struct {
 	*mailmodel.Demo
-	createErr      error
-	updateErr      error
-	deleteErr      error
-	sendDraftErr   error
-	sendErr        error
-	createCalls    int
-	updateCalls    int
-	getCalls       int
-	deleteCalls    int
-	sendDraftCalls int
-	sendCalls      int
+	createErr             error
+	updateErr             error
+	deleteErr             error
+	sendDraftErr          error
+	sendErr               error
+	sentMessageExistsFunc func(string) (bool, error)
+	createCalls           int
+	updateCalls           int
+	getCalls              int
+	deleteCalls           int
+	sendDraftCalls        int
+	sendCalls             int
 }
 
 func newDraftTestService() *draftTestService {
@@ -78,6 +79,13 @@ func (s *draftTestService) Send(ctx context.Context, compose mailmodel.Compose) 
 	return s.Demo.Send(ctx, compose)
 }
 
+func (s *draftTestService) SentMessageExists(ctx context.Context, messageID string) (bool, error) {
+	if s.sentMessageExistsFunc != nil {
+		return s.sentMessageExistsFunc(messageID)
+	}
+	return s.Demo.SentMessageExists(ctx, messageID)
+}
+
 type draftHarness struct {
 	t       *testing.T
 	app     *App
@@ -94,6 +102,7 @@ func newDraftHarness(t *testing.T) *draftHarness {
 	h.app = a
 	a.account, _ = service.Account(context.Background())
 	a.accountVerified = true
+	a.outbox = newFakeMailStore()
 	a.schedule = func(fn func()) { h.jobs = append(h.jobs, fn) }
 	a.update = func(fn func()) { h.updates = append(h.updates, fn) }
 	a.after = func(_ time.Duration, fn func()) { h.timers = append(h.timers, fn) }

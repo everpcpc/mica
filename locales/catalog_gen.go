@@ -1080,6 +1080,116 @@ func (msgs Messages) SendFailed(error string) string {
 	return Catalog.Format(msgs.locale, "sendFailed", map[string]any{"error": error})
 }
 
+// OutboxCleanupFailed says "Sent, but Outbox cleanup failed: {error}"
+// in the language the app shows.
+func OutboxCleanupFailed(error string) string { return In(i18n.Locale()).OutboxCleanupFailed(error) }
+
+// OutboxCleanupFailed says "Sent, but Outbox cleanup failed: {error}"
+// in the language of msgs.
+func (msgs Messages) OutboxCleanupFailed(error string) string {
+	return Catalog.Format(msgs.locale, "outboxCleanupFailed", map[string]any{"error": error})
+}
+
+// Outbox says "Outbox"
+// in the language the app shows.
+func Outbox() string { return In(i18n.Locale()).Outbox() }
+
+// Outbox says "Outbox"
+// in the language of msgs.
+func (msgs Messages) Outbox() string {
+	return Catalog.Format(msgs.locale, "outbox", nil)
+}
+
+// OutboxSending says "Sending…"
+// in the language the app shows.
+func OutboxSending() string { return In(i18n.Locale()).OutboxSending() }
+
+// OutboxSending says "Sending…"
+// in the language of msgs.
+func (msgs Messages) OutboxSending() string {
+	return Catalog.Format(msgs.locale, "outboxSending", nil)
+}
+
+// OutboxUncertain says "Needs review"
+// in the language the app shows.
+func OutboxUncertain() string { return In(i18n.Locale()).OutboxUncertain() }
+
+// OutboxUncertain says "Needs review"
+// in the language of msgs.
+func (msgs Messages) OutboxUncertain() string {
+	return Catalog.Format(msgs.locale, "outboxUncertain", nil)
+}
+
+// OutboxDelete says "Delete"
+// in the language the app shows.
+func OutboxDelete() string { return In(i18n.Locale()).OutboxDelete() }
+
+// OutboxDelete says "Delete"
+// in the language of msgs.
+func (msgs Messages) OutboxDelete() string {
+	return Catalog.Format(msgs.locale, "outboxDelete", nil)
+}
+
+// OutboxDeleteQuestion says "Delete outgoing message?"
+// in the language the app shows.
+func OutboxDeleteQuestion() string { return In(i18n.Locale()).OutboxDeleteQuestion() }
+
+// OutboxDeleteQuestion says "Delete outgoing message?"
+// in the language of msgs.
+func (msgs Messages) OutboxDeleteQuestion() string {
+	return Catalog.Format(msgs.locale, "outboxDeleteQuestion", nil)
+}
+
+// OutboxDeleteConfirmation says "Delete this outgoing message permanently? This cannot be undone."
+// in the language the app shows.
+func OutboxDeleteConfirmation() string { return In(i18n.Locale()).OutboxDeleteConfirmation() }
+
+// OutboxDeleteConfirmation says "Delete this outgoing message permanently? This cannot be undone."
+// in the language of msgs.
+func (msgs Messages) OutboxDeleteConfirmation() string {
+	return Catalog.Format(msgs.locale, "outboxDeleteConfirmation", nil)
+}
+
+// OutboxDeleteConfirm says "Delete permanently"
+// in the language the app shows.
+func OutboxDeleteConfirm() string { return In(i18n.Locale()).OutboxDeleteConfirm() }
+
+// OutboxDeleteConfirm says "Delete permanently"
+// in the language of msgs.
+func (msgs Messages) OutboxDeleteConfirm() string {
+	return Catalog.Format(msgs.locale, "outboxDeleteConfirm", nil)
+}
+
+// OutboxDeleteFailed says "Couldn't delete outgoing message: {error}"
+// in the language the app shows.
+func OutboxDeleteFailed(error string) string { return In(i18n.Locale()).OutboxDeleteFailed(error) }
+
+// OutboxDeleteFailed says "Couldn't delete outgoing message: {error}"
+// in the language of msgs.
+func (msgs Messages) OutboxDeleteFailed(error string) string {
+	return Catalog.Format(msgs.locale, "outboxDeleteFailed", map[string]any{"error": error})
+}
+
+// EmptyOutbox says "No outgoing mail"
+// in the language the app shows.
+func EmptyOutbox() string { return In(i18n.Locale()).EmptyOutbox() }
+
+// EmptyOutbox says "No outgoing mail"
+// in the language of msgs.
+func (msgs Messages) EmptyOutbox() string {
+	return Catalog.Format(msgs.locale, "emptyOutbox", nil)
+}
+
+// EmptyOutboxHint says "Messages that need another send attempt appear here."
+// in the language the app shows.
+func EmptyOutboxHint() string { return In(i18n.Locale()).EmptyOutboxHint() }
+
+// EmptyOutboxHint says "Messages that need another send attempt appear here."
+// in the language of msgs.
+func (msgs Messages) EmptyOutboxHint() string {
+	return Catalog.Format(msgs.locale, "emptyOutboxHint", nil)
+}
+
 // RecipientRequired says "Add a recipient"
 // in the language the app shows.
 func RecipientRequired() string { return In(i18n.Locale()).RecipientRequired() }
@@ -1806,6 +1916,18 @@ func AccountDraftRemaining(email string) string {
 // in the language of msgs.
 func (msgs Messages) AccountDraftRemaining(email string) string {
 	return Catalog.Format(msgs.locale, "accountDraftRemaining", map[string]any{"email": email})
+}
+
+// AccountOutboxRemaining says "{email} has outgoing mail in Outbox. Retry or delete it before removing the account."
+// in the language the app shows.
+func AccountOutboxRemaining(email string) string {
+	return In(i18n.Locale()).AccountOutboxRemaining(email)
+}
+
+// AccountOutboxRemaining says "{email} has outgoing mail in Outbox. Retry or delete it before removing the account."
+// in the language of msgs.
+func (msgs Messages) AccountOutboxRemaining(email string) string {
+	return Catalog.Format(msgs.locale, "accountOutboxRemaining", map[string]any{"email": email})
 }
 
 // AccountComposerRequired says "Close the composer before adding, switching, or removing an account."

@@ -31,6 +31,8 @@ type composer struct {
 	nextAttachmentID  uint64
 	readingAttachment bool
 	draftID           string
+	outboxID          string
+	messageID         string
 	revision          uint64
 	savedRevision     uint64
 	saveState         draftSaveState
@@ -102,13 +104,16 @@ func (a *App) openCompose(reply *mailmodel.Message) {
 }
 
 func (a *App) openReply() {
-	if a.selectedLabel == mailmodel.Draft || len(a.thread.Messages) == 0 {
+	if a.selectedLabel == mailmodel.Draft || a.selectedLabel == mailmodel.Outbox || len(a.thread.Messages) == 0 {
 		return
 	}
 	a.openReplyMessage(a.thread.Messages[len(a.thread.Messages)-1])
 }
 
 func (a *App) openReplyMessage(message mailmodel.Message) {
+	if a.selectedLabel == mailmodel.Outbox {
+		return
+	}
 	a.openCompose(&message)
 }
 

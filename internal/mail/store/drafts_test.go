@@ -29,8 +29,14 @@ func TestDraftSnapshotMigrationRestartAndAccountIsolation(t *testing.T) {
 	if err := s.SetLastAccount(ctx, account.Email); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Execute(ctx, "DROP TABLE draft_snapshots"); err != nil {
-		t.Fatal(err)
+	for _, query := range []string{
+		"DROP TABLE draft_snapshots",
+		"DROP TRIGGER IF EXISTS outbox_attempt_guard",
+		"DROP TABLE IF EXISTS outbox_messages",
+	} {
+		if _, err := s.db.Execute(ctx, query); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := s.db.Execute(ctx, "PRAGMA user_version = 2"); err != nil {
 		t.Fatal(err)

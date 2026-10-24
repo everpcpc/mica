@@ -11,6 +11,7 @@ const (
 	Snoozed   = "SNOOZED"
 	Sent      = "SENT"
 	Draft     = "DRAFT"
+	Outbox    = "OUTBOX"
 	Important = "IMPORTANT"
 	All       = "ALL"
 	Spam      = "SPAM"
@@ -127,6 +128,7 @@ type Compose struct {
 	Subject           string
 	Text              string
 	HTML              string
+	MessageID         string
 	ThreadID          string
 	InReplyTo         string
 	References        string

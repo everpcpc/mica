@@ -200,6 +200,7 @@ func composeSnapshotContent(m *composer) mailmodel.Compose {
 		Subject:           m.subject,
 		Text:              text,
 		HTML:              htmlContent,
+		MessageID:         m.messageID,
 		ThreadID:          m.threadID,
 		InReplyTo:         m.inReplyTo,
 		References:        m.references,
@@ -357,12 +358,6 @@ func (a *App) beginSendCompose(m *composer) {
 		m.err = locales.DraftSaveFailedReason("account is not verified")
 		return
 	}
-	compose, ready := a.composeSnapshot(m)
-	if !ready {
-		m.sending = false
-		m.pendingAction = composerActionNone
-		return
-	}
 	manager, hasDrafts := a.draftManager(m)
 	service, ownerGeneration := a.ownerService(owner)
 	if service == nil || m.draftID != "" && !hasDrafts {
@@ -371,30 +366,56 @@ func (a *App) beginSendCompose(m *composer) {
 		m.err = locales.DraftSaveFailedReason("drafts are unavailable")
 		return
 	}
-	draftID := m.draftID
+	store := a.outbox
+	if store == nil {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.SendFailed(errOutboxUnavailable.Error())
+		return
+	}
+	if err := ensureOutboxIdentity(m, owner); err != nil {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.SendFailed(err.Error())
+		return
+	}
+	compose, ready := a.composeSnapshot(m)
+	if !ready {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		return
+	}
+	draftID, outboxID := m.draftID, m.outboxID
 	m.generation++
 	m.pendingAction = composerActionSend
 	m.saveState = draftSaveIdle
 	m.sending = true
 	m.err = ""
+	a.cacheState.writes.Add(1)
 	a.schedule(func() {
-		var err error
-		if hasDrafts && draftID != "" {
-			err = manager.SendDraft(context.Background(), draftID, compose)
-		} else {
-			err = service.Send(context.Background(), compose)
+		defer a.cacheState.writes.Done()
+		previous, found, err := store.OutboxMessage(context.Background(), owner, outboxID)
+		result := outboxAttemptResult{err: err}
+		if err == nil {
+			record := outboxRecordForCompose(outboxID, owner, draftID, compose, previous, found)
+			snapshot := mailmodel.DraftSnapshot{DraftID: draftID, OutboxID: outboxID, Compose: compose}
+			result = attemptOutboxSend(store, owner, record, &snapshot, service, manager, hasDrafts)
 		}
 		a.publish(func() {
 			if a.compose != m || !a.ownerOperationCurrent(owner, ownerGeneration) {
 				return
 			}
-			if err != nil {
-				m.sending = false
-				m.pendingAction = composerActionNone
-				m.err = locales.SendFailed(err.Error())
-				if _, ok := a.draftManager(m); ok && m.revision > m.savedRevision {
-					m.saveState = draftSaveScheduled
-					a.scheduleDraftSave(m)
+			m.sending = false
+			m.pendingAction = composerActionNone
+			if result.err != nil {
+				if result.sent {
+					m.err = locales.OutboxCleanupFailed(result.err.Error())
+				} else {
+					m.err = locales.SendFailed(result.err.Error())
+					if _, ok := a.draftManager(m); ok && m.revision > m.savedRevision {
+						m.saveState = draftSaveScheduled
+						a.scheduleDraftSave(m)
+					}
 				}
 				return
 			}

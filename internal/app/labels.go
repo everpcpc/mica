@@ -38,6 +38,7 @@ var mailboxLabels = []sidebarLabel{
 	{mail.Snoozed, iconSnoozed},
 	{mail.Sent, iconSent},
 	{mail.Draft, iconCompose},
+	{mail.Outbox, iconSent},
 	{mail.Important, iconImportant},
 	{mail.All, iconAll},
 	{mail.Spam, iconSpam},
@@ -174,7 +175,7 @@ func (a *App) unifiedUnread() int {
 
 func hiddenSystemLabel(id string) bool {
 	switch id {
-	case mail.Inbox, mail.Starred, mail.Snoozed, mail.Sent, mail.Draft, mail.Important, mail.Unified,
+	case mail.Inbox, mail.Starred, mail.Snoozed, mail.Sent, mail.Draft, mail.Outbox, mail.Important, mail.Unified,
 		mail.All, mail.Spam, mail.Trash, mail.Unread, "CHAT", "YELLOW_STAR":
 		return true
 	}

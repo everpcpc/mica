@@ -20,6 +20,7 @@ type DraftPage struct {
 
 type DraftSnapshot struct {
 	DraftID          string
+	OutboxID         string
 	Compose          Compose
 	AttachmentErrors []int
 }

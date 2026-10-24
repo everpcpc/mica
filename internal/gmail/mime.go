@@ -167,6 +167,7 @@ func buildRFC5322(compose mail.Compose) ([]byte, error) {
 		value string
 	}{
 		{name: "Subject", value: compose.Subject},
+		{name: "Message-ID", value: compose.MessageID},
 		{name: "In-Reply-To", value: compose.InReplyTo},
 		{name: "References", value: compose.References},
 	} {

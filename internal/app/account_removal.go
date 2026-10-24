@@ -170,13 +170,14 @@ func (a *App) removeAccount(email string) {
 	a.accountTransition = transition
 	a.cancelAccountInboxRequest()
 	store, restore := a.store, a.accountService
+	outbox := a.outbox
 	if restore == nil {
 		restore = restoreStoredAccount
 	}
 	a.waitForMutations(func() {
 		a.schedule(func() {
 			a.cacheState.writes.Wait()
-			var snapshotFound bool
+			var snapshotFound, outboxFound bool
 			var next mail.Service
 			var nextEmail string
 			var err error
@@ -186,7 +187,12 @@ func (a *App) removeAccount(email string) {
 				if drafts, ok := store.(draftStore); ok {
 					_, snapshotFound, err = drafts.DraftSnapshot(context.Background(), email)
 				}
-				if err == nil && !snapshotFound && email == current {
+				if outbox != nil && err == nil && !snapshotFound {
+					var records []mail.OutboxMessage
+					records, err = outbox.OutboxMessages(context.Background(), email)
+					outboxFound = len(records) > 0
+				}
+				if err == nil && !snapshotFound && !outboxFound && email == current {
 					var accounts []mail.Account
 					accounts, err = store.Accounts(context.Background())
 					for _, account := range accounts {
@@ -206,7 +212,7 @@ func (a *App) removeAccount(email string) {
 					}
 				}
 			}
-			if err == nil && !snapshotFound && email != current {
+			if err == nil && !snapshotFound && !outboxFound && email != current {
 				legacyMatches, verifyErr := a.legacyAccountMatches(email)
 				if verifyErr != nil {
 					err = verifyErr
@@ -224,11 +230,15 @@ func (a *App) removeAccount(email string) {
 				if a.accountTransition != transition || a.serviceVersion != transition.sourceVersion {
 					return
 				}
-				if snapshotFound {
+				if snapshotFound || outboxFound {
 					a.accountTransition = nil
 					if a.settings == s {
 						s.busy = false
-						s.err = locales.AccountDraftRemaining(email)
+						if snapshotFound {
+							s.err = locales.AccountDraftRemaining(email)
+						} else {
+							s.err = locales.AccountOutboxRemaining(email)
+						}
 					}
 					a.resumePendingMailto()
 					return

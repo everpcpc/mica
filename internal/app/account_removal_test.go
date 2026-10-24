@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"testing"
+	"time"
 
 	"mica/internal/mail"
 	"mica/locales"
@@ -135,6 +136,40 @@ func TestRemoveInactiveAccountAfterSettingsClose(t *testing.T) {
 	}
 	if a.accountCount != 1 || len(a.unifiedAccounts) != 1 || a.selectedLabel != mail.Inbox || a.compositeThreads {
 		t.Fatalf("closed Settings left stale navigation: count=%d accounts=%+v label=%q composite=%v", a.accountCount, a.unifiedAccounts, a.selectedLabel, a.compositeThreads)
+	}
+}
+
+func TestRemoveAccountWithOutboxChangesNothing(t *testing.T) {
+	h := newAccountTransitionHarness()
+	a := h.app
+	a.settings = &settingsState{open: true}
+	email := h.target.account.Email
+	record := mail.OutboxMessage{
+		ID: "pending", AccountEmail: email, State: mail.OutboxUncertain, Attempt: 1,
+		Created: time.Now(), Updated: time.Now(),
+		Compose: mail.Compose{To: "to@example.com", Text: "pending", MessageID: "<pending@example.com>"},
+	}
+	if err := h.store.EnqueueOutbox(context.Background(), email, record, mail.DraftSnapshot{}); err != nil {
+		t.Fatal(err)
+	}
+	delete(h.store.drafts, email)
+	removedCredentials := 0
+	a.removeCredentials = func(context.Context, string) error {
+		removedCredentials++
+		return nil
+	}
+	a.deleteCheckpoint = func(string) error { return nil }
+	a.removeAccount(email)
+	h.runJob(t)
+	h.runUpdate(t)
+	if removedCredentials != 0 {
+		t.Fatal("Outbox guard deleted account credentials")
+	}
+	if _, found, _ := h.store.Account(context.Background(), email); !found {
+		t.Fatal("Outbox guard deleted the account")
+	}
+	if len(h.store.outbox) != 1 || a.settings.err != locales.AccountOutboxRemaining(email) || a.accountTransition != nil {
+		t.Fatalf("Outbox guard result: records=%+v err=%q transition=%p", h.store.outbox, a.settings.err, a.accountTransition)
 	}
 }
 
