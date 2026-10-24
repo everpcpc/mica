@@ -217,6 +217,10 @@ func loginGmailService(ctx context.Context, clientID, clientSecret, projectID, e
 	if err := formal.SaveToken(pending.token); err != nil {
 		return nil, "", err
 	}
+	alias := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
+	if err := alias.SaveToken(pending.token); err != nil {
+		return nil, "", err
+	}
 	client, err = formal.Restore(ctx)
 	if err != nil {
 		return nil, "", err
@@ -373,9 +377,6 @@ func migrateLegacyGmail(ctx context.Context, clientID, clientSecret, projectID, 
 	if err != nil {
 		return nil, "", err
 	}
-	if err := legacy.Logout(ctx); err != nil {
-		return nil, "", err
-	}
 	return service, account.Email, nil
 }
 
@@ -412,10 +413,26 @@ func (a *App) logoutGmail() {
 	}
 	s.busy = true
 	s.err = ""
+	email := a.storeAccount
+	if email == "" {
+		email = a.account.Email
+	}
+	if email == "" {
+		s.busy = false
+		s.err = locales.LogoutFailed("account email is unavailable")
+		return
+	}
+	if a.account.Email != "" && !strings.EqualFold(email, a.account.Email) {
+		s.busy = false
+		s.err = locales.LogoutFailed("account identity changed")
+		return
+	}
 	version := a.serviceVersion
-	email := a.account.Email
 	a.schedule(func() {
 		err := gmail.NewOAuthForAccount("", "", "", email).Logout(context.Background())
+		if err == nil {
+			err = gmail.NewOAuthWithProject("", "", "").Logout(context.Background())
+		}
 		a.publish(func() {
 			if version != a.serviceVersion {
 				return

@@ -60,6 +60,28 @@ func TestSettingsLanguageUsesDisplayLabels(t *testing.T) {
 	}
 }
 
+func TestLogoutRejectsUnconfirmedIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		storeAccount string
+		email        string
+	}{
+		{name: "empty email"},
+		{name: "mismatched profile", storeAccount: "a@example.com", email: "b@example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.storeAccount = tc.storeAccount
+			a.account.Email = tc.email
+			a.settings = &settingsState{open: true}
+			a.logoutGmail()
+			if a.settings.err == "" || a.settings.busy {
+				t.Fatalf("logout with unconfirmed identity did not fail safely: %+v", a.settings)
+			}
+		})
+	}
+}
+
 func TestConnectRequiresOAuthConfiguration(t *testing.T) {
 	a := newTestApp(newFakeService())
 	a.settings = &settingsState{open: true}
