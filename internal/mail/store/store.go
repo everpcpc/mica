@@ -98,6 +98,8 @@ var migrations = [][]string{{
 		data BLOB NOT NULL,
 		PRIMARY KEY (account_email, thread_id)
 	)`,
+}, {
+	`ALTER TABLE outbox_messages ADD COLUMN send_at INTEGER NOT NULL DEFAULT 0`,
 }}
 
 type Store struct {

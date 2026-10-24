@@ -77,6 +77,9 @@ func TestSnoozeMigrationAndWakeDeletion(t *testing.T) {
 	if _, err := s.db.Execute(ctx, "DROP TABLE IF EXISTS snoozed_threads"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.db.Execute(ctx, "ALTER TABLE outbox_messages DROP COLUMN send_at"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.db.Execute(ctx, "PRAGMA user_version = 7"); err != nil {
 		t.Fatal(err)
 	}
