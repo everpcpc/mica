@@ -58,8 +58,7 @@ func (a *App) refreshUnifiedAfterAccountRemoval(email string) {
 	if a.selectedLabel != mail.Unified {
 		if accountInboxLabel(a.selectedLabel) == email {
 			a.selectedLabel = mail.Inbox
-			a.clearThread()
-			a.refresh()
+			a.selectLabel()
 		}
 		return
 	}

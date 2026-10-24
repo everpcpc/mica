@@ -562,11 +562,13 @@ func (a *App) accountAuthenticationFailed(s *settingsState, expectedEmail string
 	if a.authCancel != nil {
 		a.cancelPendingAuthentication()
 	}
+	a.resetFailedAccountInbox()
 	a.openPendingMailto()
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	inboxLabel := a.selectedLabel
+	a.accountInboxPending = ""
 	a.cancelAuthentication()
 	recovered := a.compose
 	preserveRecovered := recovered != nil && !recovered.sending && recovered.recoveryAccount != "" && len(cachedAccount) > 0 && strings.EqualFold(recovered.recoveryAccount, cachedAccount[0])

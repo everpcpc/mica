@@ -141,6 +141,7 @@ type App struct {
 	loginGmail            gmailLoginFunc
 	unifiedAccounts       []mail.Account
 	unifiedExpanded       bool
+	accountInboxPending   string
 }
 
 func New(service mail.Service) *App {
@@ -547,15 +548,20 @@ func historyListContains(query mail.Query, summary mail.ThreadSummary) bool {
 }
 
 func (a *App) selectLabel() {
+	if a.accountInboxPending != "" {
+		a.selectedLabel = a.accountInboxPending
+		return
+	}
+	activate := ""
 	if email := accountInboxLabel(a.selectedLabel); email != "" {
 		if !a.accountInboxAvailable(email) {
 			a.selectedLabel = mail.Inbox
 		} else if email != normalizedEmail(a.storeAccount) {
-			a.switchAccount(email)
-			return
+			activate = email
+			a.accountInboxPending = a.selectedLabel
 		}
 	}
-	if a.compositeThreads != (a.selectedLabel == mail.Unified) {
+	if a.compositeThreads != (a.selectedLabel == mail.Unified) || activate != "" {
 		a.request++
 		a.threads = nil
 		a.threadCache = nil
@@ -575,7 +581,22 @@ func (a *App) selectLabel() {
 	}
 	a.query = ""
 	a.clearThread()
+	if activate != "" {
+		a.switchAccount(activate)
+		if a.accountTransition == nil && a.authCancel == nil && a.accountInboxPending != "" {
+			a.resetFailedAccountInbox()
+		}
+		return
+	}
 	a.refresh()
+}
+
+func (a *App) resetFailedAccountInbox() {
+	a.accountInboxPending = ""
+	if email := accountInboxLabel(a.selectedLabel); email != "" && email != normalizedEmail(a.storeAccount) {
+		a.selectedLabel = mail.Inbox
+		a.selectLabel()
+	}
 }
 
 func (a *App) clearThread() {

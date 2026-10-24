@@ -11,30 +11,30 @@ import (
 
 func (a *App) refreshAccountList() {
 	s, store := a.settings, a.store
-	if s == nil {
-		return
-	}
 	if store == nil {
-		s.accounts = nil
-		a.accountCount = 0
+		var accounts []mail.Account
 		if email := normalizedEmail(a.account.Email); !a.account.Demo && email != "" {
-			s.accounts = []mail.Account{a.account}
-			a.accountCount = 1
+			accounts = []mail.Account{a.account}
 		}
-		a.unifiedAccounts = s.accounts
+		if s != nil {
+			s.accounts = accounts
+		}
+		a.accountCount = len(accounts)
+		a.unifiedAccounts = accounts
 		return
 	}
 	a.schedule(func() {
 		accounts, err := store.Accounts(context.Background())
 		a.publish(func() {
-			if a.settings != s {
-				return
-			}
 			if err != nil {
-				s.err = locales.AccountSwitchFailed(err.Error())
+				if s != nil && a.settings == s {
+					s.err = locales.AccountSwitchFailed(err.Error())
+				}
 				return
 			}
-			s.accounts = accounts
+			if s != nil && a.settings == s {
+				s.accounts = accounts
+			}
 			a.accountCount = len(accounts)
 			a.unifiedAccounts = accounts
 		})

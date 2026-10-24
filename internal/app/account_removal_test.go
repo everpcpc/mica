@@ -108,6 +108,36 @@ func TestRemoveInactiveAccountPreservesCurrentAccount(t *testing.T) {
 	}
 }
 
+func TestRemoveInactiveAccountAfterSettingsClose(t *testing.T) {
+	h := newAccountTransitionHarness()
+	a := h.app
+	a.settings = &settingsState{open: true}
+	a.removeCredentials = func(context.Context, string) error { return nil }
+	a.deleteCheckpoint = func(string) error { return nil }
+	a.accountClients[h.target.account.Email] = &accountClient{service: h.target, account: h.target.account}
+	a.accountCount = 2
+	a.unifiedAccounts = []mail.Account{h.old.account, h.target.account}
+	a.selectedLabel = mail.Unified
+	a.compositeThreads = true
+	a.removeAccount(h.target.account.Email)
+	h.runJob(t)
+	a.settings = nil
+	h.runUpdate(t)
+	for steps := 0; len(h.jobs)+len(h.updates) > 0 && steps < 30; steps++ {
+		if len(h.updates) > 0 {
+			h.runUpdate(t)
+		} else {
+			h.runJob(t)
+		}
+	}
+	if _, found := a.accountClients[h.target.account.Email]; found {
+		t.Fatal("closed Settings left the removed account client registered")
+	}
+	if a.accountCount != 1 || len(a.unifiedAccounts) != 1 || a.selectedLabel != mail.Inbox || a.compositeThreads {
+		t.Fatalf("closed Settings left stale navigation: count=%d accounts=%+v label=%q composite=%v", a.accountCount, a.unifiedAccounts, a.selectedLabel, a.compositeThreads)
+	}
+}
+
 func TestRemoveActiveAccountActivatesNextAccount(t *testing.T) {
 	h := newAccountTransitionHarness()
 	a := h.app

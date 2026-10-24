@@ -18,6 +18,7 @@ type accountTransition struct {
 	service         mail.Service
 	closeSettings   bool
 	notice          string
+	selectedLabel   string
 	draining        bool
 	activationReady bool
 }
@@ -46,7 +47,7 @@ func (a *App) switchAccount(email string) {
 	if email == current {
 		return
 	}
-	transition := &accountTransition{sourceVersion: a.serviceVersion, email: email}
+	transition := &accountTransition{sourceVersion: a.serviceVersion, email: email, selectedLabel: a.accountInboxPending}
 	a.accountTransition = transition
 	a.cancelPendingAuthentication()
 	store := a.store
@@ -97,7 +98,7 @@ func (a *App) transitionToService(service mail.Service, email string, closeSetti
 	}
 	transition := &accountTransition{
 		sourceVersion: a.serviceVersion, email: normalizedEmail(email), service: service,
-		closeSettings: closeSettings, notice: notice,
+		closeSettings: closeSettings, notice: notice, selectedLabel: a.accountInboxPending,
 	}
 	a.accountTransition = transition
 	a.cancelPendingAuthentication()
@@ -130,6 +131,9 @@ func (a *App) drainAccountTransition(transition *accountTransition) {
 							return
 						}
 						a.accountTransition = nil
+						if transition.selectedLabel != "" {
+							a.selectedLabel = transition.selectedLabel
+						}
 						a.useService(transition.service, transition.email)
 						a.removeAccountClient(transition.removeEmail)
 						message := transition.notice
@@ -178,10 +182,7 @@ func (a *App) failAccountTransition(transition *accountTransition, err error) {
 	} else {
 		a.notice = message
 	}
-	if accountInboxLabel(a.selectedLabel) == normalizedEmail(transition.email) && normalizedEmail(a.storeAccount) != normalizedEmail(transition.email) {
-		a.selectedLabel = mail.Inbox
-		a.selectLabel()
-	}
+	a.resetFailedAccountInbox()
 	a.startNotifications()
 	a.resumePendingMailto()
 }
