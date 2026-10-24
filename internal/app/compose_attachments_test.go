@@ -115,6 +115,27 @@ func TestComposeDropFilesWhileSendingShowsError(t *testing.T) {
 	}
 }
 
+func TestComposeDropFilesWhileDiscardShowsError(t *testing.T) {
+	path := writeComposeAttachment(t, "during-discard.txt", []byte("during discard"))
+	a := newTestApp(newFakeService())
+	a.openCompose(nil)
+	a.compose.pendingAction = composerActionDiscard
+	tt := ui.NewTester(a.View, 1280, 900)
+	target, ok := tt.Find("Attach files")
+	if !ok {
+		t.Fatal("attachment drop target is missing")
+	}
+	if !tt.DropFiles(target.X+target.W/2, target.Y+target.H/2, path) {
+		t.Fatal("composer did not report the dropped files")
+	}
+	if len(a.compose.attachments) != 0 {
+		t.Fatal("attachments changed while discard was pending")
+	}
+	if !tt.HasText("Wait for the current action to finish before adding attachments") {
+		t.Fatalf("discard drop was silently discarded: %v", tt.Texts())
+	}
+}
+
 func TestComposeBlocksSendUntilAttachmentRead(t *testing.T) {
 	path := writeComposeAttachment(t, "report.txt", []byte("report"))
 	service := newFakeService()

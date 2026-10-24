@@ -82,5 +82,5 @@ func (a *App) addMessageAttachments(message mailmodel.Message) {
 	for i, attachment := range message.Attachments {
 		sources[i] = messageComposeAttachmentSource{fetcher: fetcher, messageID: message.ID, attachment: attachment}
 	}
-	a.addComposeAttachmentSources(sources)
+	a.addComposeAttachmentSources(sources, false)
 }

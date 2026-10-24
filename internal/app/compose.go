@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"net/mail"
 	"strings"
 
@@ -30,12 +29,20 @@ type composer struct {
 	attachments       []composerAttachment
 	nextAttachmentID  uint64
 	readingAttachment bool
+	draftID           string
+	revision          uint64
+	savedRevision     uint64
+	saveState         draftSaveState
+	draftSaving       bool
+	pendingAction     composerPendingAction
+	generation        uint64
+	recoveryAccount   string
 	sending           bool
 	err               string
 }
 
 func (a *App) openCompose(reply *mailmodel.Message) {
-	m := &composer{open: true, doc: richtext.NewDocument(richtext.NewText(""))}
+	m := &composer{open: true, generation: 1, doc: richtext.NewDocument(richtext.NewText(""))}
 	if reply != nil {
 		m.to = replyAddress(*reply)
 		m.subject = replySubject(reply.Subject)
@@ -48,7 +55,7 @@ func (a *App) openCompose(reply *mailmodel.Message) {
 }
 
 func (a *App) openReply() {
-	if len(a.thread.Messages) == 0 {
+	if a.selectedLabel == mailmodel.Draft || len(a.thread.Messages) == 0 {
 		return
 	}
 	a.openReplyMessage(a.thread.Messages[len(a.thread.Messages)-1])
@@ -62,6 +69,7 @@ func (a *App) composeView(c *ui.Context) {
 	m := a.compose
 	t := c.Theme()
 	attachmentsLoading, attachmentsFailed := m.composeAttachmentsState()
+	busy := m.sending || m.pendingAction != composerActionNone
 	dismissed := ui.Modal(c, &m.open, func() {
 		a.composeShortcuts(c)
 		content := ui.Column(c).Width(640).Gap(12)
@@ -78,12 +86,12 @@ func (a *App) composeView(c *ui.Context) {
 				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted)
 			})
 			sectionPanel(c).Children(func() {
-				composeField(c, "to", locales.To(), &m.to, "name@example.com")
+				a.composeField(c, m, "to", locales.To(), &m.to, "name@example.com")
 				if m.showCc || m.cc != "" {
-					composeField(c, "cc", locales.Cc(), &m.cc, locales.Optional())
+					a.composeField(c, m, "cc", locales.Cc(), &m.cc, locales.Optional())
 				}
 				if m.showBcc || m.bcc != "" {
-					composeField(c, "bcc", locales.Bcc(), &m.bcc, locales.Optional())
+					a.composeField(c, m, "bcc", locales.Bcc(), &m.bcc, locales.Optional())
 				}
 				if !m.showCc || !m.showBcc {
 					ui.Row(c).Gap(8).Children(func() {
@@ -95,19 +103,22 @@ func (a *App) composeView(c *ui.Context) {
 						}
 					})
 				}
-				composeField(c, "subject", locales.Subject(), &m.subject, locales.SubjectPlaceholder())
+				a.composeField(c, m, "subject", locales.Subject(), &m.subject, locales.SubjectPlaceholder())
 			})
 			sectionPanel(c).Children(func() {
 				ui.Row(c).Gap(4).Padding(2).Radius(8).Background(t.Surface).Children(func() {
-					formatButton(c, "B", locales.BoldTooltip(), m.doc.ToggleBold).Bold()
-					formatButton(c, "I", locales.ItalicTooltip(), m.doc.ToggleItalic).Italic()
-					formatButton(c, "U", locales.UnderlineTooltip(), m.doc.ToggleUnderline).Underline()
-					formatButton(c, "•", locales.BulletsTooltip(), func() { m.doc.ToggleList(richtext.Bullets) })
+					formatButton(c, "B", locales.BoldTooltip(), func() { m.doc.ToggleBold(); a.markComposerEdited(m) }, busy).Bold()
+					formatButton(c, "I", locales.ItalicTooltip(), func() { m.doc.ToggleItalic(); a.markComposerEdited(m) }, busy).Italic()
+					formatButton(c, "U", locales.UnderlineTooltip(), func() { m.doc.ToggleUnderline(); a.markComposerEdited(m) }, busy).Underline()
+					formatButton(c, "•", locales.BulletsTooltip(), func() { m.doc.ToggleList(richtext.Bullets); a.markComposerEdited(m) }, busy)
 				})
-				richtext.Editor(c.Key("compose-body"), m.doc, richtext.EditorOptions{
+				editor := richtext.Editor(c.Key("compose-body"), m.doc, richtext.EditorOptions{
 					Label:       locales.Body(),
 					Placeholder: locales.BodyPlaceholder(),
-				}).Height(250)
+				}).Height(250).Disabled(busy)
+				if editor.Changed() {
+					a.markComposerEdited(m)
+				}
 				a.composeAttachmentsView(c, m)
 				if m.quote != nil {
 					ui.Collapsible(c, locales.OriginalMessage(), &m.quoteOpen, func() {
@@ -119,96 +130,46 @@ func (a *App) composeView(c *ui.Context) {
 				ui.Text(c, m.err).FontSize(12).TextColor(t.Danger)
 			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if status := a.composeSaveStatus(m); status != "" {
+					color := t.TextMuted
+					if m.saveState == draftSaveFailed {
+						color = t.Danger
+					}
+					ui.Text(c, status).FontSize(11).TextColor(color)
+				}
 				ui.Text(c, locales.SendShortcut()).FontSize(11).TextColor(t.TextMuted).Grow(1)
-				ui.Button(c, locales.Cancel()).Disabled(m.sending).OnClick(func() { a.compose = nil })
-				primaryAction(c, locales.Send()).Disabled(m.sending || attachmentsLoading || attachmentsFailed).OnClick(a.sendCompose)
+				ui.Button(c, locales.Cancel()).Disabled(busy).OnClick(a.closeCompose)
+				ui.Button(c, locales.DiscardDraft()).Disabled(busy).OnClick(a.discardCompose)
+				primaryAction(c, locales.Send()).Disabled(busy || attachmentsLoading || attachmentsFailed).OnClick(a.sendCompose)
 			})
 		})
 		if len(dropped) > 0 {
 			a.addComposeAttachments(dropped)
 		}
 	}).Dismissed()
-	if dismissed && m.sending {
+	if dismissed {
 		m.open = true
-	}
-	if !m.open {
-		a.compose = nil
+		a.closeCompose()
 	}
 }
 
-func composeField(c *ui.Context, key, label string, value *string, placeholder string) {
+func (a *App) composeField(c *ui.Context, m *composer, key, label string, value *string, placeholder string) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, label).Width(52).Shrink(0)
-		ui.TextInput(c.Key(key), value).Label(label).Placeholder(placeholder).Grow(1)
+		field := ui.TextInput(c.Key(key), value).Label(label).Placeholder(placeholder).Grow(1).Disabled(m.sending || m.pendingAction != composerActionNone)
+		if field.Changed() {
+			a.markComposerEdited(m)
+		}
 	})
 }
 
-func formatButton(c *ui.Context, label, tip string, action func()) ui.Element {
-	return ui.Button(c, label).KeepFocus().Tooltip(tip).MinWidth(30).OnClick(action)
+func formatButton(c *ui.Context, label, tip string, action func(), disabled ...bool) ui.Element {
+	inactive := len(disabled) > 0 && disabled[0]
+	return ui.Button(c, label).KeepFocus().Tooltip(tip).MinWidth(30).Disabled(inactive).OnClick(action)
 }
 
 func (a *App) sendCompose() {
-	m := a.compose
-	if m == nil || m.sending {
-		return
-	}
-	attachmentsLoading, attachmentsFailed := m.composeAttachmentsState()
-	if attachmentsLoading {
-		m.err = locales.AttachmentsReading()
-		return
-	}
-	if attachmentsFailed {
-		m.err = locales.AttachmentsReadFailed()
-		return
-	}
-	if err := validateRecipients(m.to, m.cc, m.bcc); err != nil {
-		m.err = err.Error()
-		return
-	}
-	if strings.TrimSpace(m.doc.Text().PlainText()) == "" {
-		m.err = locales.BodyRequired()
-		return
-	}
-	m.err = ""
-	m.sending = true
-	text := m.doc.Text().PlainText()
-	htmlContent := m.doc.Text().HTML()
-	if m.quote != nil {
-		text += "\n\n" + replyQuoteText(*m.quote)
-		htmlContent += replyQuoteHTML(*m.quote)
-	}
-	out := mailmodel.Compose{
-		To:                m.to,
-		Cc:                m.cc,
-		Bcc:               m.bcc,
-		Subject:           m.subject,
-		Text:              text,
-		HTML:              htmlContent,
-		ThreadID:          m.threadID,
-		InReplyTo:         m.inReplyTo,
-		References:        m.references,
-		ThreadingResolved: m.threadID != "",
-		Attachments:       m.outgoingAttachments(),
-	}
-	service, version := a.service, a.serviceVersion
-	a.schedule(func() {
-		err := service.Send(context.Background(), out)
-		a.publish(func() {
-			if version != a.serviceVersion {
-				return
-			}
-			if err != nil {
-				m.sending = false
-				m.err = locales.SendFailed(err.Error())
-				return
-			}
-			if a.compose == m {
-				a.compose = nil
-			}
-			a.notice = locales.SendSucceeded()
-			a.refresh()
-		})
-	})
+	a.sendComposeWithDraft()
 }
 
 func validateRecipients(lists ...string) error {

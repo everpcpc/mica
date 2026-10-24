@@ -117,6 +117,7 @@ func (f *fakeService) Send(_ context.Context, compose mail.Compose) error {
 func newTestApp(service *fakeService) *App {
 	a := New(service)
 	a.schedule = func(fn func()) { fn() }
+	a.after = func(time.Duration, func()) {}
 	a.restoreAttempted = true
 	a.startupSelectionDone = true
 	a.Start()

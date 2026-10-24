@@ -48,6 +48,17 @@
 - Do not fill missing reply headers from the thread's latest message when the caller selected a different message. An explicit resolved-threading marker distinguishes intentional empty headers from unresolved legacy calls.
 - ID-less inline attachments need a stable per-message position key; message ID alone would make their loading and error states collide.
 
+## Serialize draft saves and preserve identity
+
+- Sending an existing draft must wait for the current create or update to finish. A generation check can discard a stale UI callback, but it cannot cancel the older server write or prevent a deleted draft from reappearing.
+- When a create succeeds with newer unsaved edits, persist the new draft ID immediately so crash recovery cannot create a duplicate.
+- Empty-draft checks must include HTML and attachments, not only plain text.
+- Disable composer inputs while send, close, or discard is pending. Otherwise users can create edits that the current revision and close path never save.
+- Restore snapshots by cached account identity rather than network verification; an offline profile failure must not block local recovery. A mismatched account must never synchronize that snapshot.
+- Cached identity permits local recovery and editing, not remote writes. Require a verified matching account for draft saves, deletion, and sends; never fall back to `messages/send` for an existing or recovered draft when the draft manager is unavailable.
+- Account verification is not a draft capability check. If verification blocks a close-time save, keep the local snapshot and composer open instead of treating the composer as one without draft support.
+- Guard file picking and drops while close or discard is pending. Disabling the visible button alone does not reject dropped files or a file-picker result that arrives after the action starts.
+
 ## Verify visuals through real rendering
 
 - Do not validate animation only by its parameters. Inspect start, middle, and end frames for jumps, ghosting, and blank screens.
@@ -75,6 +86,7 @@
 
 ## Regression tests must prove the guard works
 
+- Use controllable timers for debounce in UI tests. A real `time.AfterFunc` can run concurrently with direct test publishes and create data races even though production publishes through `Window.Update`.
 - Confirm that the test fails on the old behavior before implementing the fix; avoid tests that always pass.
 - Assertions must target the behavior itself. A build failure does not count as a reproduction.
 - When restoring behavior by hand for verification, break and restore one thing at a time so uncommitted fixes are not overwritten.

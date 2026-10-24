@@ -976,6 +976,80 @@ func (msgs Messages) BodyRequired() string {
 	return Catalog.Format(msgs.locale, "bodyRequired", nil)
 }
 
+// DraftSaving says "Saving…"
+// in the language the app shows.
+func DraftSaving() string { return In(i18n.Locale()).DraftSaving() }
+
+// DraftSaving says "Saving…"
+// in the language of msgs.
+func (msgs Messages) DraftSaving() string {
+	return Catalog.Format(msgs.locale, "draftSaving", nil)
+}
+
+// DraftSaved says "Saved"
+// in the language the app shows.
+func DraftSaved() string { return In(i18n.Locale()).DraftSaved() }
+
+// DraftSaved says "Saved"
+// in the language of msgs.
+func (msgs Messages) DraftSaved() string {
+	return Catalog.Format(msgs.locale, "draftSaved", nil)
+}
+
+// DraftSaveFailed says "Save failed"
+// in the language the app shows.
+func DraftSaveFailed() string { return In(i18n.Locale()).DraftSaveFailed() }
+
+// DraftSaveFailed says "Save failed"
+// in the language of msgs.
+func (msgs Messages) DraftSaveFailed() string {
+	return Catalog.Format(msgs.locale, "draftSaveFailed", nil)
+}
+
+// DraftSaveFailedReason says "Save failed: {error}"
+// in the language the app shows.
+func DraftSaveFailedReason(error string) string {
+	return In(i18n.Locale()).DraftSaveFailedReason(error)
+}
+
+// DraftSaveFailedReason says "Save failed: {error}"
+// in the language of msgs.
+func (msgs Messages) DraftSaveFailedReason(error string) string {
+	return Catalog.Format(msgs.locale, "draftSaveFailedReason", map[string]any{"error": error})
+}
+
+// DraftDeleteFailedReason says "Couldn't discard draft: {error}"
+// in the language the app shows.
+func DraftDeleteFailedReason(error string) string {
+	return In(i18n.Locale()).DraftDeleteFailedReason(error)
+}
+
+// DraftDeleteFailedReason says "Couldn't discard draft: {error}"
+// in the language of msgs.
+func (msgs Messages) DraftDeleteFailedReason(error string) string {
+	return Catalog.Format(msgs.locale, "draftDeleteFailedReason", map[string]any{"error": error})
+}
+
+// ContinueDraft says "Continue editing"
+// in the language the app shows.
+func ContinueDraft() string { return In(i18n.Locale()).ContinueDraft() }
+
+// ContinueDraft says "Continue editing"
+// in the language of msgs.
+func (msgs Messages) ContinueDraft() string {
+	return Catalog.Format(msgs.locale, "continueDraft", nil)
+}
+
+// UntitledDraft says "Untitled draft"
+// in the language the app shows.
+func UntitledDraft() string { return In(i18n.Locale()).UntitledDraft() }
+
+// UntitledDraft says "Untitled draft"
+// in the language of msgs.
+func (msgs Messages) UntitledDraft() string {
+	return Catalog.Format(msgs.locale, "untitledDraft", nil)
+}
+
 // AddAttachments says "Attach files"
 // in the language the app shows.
 func AddAttachments() string { return In(i18n.Locale()).AddAttachments() }
@@ -1026,6 +1100,16 @@ func (msgs Messages) AttachmentsSending() string {
 	return Catalog.Format(msgs.locale, "attachmentsSending", nil)
 }
 
+// AttachmentsBusy says "Wait for the current action to finish before adding attachments"
+// in the language the app shows.
+func AttachmentsBusy() string { return In(i18n.Locale()).AttachmentsBusy() }
+
+// AttachmentsBusy says "Wait for the current action to finish before adding attachments"
+// in the language of msgs.
+func (msgs Messages) AttachmentsBusy() string {
+	return Catalog.Format(msgs.locale, "attachmentsBusy", nil)
+}
+
 // AttachmentReadFailed says "Couldn't read attachment: {error}"
 // in the language the app shows.
 func AttachmentReadFailed(error string) string { return In(i18n.Locale()).AttachmentReadFailed(error) }
@@ -1034,6 +1118,16 @@ func AttachmentReadFailed(error string) string { return In(i18n.Locale()).Attach
 // in the language of msgs.
 func (msgs Messages) AttachmentReadFailed(error string) string {
 	return Catalog.Format(msgs.locale, "attachmentReadFailed", map[string]any{"error": error})
+}
+
+// AttachmentRestoreFailed says "Attachment wasn't fully read before recovery"
+// in the language the app shows.
+func AttachmentRestoreFailed() string { return In(i18n.Locale()).AttachmentRestoreFailed() }
+
+// AttachmentRestoreFailed says "Attachment wasn't fully read before recovery"
+// in the language of msgs.
+func (msgs Messages) AttachmentRestoreFailed() string {
+	return Catalog.Format(msgs.locale, "attachmentRestoreFailed", nil)
 }
 
 // AttachmentsReadFailed says "Remove attachments that couldn't be read before sending"

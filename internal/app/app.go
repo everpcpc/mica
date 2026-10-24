@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -69,6 +70,7 @@ type App struct {
 	documents            map[string]*emailDocument
 	expandedMessages     map[string]bool
 	compose              *composer
+	draftRestoreAccount  string
 	labelDialog          *labelDialogState
 	settings             *settingsState
 	appearance           string
@@ -149,6 +151,7 @@ func (a *App) Start() {
 				if accountCacheErr == nil && accountFound && cachedAccount.Email == email && !a.accountVerified {
 					a.account = cachedAccount
 					a.loadAccountPhoto(cachedAccount)
+					a.restoreDraftSnapshot()
 				}
 				if labelsCacheErr == nil && labelsFound && !a.labelsSynced {
 					a.setLabels(cachedLabels)
@@ -165,6 +168,10 @@ func (a *App) Start() {
 				a.accountVerified = true
 				a.account = account
 				a.persistAccount(account)
+				a.restoreDraftSnapshot()
+				if a.compose != nil && a.compose.recoveryAccount == account.Email {
+					a.pumpDraftSave(a.compose)
+				}
 				if a.labelsSynced {
 					a.persistLabels(a.labels)
 				}
@@ -194,6 +201,7 @@ func (a *App) Start() {
 	})
 	a.restoreGmail()
 	a.openPendingThread()
+	a.restoreDraftSnapshot()
 }
 
 func (a *App) loadAccountPhoto(account mail.Account) {
@@ -240,12 +248,24 @@ func (a *App) refresh() {
 func (a *App) currentQuery() mail.Query {
 	labelID, search := mailboxQuery(a.selectedLabel)
 	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
-		labelID, search = "", userSearch
+		if a.selectedLabel == mail.Draft {
+			search = userSearch
+		} else {
+			labelID, search = "", userSearch
+		}
 	}
 	return mail.Query{LabelID: labelID, Search: search, Limit: threadPageSize}
 }
 
 func listThreadPage(ctx context.Context, service mail.Service, query mail.Query) (mail.ThreadPage, error) {
+	if query.LabelID == mail.Draft {
+		manager, ok := service.(mail.DraftManager)
+		if !ok {
+			return mail.ThreadPage{}, errors.New("mail: drafts are unavailable")
+		}
+		page, err := manager.Drafts(ctx, query)
+		return draftThreadPage(page), err
+	}
 	if pager, ok := service.(mail.ThreadPager); ok {
 		return pager.ListThreadPage(ctx, query)
 	}
@@ -455,6 +475,10 @@ func (a *App) selectThread(id string) {
 	a.selectedThread = id
 	a.syncThreadSelection(false)
 	a.threadErr = ""
+	if a.selectedLabel == mail.Draft {
+		a.selectDraft(id, call)
+		return
+	}
 	if thread, ok := a.threadCache[id]; ok {
 		a.showThread(id, thread)
 		return
@@ -516,11 +540,13 @@ func (a *App) showThread(id string, thread mail.Thread) {
 		a.readerScroll.Y = 0
 		a.readerScroll.MaxY = 0
 	}
-	for i := range a.threads {
-		if a.threads[i].ID == id && a.threads[i].Unread {
-			a.threads[i].Unread = false
-			a.markRead(id)
-			break
+	if a.selectedLabel != mail.Draft {
+		for i := range a.threads {
+			if a.threads[i].ID == id && a.threads[i].Unread {
+				a.threads[i].Unread = false
+				a.markRead(id)
+				break
+			}
 		}
 	}
 	a.syncThreadSelection(false)

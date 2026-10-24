@@ -29,7 +29,15 @@ type composerAttachment struct {
 
 func (a *App) chooseComposeAttachments() {
 	m := a.compose
-	if m == nil || m.sending {
+	if m == nil {
+		return
+	}
+	if m.sending {
+		m.err = locales.AttachmentsSending()
+		return
+	}
+	if m.pendingAction != composerActionNone {
+		m.err = locales.AttachmentsBusy()
 		return
 	}
 	openDialog := a.openDialog
@@ -57,16 +65,20 @@ func (a *App) addComposeAttachments(paths []string) {
 			sources = append(sources, localComposeAttachmentSource{path: path})
 		}
 	}
-	a.addComposeAttachmentSources(sources)
+	a.addComposeAttachmentSources(sources, true)
 }
 
-func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource) {
+func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource, edited bool) {
 	m := a.compose
 	if m == nil {
 		return
 	}
 	if m.sending {
 		m.err = locales.AttachmentsSending()
+		return
+	}
+	if m.pendingAction != composerActionNone {
+		m.err = locales.AttachmentsBusy()
 		return
 	}
 	for _, source := range sources {
@@ -82,6 +94,9 @@ func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource) {
 		return
 	}
 	m.err = ""
+	if edited {
+		a.markComposerEdited(m)
+	}
 	a.pumpComposeAttachments(m)
 }
 
@@ -140,10 +155,25 @@ func (a *App) finishComposeAttachment(m *composer, id uint64, attachment mailmod
 			} else {
 				item.err = locales.AttachmentReadFailed(err.Error())
 			}
+			if m.revision > m.savedRevision {
+				m.saveState = draftSaveFailed
+				if m.pendingAction == composerActionClose {
+					m.pendingAction = composerActionNone
+				}
+			}
 			return
 		}
 		item.attachment = attachment
 		item.err = ""
+		if m.revision > m.savedRevision {
+			m.saveState = draftSaveScheduled
+			a.persistDraftSnapshot(m)
+			if m.pendingAction == composerActionClose {
+				a.pumpDraftSave(m)
+			} else {
+				a.scheduleDraftSave(m)
+			}
+		}
 		return
 	}
 }
@@ -161,6 +191,7 @@ func (a *App) removeComposeAttachment(id uint64) {
 		m.attachments[len(m.attachments)-1] = composerAttachment{}
 		m.attachments = m.attachments[:len(m.attachments)-1]
 		m.err = ""
+		a.markComposerEdited(m)
 		return
 	}
 }
@@ -241,7 +272,7 @@ func outgoingMIMEType(path string, data []byte) string {
 func (a *App) composeAttachmentsView(c *ui.Context, m *composer) {
 	ui.Column(c).Gap(6).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Button(c, locales.AddAttachments()).Disabled(m.sending).OnClick(a.chooseComposeAttachments)
+			ui.Button(c, locales.AddAttachments()).Disabled(m.sending || m.pendingAction != composerActionNone).OnClick(a.chooseComposeAttachments)
 			ui.Text(c, locales.AttachmentDropHint()).FontSize(11).TextColor(c.Theme().TextMuted)
 		})
 		for _, item := range m.attachments {
@@ -256,7 +287,7 @@ func (a *App) composeAttachmentsView(c *ui.Context, m *composer) {
 					case item.err == "":
 						ui.Text(c, formatAttachmentSize(int64(len(item.attachment.Data)))).FontSize(11).TextColor(c.Theme().TextMuted)
 					}
-					ui.Button(c, locales.RemoveAttachment()).Label(locales.RemoveAttachmentNamed(item.attachment.Name)).Disabled(m.sending).OnClick(func() {
+					ui.Button(c, locales.RemoveAttachment()).Label(locales.RemoveAttachmentNamed(item.attachment.Name)).Disabled(m.sending || m.pendingAction != composerActionNone).OnClick(func() {
 						a.removeComposeAttachment(id)
 					})
 				})

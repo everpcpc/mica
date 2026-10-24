@@ -39,22 +39,22 @@ func (a *App) reader(c *ui.Context) {
 			}
 		})
 		ui.Toolbar(c, func() {
-			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "")
-			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash)
-			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "")
-			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Padding(5, 6).Children(func() {
+			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
+			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash || a.selectedLabel == mail.Draft)
+			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
+			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(a.selectedLabel == mail.Draft).Padding(5, 6).Children(func() {
 				ui.Icon(c, iconLabel).Size(16, 16)
 			}).Menu(a.labelMenu)
 			starLabel := locales.AddStar()
 			if summary := a.selectedSummary(); summary != nil && summary.Starred {
 				starLabel = locales.RemoveStar()
 			}
-			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(a.selectedThread == "")
+			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			if summary := a.selectedSummary(); summary != nil && summary.Starred {
 				star.TextColor(t.Warning)
 			}
 			ui.Spacer(c)
-			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0).OnClick(a.openReply)
+			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0 || a.selectedLabel == mail.Draft).OnClick(a.openReply)
 		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
 	})
 }
@@ -117,9 +117,13 @@ func (a *App) threadContent(c *ui.Context) {
 					a.messageView(c, i, message)
 				}
 				ui.Row(c).Gap(10).Children(func() {
-					threadAction(c, locales.Reply(), iconReply, a.openReply)
-					threadAction(c, locales.ReplyAll(), iconReplyAll, a.openReplyAll)
-					threadAction(c, locales.Forward(), iconForward, a.openForward)
+					if a.selectedLabel == mail.Draft {
+						threadAction(c, locales.ContinueDraft(), iconCompose, a.openSelectedDraft)
+					} else {
+						threadAction(c, locales.Reply(), iconReply, a.openReply)
+						threadAction(c, locales.ReplyAll(), iconReplyAll, a.openReplyAll)
+						threadAction(c, locales.Forward(), iconForward, a.openForward)
+					}
 				})
 			})
 		})
@@ -177,7 +181,9 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		for i, attachment := range message.Attachments {
 			a.attachmentView(c, message, attachment, i)
 		}
-		a.expandedMessageActions(c, message)
+		if a.selectedLabel != mail.Draft {
+			a.expandedMessageActions(c, message)
+		}
 	})
 }
 
@@ -221,7 +227,9 @@ func (a *App) collapsedMessageView(c *ui.Context, message mail.Message) {
 				ui.Icon(c, iconChevronRight).Size(12, 12).TextColor(t.TextMuted)
 			})
 		})
-		a.messageActionsMenu(c, message)
+		if a.selectedLabel != mail.Draft {
+			a.messageActionsMenu(c, message)
+		}
 	})
 }
 

@@ -14,7 +14,7 @@ import (
 )
 
 func (a *App) openReplyAll() {
-	if len(a.thread.Messages) == 0 {
+	if a.selectedLabel == mailmodel.Draft || len(a.thread.Messages) == 0 {
 		return
 	}
 	a.openReplyAllMessage(a.thread.Messages[len(a.thread.Messages)-1])
@@ -85,7 +85,7 @@ func replyQuoteHTML(message mailmodel.Message) string {
 }
 
 func (a *App) openForward() {
-	if len(a.thread.Messages) == 0 {
+	if a.selectedLabel == mailmodel.Draft || len(a.thread.Messages) == 0 {
 		return
 	}
 	a.openForwardMessage(a.thread.Messages[len(a.thread.Messages)-1])
@@ -106,17 +106,18 @@ func (a *App) openForwardMessage(message mailmodel.Message) {
 		"Subject: " + message.Subject + "\n" +
 		"To: " + message.To + "\n\n" + body
 	a.compose = &composer{
-		open:    true,
-		forward: true,
-		subject: subject,
-		doc:     richtext.NewDocument(richtext.NewText(quote)),
+		open:       true,
+		forward:    true,
+		generation: 1,
+		subject:    subject,
+		doc:        richtext.NewDocument(richtext.NewText(quote)),
 	}
 	a.addMessageAttachments(message)
 }
 
 func (a *App) composeShortcuts(c *ui.Context) {
 	m := a.compose
-	if m == nil {
+	if m == nil || m.sending || m.pendingAction != composerActionNone {
 		return
 	}
 	switch {
@@ -127,7 +128,7 @@ func (a *App) composeShortcuts(c *ui.Context) {
 	case commandShortcut(c, ui.Shift, ui.KeyB):
 		m.showBcc = true
 	case commandShortcut(c, ui.Shift, ui.KeyD):
-		a.compose = nil
+		a.discardCompose()
 	}
 }
 
