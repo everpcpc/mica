@@ -11,6 +11,7 @@
 - Applying changes locally first does not allow requests to run concurrently and out of order; mail mutations must synchronize in FIFO order.
 - Consecutive actions, automatic read marking, and Undo belong to the same queue so later results cannot overwrite earlier actions.
 - Undo should capture the post-action snapshot and then apply the inverse mutation, keeping local state consistent with the server's final state.
+- Undo entries must preserve the operation kind, not only label deltas. Gmail Trash and Untrash are dedicated endpoints, so a label-only inverse cannot faithfully reverse them.
 - Failure reconciliation must avoid a refresh-mark-read-failure-refresh loop.
 - After an account switch, requests and Undo entries from the previous account must not write into the new state.
 
