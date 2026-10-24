@@ -231,7 +231,11 @@ func (a *App) pumpMutations() {
 			if len(a.mutationQueue) == 0 || a.mutationQueue[0].sequence != job.sequence {
 				return
 			}
-			if job.viewVersion != a.serviceVersion || job.ownerGeneration != a.generationForThreadKey(job.id) {
+			ownerGeneration := a.generationForThreadKey(job.id)
+			if job.owner != "" {
+				_, ownerGeneration = a.ownerService(job.owner)
+			}
+			if job.viewVersion != a.serviceVersion || job.ownerGeneration != ownerGeneration {
 				a.mutationQueue = a.mutationQueue[1:]
 				a.mutationRunning = false
 				if job.done != nil {

@@ -53,21 +53,40 @@ func (a *App) removeSnoozesForAccount(email string) {
 	}
 }
 
+func (a *App) currentSnoozedSummaries() []mail.ThreadSummary {
+	var summaries []mail.ThreadSummary
+	for _, summary := range a.threads {
+		if containsLabel(summary.LabelIDs, mail.Snoozed) {
+			summaries = append(summaries, summary)
+		}
+	}
+	return cloneThreadSummaries(summaries)
+}
+
 func mergeSnoozedSummaries(summaries []mail.ThreadSummary, records []mail.SnoozeRecord, recordsLoaded bool) []mail.ThreadSummary {
 	scheduled := make(map[string]bool, len(records))
 	for _, record := range records {
-		scheduled[record.ThreadID] = true
+		scheduled[record.ThreadID] = !record.Restoring
 	}
 	result := make([]mail.ThreadSummary, 0, len(summaries)+len(records))
 	indices := make(map[string]int, len(summaries)+len(records))
 	for _, summary := range summaries {
+		if !containsLabel(summary.LabelIDs, mail.Snoozed) && !scheduled[summary.ID] {
+			continue
+		}
 		if recordsLoaded && !summary.SnoozeAt.IsZero() && !scheduled[summary.ID] {
+			continue
+		}
+		if _, found := indices[summary.ID]; found {
 			continue
 		}
 		indices[summary.ID] = len(result)
 		result = append(result, summary)
 	}
 	for _, record := range records {
+		if record.Restoring {
+			continue
+		}
 		summary := record.Summary
 		summary.ID = record.ThreadID
 		summary.AccountEmail = record.AccountEmail
@@ -189,10 +208,11 @@ func (a *App) runSnoozeRestore(restore snoozeRestore) {
 			if a.snoozeRuntime.versions[key] != 0 {
 				continue
 			}
-			if a.snoozeRuntime.records == nil {
-				a.snoozeRuntime.records = make(map[string]mail.SnoozeRecord)
+			a.setSnoozeRecord(record)
+			if record.Restoring {
+				a.wakeSnooze(record)
+				continue
 			}
-			a.snoozeRuntime.records[key] = record
 			a.armSnooze(record)
 		}
 	})
@@ -246,7 +266,7 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 	record.Summary.ID = record.ThreadID
 	record.Summary.AccountEmail = email
 	key := snoozeKey(email, record.ThreadID)
-	id, _ := a.snoozeSelection(record)
+	id, visible := a.snoozeSelection(record)
 	service, _ := a.ownerService(email)
 	cache := a.snoozeCache(email)
 	if service == nil || cache == nil {
@@ -272,6 +292,12 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 				stale = true
 				return nil
 			}
+			record.Restoring = true
+			if err := cache(func(store snoozeStore) error {
+				return store.SaveSnooze(context.Background(), email, record)
+			}); err != nil {
+				return err
+			}
 			if err := service.ModifyThread(context.Background(), record.ThreadID, []string{mail.Inbox}, nil); err != nil {
 				return err
 			}
@@ -284,7 +310,7 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 			applied = true
 			return nil
 		},
-		failure: locales.ActionFailed,
+		failure: a.snoozeFailureNotice(record),
 		done: func(err error) {
 			if generation != a.snoozeRuntime.generation || a.snoozeRuntime.versions[key] != version || a.cacheState.quitting {
 				return
@@ -309,7 +335,7 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 			if err != nil && !restored {
 				a.retrySnooze(record)
 			}
-			if applied {
+			if applied && visible {
 				a.notice = locales.SnoozeRestored()
 			}
 		},

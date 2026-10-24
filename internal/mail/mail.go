@@ -69,6 +69,7 @@ type SnoozeRecord struct {
 	AccountEmail string
 	ThreadID     string
 	WakeAt       time.Time
+	Restoring    bool
 	Summary      ThreadSummary
 }
 

@@ -148,6 +148,22 @@ func (a *App) restoreSnoozeInbox(record mail.SnoozeRecord) {
 	summary.Unread = containsLabel(summary.LabelIDs, mail.Unread)
 	summary.Starred = containsLabel(summary.LabelIDs, mail.Starred)
 	summary.SnoozeAt = time.Time{}
+	for i := range a.threads {
+		if a.summaryKey(a.threads[i]) == id {
+			current := a.threads[i]
+			current.LabelIDs = modifyLabelIDs(current.LabelIDs, []string{mail.Inbox}, []string{mail.Snoozed})
+			current.Unread = containsLabel(current.LabelIDs, mail.Unread)
+			current.Starred = containsLabel(current.LabelIDs, mail.Starred)
+			current.SnoozeAt = time.Time{}
+			summary = current
+			break
+		}
+	}
+	if a.compositeThreads && a.unified != nil {
+		a.restoreUnifiedSummary(summary)
+		a.persistUnifiedLists()
+		return
+	}
 	query := a.currentQuery()
 	if query.Search == "" && historyListContains(query, summary) {
 		found := false
@@ -175,7 +191,6 @@ func (a *App) restoreSnoozeInbox(record mail.SnoozeRecord) {
 			a.persistList(query, a.threads)
 		}
 	}
-	a.refresh()
 }
 
 func (a *App) snoozeTomorrow() {
@@ -244,7 +259,7 @@ func (a *App) snoozeOne(summary mail.ThreadSummary, wakeAt time.Time) bool {
 			}
 			return nil
 		},
-		failure: locales.ActionFailed,
+		failure: a.snoozeFailureNotice(record),
 		done: func(err error) {
 			if generation != a.snoozeRuntime.generation || a.snoozeRuntime.versions[key] != version || a.cacheState.quitting {
 				return
@@ -260,13 +275,17 @@ func (a *App) snoozeOne(summary mail.ThreadSummary, wakeAt time.Time) bool {
 					a.applySnoozeStateForRecord(originalRecord, original.LabelIDs, []string{mail.Snoozed}, original.SnoozeAt)
 					delete(a.snoozeRuntime.timers, key)
 				}
-				a.notice = locales.SnoozeFailed(err.Error())
+				if _, visible := a.snoozeSelection(record); visible {
+					a.notice = locales.SnoozeFailed(err.Error())
+				}
 				return
 			}
 			a.setSnoozeRecord(record)
 			a.applySnoozeStateForRecord(record, []string{mail.Snoozed}, []string{mail.Inbox}, record.WakeAt)
 			a.armSnooze(record)
-			a.notice = locales.SnoozeUntil(snoozeTime(record.WakeAt))
+			if _, visible := a.snoozeSelection(record); visible {
+				a.notice = locales.SnoozeUntil(snoozeTime(record.WakeAt))
+			}
 		},
 	})
 	return true
@@ -315,15 +334,24 @@ func (a *App) unsnoozeOne(summary mail.ThreadSummary, record mail.SnoozeRecord) 
 		owner:   email,
 		id:      id,
 		runFunc: func() error {
-			if err := service.ModifyThread(context.Background(), threadID, []string{mail.Inbox}, nil); err != nil {
+			record.Restoring = true
+			if err := cache(func(store snoozeStore) error {
+				return store.SaveSnooze(context.Background(), email, record)
+			}); err != nil {
 				return err
+			}
+			if err := service.ModifyThread(context.Background(), threadID, []string{mail.Inbox}, nil); err != nil {
+				record.Restoring = false
+				return errors.Join(err, cache(func(store snoozeStore) error {
+					return store.SaveSnooze(context.Background(), email, record)
+				}))
 			}
 			restored = true
 			return cache(func(store snoozeStore) error {
 				return store.CancelSnooze(context.Background(), email, threadID)
 			})
 		},
-		failure: locales.ActionFailed,
+		failure: a.snoozeFailureNotice(record),
 		done: func(err error) {
 			if generation != a.snoozeRuntime.generation || a.snoozeRuntime.versions[key] != version || a.cacheState.quitting {
 				return
@@ -332,7 +360,9 @@ func (a *App) unsnoozeOne(summary mail.ThreadSummary, record mail.SnoozeRecord) 
 				a.setSnoozeRecord(record)
 				a.applySnoozeStateForRecord(record, record.Summary.LabelIDs, []string{mail.Snoozed}, record.Summary.SnoozeAt)
 				a.armSnooze(record)
-				a.notice = locales.SnoozeFailed(err.Error())
+				if _, visible := a.snoozeSelection(record); visible {
+					a.notice = locales.SnoozeFailed(err.Error())
+				}
 				return
 			}
 			if err != nil {
@@ -344,10 +374,19 @@ func (a *App) unsnoozeOne(summary mail.ThreadSummary, record mail.SnoozeRecord) 
 			}
 			a.applySnoozeStateForRecord(record, []string{mail.Inbox}, []string{mail.Snoozed}, time.Time{})
 			a.restoreSnoozeInbox(record)
-			if err == nil {
+			if _, visible := a.snoozeSelection(record); err == nil && visible {
 				a.notice = locales.SnoozeRestored()
 			}
 		},
 	})
 	return true
+}
+
+func (a *App) snoozeFailureNotice(record mail.SnoozeRecord) func(string) string {
+	return func(message string) string {
+		if _, visible := a.snoozeSelection(record); !visible {
+			return ""
+		}
+		return locales.ActionFailed(message)
+	}
 }

@@ -381,8 +381,10 @@ func (a *App) refreshList() {
 	query := a.currentQuery()
 	snoozed := a.selectedLabel == mail.Snoozed
 	var snoozeCache snoozeCacheOperation
+	var snoozedSummaries []mail.ThreadSummary
 	if snoozed {
 		snoozeCache = a.snoozeCache(email)
+		snoozedSummaries = a.currentSnoozedSummaries()
 	}
 	a.schedule(func() {
 		if store != nil && email != "" {
@@ -400,7 +402,7 @@ func (a *App) refreshList() {
 		page, err := listThreadPage(context.Background(), service, query)
 		var cached []mail.ThreadSummary
 		var cacheErr error
-		if err != nil {
+		if err != nil || snoozed {
 			if searchStore, ok := store.(offlineSearchStore); ok && email != "" {
 				cached, cacheErr = searchStore.SearchThreads(context.Background(), email, query)
 			}
@@ -420,9 +422,13 @@ func (a *App) refreshList() {
 				}
 			}
 			if err == nil {
-				page.Threads = mergeSnoozedSummaries(page.Threads, records, recordsLoaded)
+				summaries := make([]mail.ThreadSummary, 0, len(page.Threads)+len(snoozedSummaries)+len(cached))
+				summaries = append(summaries, page.Threads...)
+				summaries = append(summaries, snoozedSummaries...)
+				summaries = append(summaries, cached...)
+				page.Threads = mergeSnoozedSummaries(summaries, records, recordsLoaded)
 			} else {
-				cached = mergeSnoozedSummaries(cached, records, recordsLoaded)
+				cached = mergeSnoozedSummaries(append(snoozedSummaries, cached...), records, recordsLoaded)
 				if len(cached) > 0 {
 					cacheErr = nil
 				}
