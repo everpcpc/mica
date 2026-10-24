@@ -174,6 +174,13 @@ func buildRFC5322(compose mail.Compose) ([]byte, error) {
 	}
 	writeHeader(&buffer, "MIME-Version", "1.0")
 
+	if len(compose.Attachments) > 0 {
+		if err := writeMixedMessage(&buffer, compose); err != nil {
+			return nil, err
+		}
+		return buffer.Bytes(), nil
+	}
+
 	if compose.Text != "" && compose.HTML != "" {
 		writer := multipart.NewWriter(&buffer)
 		writeHeader(&buffer, "Content-Type", `multipart/alternative; boundary="`+writer.Boundary()+`"`)

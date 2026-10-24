@@ -966,6 +966,118 @@ func (msgs Messages) BodyRequired() string {
 	return Catalog.Format(msgs.locale, "bodyRequired", nil)
 }
 
+// AddAttachments says "Attach files"
+// in the language the app shows.
+func AddAttachments() string { return In(i18n.Locale()).AddAttachments() }
+
+// AddAttachments says "Attach files"
+// in the language of msgs.
+func (msgs Messages) AddAttachments() string {
+	return Catalog.Format(msgs.locale, "addAttachments", nil)
+}
+
+// AttachmentDropHint says "or drop files here"
+// in the language the app shows.
+func AttachmentDropHint() string { return In(i18n.Locale()).AttachmentDropHint() }
+
+// AttachmentDropHint says "or drop files here"
+// in the language of msgs.
+func (msgs Messages) AttachmentDropHint() string {
+	return Catalog.Format(msgs.locale, "attachmentDropHint", nil)
+}
+
+// AttachmentReading says "Reading…"
+// in the language the app shows.
+func AttachmentReading() string { return In(i18n.Locale()).AttachmentReading() }
+
+// AttachmentReading says "Reading…"
+// in the language of msgs.
+func (msgs Messages) AttachmentReading() string {
+	return Catalog.Format(msgs.locale, "attachmentReading", nil)
+}
+
+// AttachmentsReading says "Wait for attachments to finish reading"
+// in the language the app shows.
+func AttachmentsReading() string { return In(i18n.Locale()).AttachmentsReading() }
+
+// AttachmentsReading says "Wait for attachments to finish reading"
+// in the language of msgs.
+func (msgs Messages) AttachmentsReading() string {
+	return Catalog.Format(msgs.locale, "attachmentsReading", nil)
+}
+
+// AttachmentsSending says "Wait for the current send to finish before adding attachments"
+// in the language the app shows.
+func AttachmentsSending() string { return In(i18n.Locale()).AttachmentsSending() }
+
+// AttachmentsSending says "Wait for the current send to finish before adding attachments"
+// in the language of msgs.
+func (msgs Messages) AttachmentsSending() string {
+	return Catalog.Format(msgs.locale, "attachmentsSending", nil)
+}
+
+// AttachmentReadFailed says "Couldn't read attachment: {error}"
+// in the language the app shows.
+func AttachmentReadFailed(error string) string { return In(i18n.Locale()).AttachmentReadFailed(error) }
+
+// AttachmentReadFailed says "Couldn't read attachment: {error}"
+// in the language of msgs.
+func (msgs Messages) AttachmentReadFailed(error string) string {
+	return Catalog.Format(msgs.locale, "attachmentReadFailed", map[string]any{"error": error})
+}
+
+// AttachmentsReadFailed says "Remove attachments that couldn't be read before sending"
+// in the language the app shows.
+func AttachmentsReadFailed() string { return In(i18n.Locale()).AttachmentsReadFailed() }
+
+// AttachmentsReadFailed says "Remove attachments that couldn't be read before sending"
+// in the language of msgs.
+func (msgs Messages) AttachmentsReadFailed() string {
+	return Catalog.Format(msgs.locale, "attachmentsReadFailed", nil)
+}
+
+// AttachmentSizeLimit says "Attachments exceed the 25 MB total limit"
+// in the language the app shows.
+func AttachmentSizeLimit() string { return In(i18n.Locale()).AttachmentSizeLimit() }
+
+// AttachmentSizeLimit says "Attachments exceed the 25 MB total limit"
+// in the language of msgs.
+func (msgs Messages) AttachmentSizeLimit() string {
+	return Catalog.Format(msgs.locale, "attachmentSizeLimit", nil)
+}
+
+// AttachmentDialogFailed says "Couldn't choose attachments: {error}"
+// in the language the app shows.
+func AttachmentDialogFailed(error string) string {
+	return In(i18n.Locale()).AttachmentDialogFailed(error)
+}
+
+// AttachmentDialogFailed says "Couldn't choose attachments: {error}"
+// in the language of msgs.
+func (msgs Messages) AttachmentDialogFailed(error string) string {
+	return Catalog.Format(msgs.locale, "attachmentDialogFailed", map[string]any{"error": error})
+}
+
+// RemoveAttachment says "Remove"
+// in the language the app shows.
+func RemoveAttachment() string { return In(i18n.Locale()).RemoveAttachment() }
+
+// RemoveAttachment says "Remove"
+// in the language of msgs.
+func (msgs Messages) RemoveAttachment() string {
+	return Catalog.Format(msgs.locale, "removeAttachment", nil)
+}
+
+// RemoveAttachmentNamed says "Remove {name}"
+// in the language the app shows.
+func RemoveAttachmentNamed(name string) string { return In(i18n.Locale()).RemoveAttachmentNamed(name) }
+
+// RemoveAttachmentNamed says "Remove {name}"
+// in the language of msgs.
+func (msgs Messages) RemoveAttachmentNamed(name string) string {
+	return Catalog.Format(msgs.locale, "removeAttachmentNamed", map[string]any{"name": name})
+}
+
 // StarAdded says "Starred"
 // in the language the app shows.
 func StarAdded() string { return In(i18n.Locale()).StarAdded() }

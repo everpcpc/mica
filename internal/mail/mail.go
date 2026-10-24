@@ -93,6 +93,14 @@ type Attachment struct {
 	ContentID string
 }
 
+const MaxComposeAttachmentBytes int64 = 25 << 20
+
+type OutgoingAttachment struct {
+	Name     string
+	MIMEType string
+	Data     []byte
+}
+
 type Query struct {
 	LabelID   string
 	Search    string
@@ -106,15 +114,16 @@ type ThreadPage struct {
 }
 
 type Compose struct {
-	To         string
-	Cc         string
-	Bcc        string
-	Subject    string
-	Text       string
-	HTML       string
-	ThreadID   string
-	InReplyTo  string
-	References string
+	To          string
+	Cc          string
+	Bcc         string
+	Subject     string
+	Text        string
+	HTML        string
+	ThreadID    string
+	InReplyTo   string
+	References  string
+	Attachments []OutgoingAttachment
 }
 
 type Service interface {

@@ -39,6 +39,11 @@
 - Plain text and HTML fallbacks need the same reading inset. Verify the cascade with computed styles: in this case, bare HTML measured 24px, the wrapper with inline padding measured 0, and root email CSS measured 40px.
 - Do not use one container to handle both HTML and plain-text spacing requirements.
 
+## Preserve attachment data through asynchronous workflows
+
+- Check attachment bytes at every boundary: file selection or drop, background reads, removal, send and retry, MIME output, and demo retrieval. A visible filename or metadata row does not prove that the content survived.
+- Serialize attachment reads per composer and recompute the remaining allowance before each read instead of reserving it from a stale snapshot. If an in-flight read fails against a stale smaller allowance, retry after loaded items are removed; true oversize files still fail. Late results for removed items must not reappear or consume allowance, and read failures must block sending rather than silently dropping the attachment.
+
 ## Verify visuals through real rendering
 
 - Do not validate animation only by its parameters. Inspect start, middle, and end frames for jumps, ghosting, and blank screens.

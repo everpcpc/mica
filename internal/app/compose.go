@@ -13,22 +13,25 @@ import (
 )
 
 type composer struct {
-	open       bool
-	forward    bool
-	showCc     bool
-	showBcc    bool
-	to         string
-	cc         string
-	bcc        string
-	subject    string
-	doc        *richtext.Document
-	quote      *mailmodel.Message
-	quoteOpen  bool
-	threadID   string
-	inReplyTo  string
-	references string
-	sending    bool
-	err        string
+	open              bool
+	forward           bool
+	showCc            bool
+	showBcc           bool
+	to                string
+	cc                string
+	bcc               string
+	subject           string
+	doc               *richtext.Document
+	quote             *mailmodel.Message
+	quoteOpen         bool
+	threadID          string
+	inReplyTo         string
+	references        string
+	attachments       []composerAttachment
+	nextAttachmentID  uint64
+	readingAttachment bool
+	sending           bool
+	err               string
 }
 
 func (a *App) openCompose(reply *mailmodel.Message) {
@@ -54,9 +57,12 @@ func (a *App) openReply() {
 func (a *App) composeView(c *ui.Context) {
 	m := a.compose
 	t := c.Theme()
+	attachmentsLoading, attachmentsFailed := m.composeAttachmentsState()
 	dismissed := ui.Modal(c, &m.open, func() {
 		a.composeShortcuts(c)
-		ui.Column(c).Width(640).Gap(12).Children(func() {
+		content := ui.Column(c).Width(640).Gap(12)
+		dropped := content.DroppedFiles()
+		content.Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				title := locales.NewMessage()
 				if m.forward {
@@ -98,6 +104,7 @@ func (a *App) composeView(c *ui.Context) {
 					Label:       locales.Body(),
 					Placeholder: locales.BodyPlaceholder(),
 				}).Height(250)
+				a.composeAttachmentsView(c, m)
 				if m.quote != nil {
 					ui.Collapsible(c, locales.OriginalMessage(), &m.quoteOpen, func() {
 						ui.Text(c, replyQuoteText(*m.quote)).FontSize(12).TextColor(t.TextMuted).MaxLines(8).Selectable()
@@ -110,9 +117,12 @@ func (a *App) composeView(c *ui.Context) {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, locales.SendShortcut()).FontSize(11).TextColor(t.TextMuted).Grow(1)
 				ui.Button(c, locales.Cancel()).Disabled(m.sending).OnClick(func() { a.compose = nil })
-				primaryAction(c, locales.Send()).Disabled(m.sending).OnClick(a.sendCompose)
+				primaryAction(c, locales.Send()).Disabled(m.sending || attachmentsLoading || attachmentsFailed).OnClick(a.sendCompose)
 			})
 		})
+		if len(dropped) > 0 {
+			a.addComposeAttachments(dropped)
+		}
 	}).Dismissed()
 	if dismissed && m.sending {
 		m.open = true
@@ -138,6 +148,15 @@ func (a *App) sendCompose() {
 	if m == nil || m.sending {
 		return
 	}
+	attachmentsLoading, attachmentsFailed := m.composeAttachmentsState()
+	if attachmentsLoading {
+		m.err = locales.AttachmentsReading()
+		return
+	}
+	if attachmentsFailed {
+		m.err = locales.AttachmentsReadFailed()
+		return
+	}
 	if err := validateRecipients(m.to, m.cc, m.bcc); err != nil {
 		m.err = err.Error()
 		return
@@ -155,15 +174,16 @@ func (a *App) sendCompose() {
 		htmlContent += replyQuoteHTML(*m.quote)
 	}
 	out := mailmodel.Compose{
-		To:         m.to,
-		Cc:         m.cc,
-		Bcc:        m.bcc,
-		Subject:    m.subject,
-		Text:       text,
-		HTML:       htmlContent,
-		ThreadID:   m.threadID,
-		InReplyTo:  m.inReplyTo,
-		References: m.references,
+		To:          m.to,
+		Cc:          m.cc,
+		Bcc:         m.bcc,
+		Subject:     m.subject,
+		Text:        text,
+		HTML:        htmlContent,
+		ThreadID:    m.threadID,
+		InReplyTo:   m.inReplyTo,
+		References:  m.references,
+		Attachments: m.outgoingAttachments(),
 	}
 	service, version := a.service, a.serviceVersion
 	a.schedule(func() {

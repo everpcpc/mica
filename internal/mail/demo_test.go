@@ -265,6 +265,9 @@ func TestDemoModifyTrashAndSend(t *testing.T) {
 		Subject: "Launch day support rotation",
 		Text:    "I will cover the first shift.",
 		HTML:    "<p>I will cover the <strong>first shift</strong>.</p>",
+		Attachments: []OutgoingAttachment{
+			{Name: "rotation.txt", MIMEType: "text/plain", Data: []byte("first shift")},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -281,6 +284,22 @@ func TestDemoModifyTrashAndSend(t *testing.T) {
 	}
 	if len(sent.Messages) != 1 || sent.Messages[0].HTML == "" || !hasString(sent.LabelIDs, Sent) {
 		t.Fatalf("unexpected new sent thread: %+v", sent)
+	}
+	if len(sent.Messages[0].Attachments) != 1 {
+		t.Fatalf("sent attachments = %+v, want 1", sent.Messages[0].Attachments)
+	}
+	attachment := sent.Messages[0].Attachments[0]
+	if attachment.Name != "rotation.txt" || attachment.MIMEType != "text/plain" || attachment.Size != 11 {
+		t.Fatalf("sent attachment metadata = %+v", attachment)
+	}
+	data, err := service.Attachment(ctx, sent.Messages[0].ID, attachment.ID)
+	if err != nil || string(data) != "first shift" {
+		t.Fatalf("sent attachment content = %q, err=%v", data, err)
+	}
+	data[0] = 'X'
+	data, err = service.Attachment(ctx, sent.Messages[0].ID, attachment.ID)
+	if err != nil || string(data) != "first shift" {
+		t.Fatalf("attachment content was aliased: %q, err=%v", data, err)
 	}
 }
 
