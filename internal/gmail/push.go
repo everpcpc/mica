@@ -182,7 +182,12 @@ func (s *Service) History(ctx context.Context, start uint64, fn func(HistoryPage
 	return latest, nil
 }
 
-func (s *Service) Stream(ctx context.Context, fn func(uint64) error) error {
+type PushNotification struct {
+	EmailAddress string
+	HistoryID    uint64
+}
+
+func (s *Service) Stream(ctx context.Context, fn func(PushNotification) error) error {
 	if s.tokenSource == nil {
 		return errors.New("gmail: token source is required")
 	}
@@ -225,7 +230,7 @@ func (s *Service) Stream(ctx context.Context, fn func(uint64) error) error {
 			fail(fmt.Errorf("gmail: parse push history id: %w", err))
 			return
 		}
-		if err := fn(historyID); err != nil {
+		if err := fn(PushNotification{EmailAddress: notification.EmailAddress, HistoryID: historyID}); err != nil {
 			message.nack()
 			fail(err)
 			return

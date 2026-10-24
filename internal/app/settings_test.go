@@ -78,39 +78,15 @@ func TestCancelAuthenticationDeactivatesService(t *testing.T) {
 	}
 }
 
-func TestLogoutCancelsAuthentication(t *testing.T) {
+func TestRemoveAccountRejectsUnconfirmedIdentity(t *testing.T) {
 	a := newTestApp(newFakeService())
-	a.storeAccount = "user@example.com"
-	a.account.Email = "user@example.com"
+	a.storeAccount = "a@example.com"
+	a.account.Email = "b@example.com"
+	a.accountVerified = false
 	a.settings = &settingsState{open: true}
-	cancelled := false
-	a.authCancel = func() { cancelled = true }
-	a.schedule = func(func()) {}
-	a.logoutGmail()
-	if !cancelled || a.authCancel != nil {
-		t.Fatalf("logout did not cancel authentication: cancelled=%v", cancelled)
-	}
-}
-
-func TestLogoutRejectsUnconfirmedIdentity(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		storeAccount string
-		email        string
-	}{
-		{name: "empty email"},
-		{name: "mismatched profile", storeAccount: "a@example.com", email: "b@example.com"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			a := newTestApp(newFakeService())
-			a.storeAccount = tc.storeAccount
-			a.account.Email = tc.email
-			a.settings = &settingsState{open: true}
-			a.logoutGmail()
-			if a.settings.err == "" || a.settings.busy {
-				t.Fatalf("logout with unconfirmed identity did not fail safely: %+v", a.settings)
-			}
-		})
+	a.removeAccount("a@example.com")
+	if a.settings.err == "" || a.settings.busy {
+		t.Fatalf("removal with unconfirmed identity did not fail safely: %+v", a.settings)
 	}
 }
 

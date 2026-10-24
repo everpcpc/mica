@@ -103,6 +103,24 @@ func TestCaptureMotion(t *testing.T) {
 	}
 }
 
+func TestCaptureAccountSettings(t *testing.T) {
+	if os.Getenv("MICA_CAPTURE") == "" {
+		t.Skip("capture is opt-in")
+	}
+	a := newTestApp(newFakeService())
+	first := a.account
+	first.Name, first.Email, first.Demo = "Alex", "alex@example.com", false
+	second := newFakeService().account
+	second.Name, second.Email, second.Demo = "Work", "work@example.com", false
+	a.account = first
+	a.storeAccount = first.Email
+	a.settings = &settingsState{open: true}
+	a.settings.accounts = append(a.settings.accounts, first, second)
+	tt := ui.NewTester(a.View, 1280, 800)
+	tt.SetLocale("en")
+	captureFrame(t, tt, "settings")
+}
+
 func captureFrame(t *testing.T, tt *ui.Tester, name string) {
 	t.Helper()
 	path := filepath.Join("..", "..", "docs", "screenshots", name+".png")

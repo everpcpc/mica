@@ -448,10 +448,10 @@ func TestStreamAcksSuccessAndNacksFailure(t *testing.T) {
 	service := NewWithProject(nil, "project-1", pushTokenSource{})
 	installStreamReceiver(t, service, receiver)
 
-	var historyIDs []uint64
-	err := service.Stream(context.Background(), func(historyID uint64) error {
-		historyIDs = append(historyIDs, historyID)
-		if historyID == 456 {
+	var notifications []PushNotification
+	err := service.Stream(context.Background(), func(notification PushNotification) error {
+		notifications = append(notifications, notification)
+		if notification.HistoryID == 456 {
 			return callbackErr
 		}
 		return nil
@@ -459,8 +459,13 @@ func TestStreamAcksSuccessAndNacksFailure(t *testing.T) {
 	if !errors.Is(err, callbackErr) {
 		t.Fatalf("error = %v, want %v", err, callbackErr)
 	}
-	if !reflect.DeepEqual(historyIDs, []uint64{123, 124, 456}) {
-		t.Errorf("history IDs = %v", historyIDs)
+	wantNotifications := []PushNotification{
+		{EmailAddress: "alex@example.com", HistoryID: 123},
+		{EmailAddress: "alex@example.com", HistoryID: 124},
+		{EmailAddress: "alex@example.com", HistoryID: 456},
+	}
+	if !reflect.DeepEqual(notifications, wantNotifications) {
+		t.Errorf("notifications = %v", notifications)
 	}
 	if !reflect.DeepEqual(acked, []uint64{123, 124}) {
 		t.Errorf("acked = %v, want [123 124]", acked)
@@ -487,7 +492,7 @@ func TestStreamCancellationClosesClient(t *testing.T) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		result <- service.Stream(ctx, func(uint64) error { return nil })
+		result <- service.Stream(ctx, func(PushNotification) error { return nil })
 	}()
 	select {
 	case <-started:
@@ -510,7 +515,7 @@ func TestStreamCancellationClosesClient(t *testing.T) {
 
 func TestStreamRequiresTokenSource(t *testing.T) {
 	service := NewWithProject(nil, "project-1", nil)
-	err := service.Stream(context.Background(), func(uint64) error { return nil })
+	err := service.Stream(context.Background(), func(PushNotification) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "token source") {
 		t.Fatalf("error = %v, want missing token source", err)
 	}

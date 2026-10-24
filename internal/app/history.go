@@ -29,3 +29,7 @@ func loadHistoryCheckpoint(email string) (uint64, bool, error) {
 func saveHistoryCheckpoint(email string, id uint64) error {
 	return mygo.Secrets.Set(historyCheckpointKey(email), []byte(strconv.FormatUint(id, 10)))
 }
+
+func deleteHistoryCheckpoint(email string) error {
+	return mygo.Secrets.Delete(historyCheckpointKey(email))
+}

@@ -14,7 +14,11 @@ import (
 
 type mailStore interface {
 	LastAccount(context.Context) (mail.Account, bool, error)
+	Accounts(context.Context) ([]mail.Account, error)
+	Account(context.Context, string) (mail.Account, bool, error)
 	SaveAccount(context.Context, mail.Account) error
+	SetLastAccount(context.Context, string) error
+	DeleteAccount(context.Context, string) error
 	Labels(context.Context, string) ([]mail.Label, bool, error)
 	SaveLabels(context.Context, string, []mail.Label) error
 	ThreadList(context.Context, string, mail.Query) ([]mail.ThreadSummary, bool, error)
@@ -180,6 +184,9 @@ func TestRoundTripPersistsAcrossReopen(t *testing.T) {
 	if err := s.SaveAccount(ctx, account); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.SetLastAccount(ctx, account.Email); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.SaveLabels(ctx, account.Email, labels); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +215,63 @@ func TestRoundTripPersistsAcrossReopen(t *testing.T) {
 	requireSnapshot(t, gotThread, found, err, thread)
 }
 
-func TestSaveAccountMarksLastAccount(t *testing.T) {
+func TestAccounts(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
+	first := mail.Account{Name: "First", Email: "first@example.com"}
+	second := mail.Account{Name: "Second", Email: " Second@Example.COM "}
+	if err := s.SaveAccount(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveAccount(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second.Name = "Updated Second"
+	second.Email = "second@example.com"
+	if err := s.SaveAccount(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Accounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []mail.Account{first, second}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("accounts = %#v, want %#v", got, want)
+	}
+	gotAccount, found, err := s.Account(ctx, " FIRST@EXAMPLE.COM ")
+	requireSnapshot(t, gotAccount, found, err, first)
+	_, found, err = s.Account(ctx, "missing@example.com")
+	requireMissing(t, found, err)
+}
+
+func TestAccountDirectorySupportsLegacyEmailCase(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
+	account := mail.Account{Name: "Legacy", Email: "Legacy@Example.com"}
+	data := []byte(`{"Name":"Legacy","Email":"Legacy@Example.com"}`)
+	if _, err := s.db.Execute(ctx, "INSERT INTO accounts(email, data) VALUES(?, ?)", account.Email, data); err != nil {
+		t.Fatal(err)
+	}
+
+	got, found, err := s.Account(ctx, " legacy@example.com ")
+	requireSnapshot(t, got, found, err, account)
+	if err := s.SetLastAccount(ctx, "LEGACY@EXAMPLE.COM"); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err = s.LastAccount(ctx)
+	requireSnapshot(t, got, found, err, account)
+	if err := s.DeleteAccount(ctx, " legacy@example.com "); err != nil {
+		t.Fatal(err)
+	}
+	_, found, err = s.Account(ctx, account.Email)
+	requireMissing(t, found, err)
+	_, found, err = s.LastAccount(ctx)
+	requireMissing(t, found, err)
+}
+
+func TestSaveAccountDoesNotChangeLastAccount(t *testing.T) {
 	ctx := context.Background()
 	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
 	first := mail.Account{Name: "First", Email: "first@example.com"}
@@ -219,15 +282,136 @@ func TestSaveAccountMarksLastAccount(t *testing.T) {
 	if err := s.SaveAccount(ctx, second); err != nil {
 		t.Fatal(err)
 	}
-	got, found, err := s.LastAccount(ctx)
-	requireSnapshot(t, got, found, err, second)
+	_, found, err := s.LastAccount(ctx)
+	requireMissing(t, found, err)
 
-	first.Name = "Updated First"
-	if err := s.SaveAccount(ctx, first); err != nil {
+	if err := s.SetLastAccount(ctx, first.Email); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := s.LastAccount(ctx)
+	requireSnapshot(t, got, found, err, first)
+	second.Name = "Updated Second"
+	if err := s.SaveAccount(ctx, second); err != nil {
 		t.Fatal(err)
 	}
 	got, found, err = s.LastAccount(ctx)
 	requireSnapshot(t, got, found, err, first)
+	if err := s.SetLastAccount(ctx, second.Email); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err = s.LastAccount(ctx)
+	requireSnapshot(t, got, found, err, second)
+}
+
+func TestSetLastAccountRejectsMissingAccount(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
+	account := mail.Account{Name: "First", Email: "first@example.com"}
+	if err := s.SaveAccount(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLastAccount(ctx, account.Email); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLastAccount(ctx, "missing@example.com"); err == nil {
+		t.Fatal("setting a missing last account succeeded")
+	}
+	got, found, err := s.LastAccount(ctx)
+	requireSnapshot(t, got, found, err, account)
+}
+
+func TestDeleteAccountIsAccountScoped(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
+	first := mail.Account{Name: "First", Email: "first@example.com"}
+	second := mail.Account{Name: "Second", Email: "second@example.com"}
+	if err := s.SaveAccount(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveAccount(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	firstLabels := []mail.Label{{ID: "first-label"}}
+	secondLabels := []mail.Label{{ID: "second-label"}}
+	if err := s.SaveLabels(ctx, first.Email, firstLabels); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveLabels(ctx, second.Email, secondLabels); err != nil {
+		t.Fatal(err)
+	}
+	query := mail.Query{LabelID: mail.Inbox}
+	firstList := []mail.ThreadSummary{{ID: "first-list"}}
+	secondList := []mail.ThreadSummary{{ID: "second-list"}}
+	if err := s.SaveThreadList(ctx, first.Email, query, firstList); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveThreadList(ctx, second.Email, query, secondList); err != nil {
+		t.Fatal(err)
+	}
+	firstThread := mail.Thread{ID: "shared", Subject: "First"}
+	secondThread := mail.Thread{ID: "shared", Subject: "Second"}
+	if err := s.SaveThread(ctx, first.Email, firstThread); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveThread(ctx, second.Email, secondThread); err != nil {
+		t.Fatal(err)
+	}
+	firstDraft := mail.DraftSnapshot{DraftID: "first-draft", Compose: mail.Compose{Text: "First"}}
+	secondDraft := mail.DraftSnapshot{DraftID: "second-draft", Compose: mail.Compose{Text: "Second"}}
+	if err := s.SaveDraftSnapshot(ctx, first.Email, firstDraft); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveDraftSnapshot(ctx, second.Email, secondDraft); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLastAccount(ctx, second.Email); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteAccount(ctx, " FIRST@EXAMPLE.COM "); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := s.Accounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAccounts := []mail.Account{second}
+	if !reflect.DeepEqual(accounts, wantAccounts) {
+		t.Fatalf("accounts = %#v, want %#v", accounts, wantAccounts)
+	}
+	gotAccount, found, err := s.LastAccount(ctx)
+	requireSnapshot(t, gotAccount, found, err, second)
+	_, found, err = s.Account(ctx, first.Email)
+	requireMissing(t, found, err)
+	_, found, err = s.Labels(ctx, first.Email)
+	requireMissing(t, found, err)
+	_, found, err = s.ThreadList(ctx, first.Email, query)
+	requireMissing(t, found, err)
+	_, found, err = s.Thread(ctx, first.Email, firstThread.ID)
+	requireMissing(t, found, err)
+	_, found, err = s.DraftSnapshot(ctx, first.Email)
+	requireMissing(t, found, err)
+	gotLabels, found, err := s.Labels(ctx, second.Email)
+	requireSnapshot(t, gotLabels, found, err, secondLabels)
+	gotList, found, err := s.ThreadList(ctx, second.Email, query)
+	requireSnapshot(t, gotList, found, err, secondList)
+	gotThread, found, err := s.Thread(ctx, second.Email, secondThread.ID)
+	requireSnapshot(t, gotThread, found, err, secondThread)
+	gotDraft, found, err := s.DraftSnapshot(ctx, second.Email)
+	requireSnapshot(t, gotDraft, found, err, secondDraft)
+
+	if err := s.DeleteAccount(ctx, first.Email); err != nil {
+		t.Fatalf("deleting a missing account: %v", err)
+	}
+	gotAccount, found, err = s.LastAccount(ctx)
+	requireSnapshot(t, gotAccount, found, err, second)
+	if err := s.DeleteAccount(ctx, second.Email); err != nil {
+		t.Fatal(err)
+	}
+	_, found, err = s.LastAccount(ctx)
+	requireMissing(t, found, err)
+	_, found, err = s.Account(ctx, second.Email)
+	requireMissing(t, found, err)
 }
 
 func TestAccountAndQueryIsolation(t *testing.T) {

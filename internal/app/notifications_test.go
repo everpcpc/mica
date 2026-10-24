@@ -74,7 +74,7 @@ func TestMailNotificationsOnlyForNewActivity(t *testing.T) {
 	h.service.threads = append(h.service.threads, second)
 	h.service.labels[0].Unread = 2
 	h.syncNow(t)
-	if !reflect.DeepEqual(h.notifications, []string{"thread-2"}) {
+	if !reflect.DeepEqual(h.notifications, []string{notificationID("demo@example.com", "thread-2")}) {
 		t.Fatalf("notifications = %v, want only thread-2", h.notifications)
 	}
 	if got := h.lastBadge(t); got != 2 {
@@ -96,7 +96,7 @@ func TestMailNotificationsOnlyForNewActivity(t *testing.T) {
 	first.Updated = first.Updated.Add(2 * time.Minute)
 	h.service.threads = []mail.ThreadSummary{first}
 	h.syncNow(t)
-	if !reflect.DeepEqual(h.notifications, []string{"thread-2", "thread-1"}) {
+	if !reflect.DeepEqual(h.notifications, []string{notificationID("demo@example.com", "thread-2"), notificationID("demo@example.com", "thread-1")}) {
 		t.Fatalf("new reply did not produce exactly one notification: %v", h.notifications)
 	}
 }
@@ -135,7 +135,7 @@ func TestHistorySyncAfterRestart(t *testing.T) {
 		return 5, nil
 	}
 	h.app.Start()
-	if !reflect.DeepEqual(h.notifications, []string{"thread-2"}) {
+	if !reflect.DeepEqual(h.notifications, []string{notificationID("demo@example.com", "thread-2")}) {
 		t.Fatalf("restart notifications = %v, want the missed message only", h.notifications)
 	}
 	if h.saved != 5 {
@@ -190,7 +190,7 @@ func TestHistory404RebuildsBaseline(t *testing.T) {
 		return 6, nil
 	}
 	h.syncNow(t)
-	if !reflect.DeepEqual(h.notifications, []string{"thread-2"}) {
+	if !reflect.DeepEqual(h.notifications, []string{notificationID("demo@example.com", "thread-2")}) {
 		t.Fatalf("notifications after reset = %v, want thread-2", h.notifications)
 	}
 }
@@ -198,18 +198,18 @@ func TestHistory404RebuildsBaseline(t *testing.T) {
 func TestNotificationClickOpensThread(t *testing.T) {
 	h := newNotificationHarness()
 	h.app.Start()
-	h.app.OpenThread("thread-1")
+	h.app.OpenThread(notificationID("demo@example.com", "thread-1"))
 	if h.app.selectedThread != "thread-1" || h.app.thread.ID != "thread-1" {
 		t.Fatalf("notification did not open the thread: selected=%q loaded=%q", h.app.selectedThread, h.app.thread.ID)
 	}
-	if h.app.selectedLabel != mail.Inbox || h.app.pendingThread != "" {
+	if h.app.selectedLabel != mail.Inbox || h.app.pendingThread.threadID != "" {
 		t.Fatalf("notification left unexpected state: label=%q pending=%q", h.app.selectedLabel, h.app.pendingThread)
 	}
 }
 
 func TestNotificationClickWaitsForGmailRestore(t *testing.T) {
 	h := newNotificationHarness()
-	h.app.OpenThread("thread-1")
+	h.app.OpenThread(notificationID("demo@example.com", "thread-1"))
 	if h.app.selectedThread != "" {
 		t.Fatal("thread opened before Gmail was restored")
 	}
@@ -269,7 +269,7 @@ func (f *fakeService) History(_ context.Context, start uint64, fn func(gmail.His
 	return id, nil
 }
 
-func (f *fakeService) Stream(ctx context.Context, fn func(uint64) error) error {
+func (f *fakeService) Stream(ctx context.Context, fn func(gmail.PushNotification) error) error {
 	if f.stream != nil {
 		return f.stream(ctx, fn)
 	}

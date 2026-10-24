@@ -22,6 +22,9 @@ func (a *App) openReplyAll() {
 
 func (a *App) openReplyAllMessage(message mailmodel.Message) {
 	a.openReplyMessage(message)
+	if a.compose == nil {
+		return
+	}
 	a.compose.to, a.compose.cc = replyAllRecipients(message, a.account.Email)
 }
 
@@ -92,6 +95,9 @@ func (a *App) openForward() {
 }
 
 func (a *App) openForwardMessage(message mailmodel.Message) {
+	if a.accountTransition != nil {
+		return
+	}
 	subject := strings.TrimSpace(message.Subject)
 	if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
 		subject = "Fwd: " + subject

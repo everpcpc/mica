@@ -5,6 +5,7 @@ import (
 	"log"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,14 +14,19 @@ import (
 
 type cacheState struct {
 	mu         sync.Mutex
+	writes     sync.WaitGroup
 	version    int
 	widthSave  int
 	draftWrite uint64
 }
 
 type mailStore interface {
+	Accounts(context.Context) ([]mail.Account, error)
+	Account(context.Context, string) (mail.Account, bool, error)
 	LastAccount(context.Context) (mail.Account, bool, error)
 	SaveAccount(context.Context, mail.Account) error
+	SetLastAccount(context.Context, string) error
+	DeleteAccount(context.Context, string) error
 	Labels(context.Context, string) ([]mail.Label, bool, error)
 	SaveLabels(context.Context, string, []mail.Label) error
 	ThreadList(context.Context, string, mail.Query) ([]mail.ThreadSummary, bool, error)
@@ -30,6 +36,10 @@ type mailStore interface {
 	DeleteThread(context.Context, string, string) error
 	Preference(context.Context, string) (string, bool, error)
 	SavePreference(context.Context, string, string) error
+}
+
+func normalizedEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func (a *App) SetMailStore(store mailStore) {
@@ -43,6 +53,7 @@ func (a *App) persistAccount(account mail.Account) {
 	if account.Demo || account.Email == "" {
 		return
 	}
+	account.Email = normalizedEmail(account.Email)
 	a.storeAccount = account.Email
 	if a.compose != nil && a.compose.revision > a.compose.savedRevision {
 		a.persistDraftSnapshot(a.compose)
@@ -75,10 +86,12 @@ func (a *App) persistThread(thread mail.Thread) {
 
 func (a *App) persist(write func(mailStore, string) error) {
 	store, email, version := a.store, a.storeAccount, a.serviceVersion
-	if store == nil || email == "" {
+	if store == nil || email == "" || a.accountTransition != nil {
 		return
 	}
+	a.cacheState.writes.Add(1)
 	a.schedule(func() {
+		defer a.cacheState.writes.Done()
 		a.cacheState.mu.Lock()
 		defer a.cacheState.mu.Unlock()
 		if version != a.cacheState.version {

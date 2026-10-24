@@ -29,6 +29,7 @@ type undoAction struct {
 
 type mutationJob struct {
 	service     mail.Service
+	runFunc     func() error
 	id          string
 	kind        threadMutation
 	add         []string
@@ -42,6 +43,9 @@ type mutationJob struct {
 }
 
 func (j mutationJob) run() error {
+	if j.runFunc != nil {
+		return j.runFunc()
+	}
 	if j.deleteLabel {
 		return j.service.(mail.LabelManager).DeleteLabel(context.Background(), j.id)
 	}
@@ -116,6 +120,9 @@ func (a *App) restoreUndo(action *undoAction) {
 }
 
 func (a *App) undoLast() {
+	if a.accountTransition != nil {
+		return
+	}
 	action := a.undo
 	if action == nil {
 		return
@@ -139,7 +146,22 @@ func (a *App) mutationsPending() bool {
 	return a.mutationRunning || len(a.mutationQueue) > 0
 }
 
+func (a *App) waitForMutations(fn func()) {
+	if !a.mutationsPending() {
+		fn()
+		return
+	}
+	a.mutationWaiters = append(a.mutationWaiters, fn)
+}
+
 func (a *App) enqueueMutation(job mutationJob) {
+	if a.accountTransition != nil {
+		if job.done != nil {
+			job.done(errAccountTransition)
+		}
+		a.notice = locales.AccountSwitchPending()
+		return
+	}
 	a.mutationQueue = append(a.mutationQueue, job)
 	a.pumpMutations()
 }
@@ -156,6 +178,11 @@ func (a *App) pumpMutations() {
 		if a.mutationLabels {
 			a.mutationLabels = false
 			a.reloadLabels()
+		}
+		waiters := a.mutationWaiters
+		a.mutationWaiters = nil
+		for _, waiter := range waiters {
+			waiter()
 		}
 		return
 	}
@@ -288,6 +315,9 @@ func (a *App) notSpam() {
 }
 
 func (a *App) toggleThreadLabel(label mail.Label) {
+	if a.accountTransition != nil {
+		return
+	}
 	summary := a.selectedSummary()
 	if summary == nil {
 		return

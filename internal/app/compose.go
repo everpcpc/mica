@@ -42,6 +42,9 @@ type composer struct {
 }
 
 func (a *App) openCompose(reply *mailmodel.Message) {
+	if a.accountTransition != nil {
+		return
+	}
 	m := &composer{open: true, generation: 1, doc: richtext.NewDocument(richtext.NewText(""))}
 	if reply != nil {
 		m.to = replyAddress(*reply)

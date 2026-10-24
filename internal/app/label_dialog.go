@@ -92,7 +92,7 @@ func (a *App) labelManager() (mail.LabelManager, error) {
 
 func (a *App) createLabel() {
 	s := a.labelDialog
-	if s == nil || s.isDelete || s.busy {
+	if s == nil || s.isDelete || s.busy || a.accountTransition != nil {
 		return
 	}
 	name := strings.TrimSpace(s.name)
@@ -114,13 +114,15 @@ func (a *App) createLabel() {
 	s.name = name
 	s.busy = true
 	s.err = ""
-	version := a.serviceVersion
-	a.schedule(func() {
-		label, err := manager.CreateLabel(context.Background(), name)
-		a.publish(func() {
-			if version != a.serviceVersion {
-				return
-			}
+	var label mail.Label
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		runFunc: func() error {
+			var err error
+			label, err = manager.CreateLabel(context.Background(), name)
+			return err
+		},
+		done: func(err error) {
 			if err != nil {
 				if a.labelDialog == s {
 					s.busy = false
@@ -131,13 +133,13 @@ func (a *App) createLabel() {
 			a.setLabel(label)
 			a.notice = locales.LabelCreated(label.Name)
 			a.closeLabelDialog(s)
-		})
+		},
 	})
 }
 
 func (a *App) deleteLabel() {
 	s := a.labelDialog
-	if s == nil || !s.isDelete || s.busy {
+	if s == nil || !s.isDelete || s.busy || a.accountTransition != nil {
 		return
 	}
 	if _, err := a.labelManager(); err != nil {
@@ -168,7 +170,7 @@ func (a *App) deleteLabel() {
 }
 
 func (a *App) updateLabelColor(label mail.Label, color mail.LabelColor) {
-	if label.Color == color {
+	if label.Color == color || a.accountTransition != nil {
 		return
 	}
 	if _, err := a.labelManager(); err != nil {

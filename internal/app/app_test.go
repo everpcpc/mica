@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"mica/internal/gmail"
 	"mica/internal/mail"
 
 	"github.com/egoist/mygo/ui/richtext"
@@ -32,7 +33,7 @@ type fakeService struct {
 	labelColors   map[string]mail.LabelColor
 	watchID       uint64
 	historyFunc   func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
-	stream        func(context.Context, func(uint64) error) error
+	stream        func(context.Context, func(gmail.PushNotification) error) error
 }
 
 func newFakeService() *fakeService {

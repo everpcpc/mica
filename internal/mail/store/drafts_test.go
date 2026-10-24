@@ -26,6 +26,9 @@ func TestDraftSnapshotMigrationRestartAndAccountIsolation(t *testing.T) {
 	if err := s.SaveAccount(ctx, account); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.SetLastAccount(ctx, account.Email); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.db.Execute(ctx, "DROP TABLE draft_snapshots"); err != nil {
 		t.Fatal(err)
 	}
