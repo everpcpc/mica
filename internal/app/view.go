@@ -118,18 +118,14 @@ func (a *App) sidebar(c *ui.Context) {
 			})
 		})
 		mailboxes := visibleSidebarLabels(a.labels, mailboxLabels)
-		if a.accountCount > 1 {
-			mailboxes = append([]sidebarLabel{{id: mail.Unified, icon: iconInbox}}, mailboxes...)
-		}
 		mailboxList := ui.Sidebar(c, &a.selectedLabel, func() {
 			ui.SidebarSection(c, locales.Mailboxes(), nil, func() {
+				if a.accountCount > 1 {
+					a.allInboxes(c)
+				}
 				for _, mailbox := range mailboxes {
 					item := ui.SidebarItem(c.Key(mailbox.id), mailbox.id, mailbox.icon, a.labelName(mailbox.id))
-					if mailbox.id == mail.Unified {
-						if unread := a.unifiedUnread(); unread > 0 {
-							item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
-						}
-					} else if unread := labelUnread(a.labels, mailbox.id); unread > 0 {
+					if unread := labelUnread(a.labels, mailbox.id); unread > 0 {
 						item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
 					}
 				}
@@ -161,6 +157,49 @@ func (a *App) sidebar(c *ui.Context) {
 			a.selectLabel()
 		}
 	})
+}
+
+func (a *App) allInboxes(c *ui.Context) {
+	unified := func() {
+		item := ui.SidebarItem(c.Key(mail.Unified), mail.Unified, iconInbox, locales.UnifiedInbox()).Grow(1).MinWidth(0)
+		if unread := a.unifiedUnread(); unread > 0 {
+			item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
+		}
+	}
+	if len(a.unifiedAccounts) < 2 {
+		unified()
+		return
+	}
+	ui.Row(c).AlignItems(ui.Center).MinWidth(0).Children(func() {
+		arrow := iconChevronRight
+		if a.unifiedExpanded {
+			arrow = iconChevronDown
+		}
+		ui.Button(c.Key("toggle-unified-accounts"), "").Label(locales.ToggleUnifiedAccounts()).Tooltip(locales.ToggleUnifiedAccounts()).Padding(4).Radius(999).Role(ui.RoleDisclosure).Expanded(a.unifiedExpanded).Children(func() {
+			ui.Icon(c, arrow).Size(12, 12).TextColor(c.Theme().TextMuted)
+		}).OnClick(func() { a.unifiedExpanded = !a.unifiedExpanded })
+		unified()
+	})
+	if !a.unifiedExpanded {
+		return
+	}
+	for _, account := range a.unifiedAccounts {
+		email := normalizedEmail(account.Email)
+		if email == "" {
+			continue
+		}
+		name := account.Name
+		if name == "" {
+			name = email
+		}
+		id := accountInboxPrefix + email
+		ui.Row(c.Key(id+"-row")).Padding(0, 0, 0, 22).MinWidth(0).Children(func() {
+			item := ui.SidebarItem(c, id, iconInbox, name).Grow(1).MinWidth(0).Tooltip(email).Level(3)
+			if unread := labelUnread(a.ownerLabels(email), mail.Inbox); unread > 0 {
+				item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
+			}
+		})
+	}
 }
 
 func (a *App) threadList(c *ui.Context) {

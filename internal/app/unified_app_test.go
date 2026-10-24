@@ -249,7 +249,7 @@ func TestUnifiedSidebarAndOwnerReader(t *testing.T) {
 	h.app.refreshUnified()
 	tt := ui.NewTester(h.app.View, 1280, 800)
 	tt.SetLocale("en")
-	if !tt.HasText("Unified Inbox") || !tt.HasText("b@example.com") {
+	if !tt.HasText("All Inboxes") || !tt.HasText("b@example.com") {
 		t.Fatalf("unified navigation or owner is missing: %q", tt.Texts())
 	}
 	if err := tt.Click("B subject"); err != nil {
@@ -266,8 +266,8 @@ func TestUnifiedLabelHiddenForSingleAccount(t *testing.T) {
 	h.app.selectedLabel = mail.Inbox
 	h.app.compositeThreads = false
 	tt := ui.NewTester(h.app.View, 1280, 800)
-	if tt.HasText("Unified Inbox") {
-		t.Fatal("single-account sidebar exposed Unified Inbox")
+	if tt.HasText("All Inboxes") {
+		t.Fatal("single-account sidebar exposed All Inboxes")
 	}
 }
 
@@ -325,7 +325,7 @@ func TestUnifiedLeavingRestoresMailboxRequests(t *testing.T) {
 	h.app.selectedLabel = mail.Inbox
 	h.app.selectLabel()
 	if h.app.compositeThreads || h.app.unified != nil {
-		t.Fatal("leaving Unified Inbox retained composite state")
+		t.Fatal("leaving All Inboxes retained composite state")
 	}
 	if h.app.loading || h.app.err != "" {
 		t.Fatalf("ordinary mailbox refresh did not finish: loading=%v err=%q", h.app.loading, h.app.err)
@@ -390,7 +390,7 @@ func TestUnifiedArchiveRemovesOnlyOwnerThread(t *testing.T) {
 	h.app.selectThread(threadRefForAccount("b@example.com", "b-1").key())
 	h.app.archive()
 	if unifiedContainsThread(h.app.threads, "b@example.com", "b-1") {
-		t.Fatal("archived B thread remains in Unified Inbox")
+		t.Fatal("archived B thread remains in All Inboxes")
 	}
 	if !unifiedContainsThread(h.app.threads, "a@example.com", "a-1") {
 		t.Fatal("archiving B removed A thread")
@@ -613,7 +613,7 @@ func TestUnifiedRenderedOwnerWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if unifiedContainsThread(h.app.threads, "b@example.com", "shared") {
-		t.Fatal("rendered archive action left B in Unified Inbox")
+		t.Fatal("rendered archive action left B in All Inboxes")
 	}
 	h.app.undoLast()
 	tt.Frame()
@@ -862,7 +862,7 @@ func TestUnifiedTrashUndoDoesNotRestoreNonInbox(t *testing.T) {
 	h.app.trash()
 	h.app.undoLast()
 	if unifiedContainsThread(h.app.threads, "a@example.com", "a-1") || unifiedContainsThread(h.app.unified.accounts["a@example.com"].threads, "a@example.com", "a-1") {
-		t.Fatal("Trash Undo restored a non-Inbox thread to Unified Inbox")
+		t.Fatal("Trash Undo restored a non-Inbox thread to All Inboxes")
 	}
 	cached := h.store.lists[cacheListKey{email: "a@example.com", query: h.query}]
 	if unifiedContainsThread(cached, "a@example.com", "a-1") {
@@ -889,7 +889,7 @@ func TestUnifiedSearchUndoDoesNotInsertNonInbox(t *testing.T) {
 	h.app.refresh()
 	h.app.undoLast()
 	if unifiedContainsThread(h.app.threads, "a@example.com", "a-search") || unifiedContainsThread(h.app.unified.accounts["a@example.com"].threads, "a@example.com", "a-search") {
-		t.Fatal("search Undo inserted a non-Inbox thread into Unified Inbox")
+		t.Fatal("search Undo inserted a non-Inbox thread into All Inboxes")
 	}
 }
 

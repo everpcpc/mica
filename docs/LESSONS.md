@@ -58,7 +58,11 @@
 - When single selection is bound only by row index, archiving the first conversation lets the next one occupy the same row and makes the list keep tracking the old key. Highlight the list with a Selection keyed by thread ID, and use first/last archive comparisons to verify that detail and selection stay aligned.
 - A multi-selection is not the reader. Programmatic opens may collapse it, but list input must preserve it; ordinary filters and history should prune only invisible keys without clearing the remaining set. Unified history keeps off-screen composite keys until an explicit removal or account change.
 - `Selection.All()` is unordered and retains disappeared keys. Resolve action targets in visible-list order, and represent a batch Undo as one action with ordered items rather than looping over a single-slot Undo.
-- Batch Archive must preserve the single action's view membership: only Inbox and Unified Inbox remove rows. For non-contiguous removal, choose the next survivor after the reader in the original list, then the previous survivor; reusing the old row index skips a conversation.
+- Batch Archive must preserve the single action's view membership: only Inbox and All Inboxes remove rows. For non-contiguous removal, choose the next survivor after the reader in the original list, then the previous survivor; reusing the old row index skips a conversation.
+- A selectable account group needs distinct IDs for its merged view and each account's Inbox. Activate the owner before ordinary Inbox queries, preserve the child selection through the handoff, and return to the current account's Inbox if its account is removed or activation fails. An early return that only handled the merged view left a removed account's child selected; a failed activation also left the new child selected over the old merged view.
+- Clear the previous projection before account activation and carry the requested child through both the transition and reauthentication. Changing only the label leaves merged cursors, Undo, and cache routing active; controlled intermediate-frame tests catch mismatches that a final label assertion misses.
+- Superseding child reauthentication must explicitly clear or transfer its pending request. An authentication-ID mismatch can silently discard the login callback, so cleanup cannot live only in the failure handler; cover removal, Settings cancellation, and a replacement connection.
+- Account deletion completion must invalidate clients and refresh application navigation regardless of the Settings modal's lifetime. Only Settings widget updates belong behind the modal identity check; otherwise closing the window after deletion leaves a removed account available.
 - Mixed-state batches need one target state and must filter out items already in that state before recording Undo. Applying a uniform inverse to originally mixed items can remove a star or read state that the user already had.
 
 ## Label assignment and label lifecycle are different operations
@@ -128,6 +132,7 @@
 - Assertions must target the behavior itself. A build failure does not count as a reproduction.
 - When restoring behavior by hand for verification, break and restore one thing at a time so uncommitted fixes are not overwritten.
 - Use controllable fake services for queue and timing tests; never run destructive tests against a real Gmail account.
+- Synchronous account-switch tests must hide push-only methods behind a `mail.Service` wrapper. A fake that satisfied `pushService` ran the notification worker inline and blocked in a real Keychain read.
 - A toast timer may expire only the toast with the ID it was created for; stale timers must not expire the current toast.
 
 ## Check feature boundaries when splitting large changes

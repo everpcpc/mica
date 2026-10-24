@@ -167,7 +167,7 @@ func settingsField(c *ui.Context, label string, value *string, placeholder strin
 func (a *App) closeSettings() {
 	if a.settings != nil && a.settings.cancel != nil {
 		a.settings.cancel()
-		a.cancelPendingAuthentication()
+		a.cancelAccountInboxRequest()
 	}
 	a.settings = nil
 	a.openPendingMailto()
@@ -273,7 +273,7 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 	}
 	s.busy = true
 	s.err = ""
-	a.cancelPendingAuthentication()
+	a.cancelAccountInboxRequest()
 	auth := a.authID
 	version := a.serviceVersion
 	ctx, cancel := context.WithCancel(context.Background())
@@ -562,10 +562,13 @@ func (a *App) accountAuthenticationFailed(s *settingsState, expectedEmail string
 	if a.authCancel != nil {
 		a.cancelPendingAuthentication()
 	}
+	a.resetFailedAccountInbox()
 	a.openPendingMailto()
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
+	inboxLabel := a.selectedLabel
+	a.accountInboxPending = ""
 	a.cancelAuthentication()
 	recovered := a.compose
 	preserveRecovered := recovered != nil && !recovered.sending && recovered.recoveryAccount != "" && len(cachedAccount) > 0 && strings.EqualFold(recovered.recoveryAccount, cachedAccount[0])
@@ -607,12 +610,17 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.compositeThreads = false
 	a.unified = nil
 	a.accountCount = 0
+	a.unifiedAccounts = nil
+	a.unifiedExpanded = true
 	a.thread = mail.Thread{}
 	a.query = ""
 	a.unreadOnly = false
 	a.nextPageToken = ""
 	a.loadingMore = false
 	a.selectedLabel = mail.Inbox
+	if accountInboxLabel(inboxLabel) == a.storeAccount && a.storeAccount != "" {
+		a.selectedLabel = accountInboxPrefix + a.storeAccount
+	}
 	a.err = ""
 	a.mutationQueue = nil
 	a.mutationRunning = false

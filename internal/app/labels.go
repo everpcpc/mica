@@ -53,7 +53,30 @@ var categoryLabels = []sidebarLabel{
 	{mail.CategoryReservations, iconLabel},
 }
 
+const accountInboxPrefix = "account-inbox-"
+
+func accountInboxLabel(id string) string {
+	if !strings.HasPrefix(id, accountInboxPrefix) {
+		return ""
+	}
+	return normalizedEmail(strings.TrimPrefix(id, accountInboxPrefix))
+}
+
+func (a *App) accountInboxAvailable(email string) bool {
+	email = normalizedEmail(email)
+	for _, account := range a.unifiedAccounts {
+		if normalizedEmail(account.Email) == email {
+			return true
+		}
+	}
+	service, _ := a.ownerService(email)
+	return service != nil
+}
+
 func mailboxQuery(id string) (labelID, search string) {
+	if accountInboxLabel(id) != "" {
+		return mail.Inbox, ""
+	}
 	switch id {
 	case mail.All:
 		return "", ""

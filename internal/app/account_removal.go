@@ -168,7 +168,7 @@ func (a *App) removeAccount(email string) {
 	s.err = ""
 	transition := &accountTransition{sourceVersion: a.serviceVersion, removeEmail: email}
 	a.accountTransition = transition
-	a.cancelPendingAuthentication()
+	a.cancelAccountInboxRequest()
 	store, restore := a.store, a.accountService
 	if restore == nil {
 		restore = restoreStoredAccount
@@ -224,15 +224,12 @@ func (a *App) removeAccount(email string) {
 				if a.accountTransition != transition || a.serviceVersion != transition.sourceVersion {
 					return
 				}
-				if a.settings != s {
-					a.accountTransition = nil
-					a.resumePendingMailto()
-					return
-				}
 				if snapshotFound {
 					a.accountTransition = nil
-					s.busy = false
-					s.err = locales.AccountDraftRemaining(email)
+					if a.settings == s {
+						s.busy = false
+						s.err = locales.AccountDraftRemaining(email)
+					}
 					a.resumePendingMailto()
 					return
 				}
@@ -243,8 +240,10 @@ func (a *App) removeAccount(email string) {
 				if email != current {
 					a.accountTransition = nil
 					a.removeAccountClient(email)
-					s.busy = false
-					s.removeEmail = ""
+					if a.settings == s {
+						s.busy = false
+						s.removeEmail = ""
+					}
 					a.notice = locales.AccountRemoved(email)
 					a.refreshAccountList()
 					a.refreshUnifiedAfterAccountRemoval(email)
