@@ -8,6 +8,11 @@
 - An OAuth exchange does not establish account ownership. Verify the Gmail identity, commit an account token and an active-account marker, and rebuild the client from the formal store so later refreshes cannot write the pending or legacy store. Keep the marker independent of SQLite and token form, retire legacy tokens after a formal restore, and make logout a credential-layer closed state so late refresh and reauthorization writes fail instead of resurrecting the session. Cancel in-flight authentication on logout and service replacement, and bind reopening to the current credential generation so a cancelled operation cannot reopen credentials. Authentication callbacks must clear cancel state only for their own operation ID. Hold the credential lifecycle lock across the entire formal commit, not only the reopen check, and include manual Connect in the same generation as restore and reauthorization. Share the token source between the HTTP client and Pub/Sub so deactivation covers both. Deactivate old sources on replacement and recheck deactivation immediately before saving a refresh, so an old service cannot overwrite newer credentials.
 - Check credential commits against startup recovery. Save the target active marker before changing `LastAccount`; remove old-account artifacts before deleting the marker for Demo. A shared legacy token also has an owner: verify its identity during migration and removal rather than deleting it on every login. Token refresh and account verification can take the lifecycle read lock, so keep them outside the commit write lock.
 
+## Enforce privacy at the resource boundary
+
+- A privacy toggle must be enforced by the protocol handler, not only by a visible button. Default-block remote HTTP before any request and prove a zero-request path, while keeping inline data, Content-ID attachments, and account avatars on their separate loaders.
+- Per-message permission needs an owner/thread/message key and must not become a global allow. Persist only the explicit global auto-load preference, and keep message permission session-only.
+
 ## Design optimistic updates together with request ordering
 
 - Applying changes locally first does not allow requests to run concurrently and out of order; mail mutations must synchronize in FIFO order.
