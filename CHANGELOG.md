@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.2 - 2026-10-24
+
+- Kept account photos static by showing the first frame of animated images without scheduling playback.
+- Added vertical separation between the selected conversation row and the list divider.
+- Stabilized the reader toolbar's Liquid Glass when HTML content scrolls underneath it.
+- Restored Gmail shifted-punctuation shortcuts with native menu commands that yield to search and dialog text input.
+
 ## 0.9.1 - 2026-10-24
 
 - Prevented HTML messages from opening as a one-line strip while waiting for their body height, using the reader viewport until measurement completes at DOM readiness.
