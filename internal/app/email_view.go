@@ -35,10 +35,7 @@ func (a *App) SetEmailViewFactory(factory func() (*mygo.WebView, error)) {
 }
 
 func (a *App) estimatedEmailHeight(id string) float32 {
-	if height := a.emailHeights[id]; height > 0 {
-		return height
-	}
-	return emailInitialHeight
+	return a.emailHeights[id]
 }
 
 func (a *App) setEmailHeight(page *emailPage, height float32) {
@@ -55,14 +52,19 @@ func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 	if page == nil {
 		return ui.Text(c, a.emailDocument(message).preview).Selectable().Padding(20, 24)
 	}
-	return ui.Column(c.Key("email-body-" + message.ID)).Height(page.height).Transition(ui.ElementTransition{
+	height := page.height
+	if height <= 0 {
+		_, viewportHeight := c.Size()
+		height = max(emailInitialHeight, viewportHeight-titleBarHeight)
+	}
+	return ui.Column(c.Key("email-body-" + message.ID)).Height(height).Transition(ui.ElementTransition{
 		Size: true, Duration: 160 * time.Millisecond,
 	}).Children(func() {
 		if page.failed {
 			ui.Text(c, a.emailDocument(message).preview).Selectable().Padding(20, 24)
 			return
 		}
-		ui.WebView(c, page.view).Height(page.height).Transition(ui.ElementTransition{
+		ui.WebView(c, page.view).Height(height).Transition(ui.ElementTransition{
 			Enter: &ui.Motion{Opacity: 0}, Duration: 160 * time.Millisecond,
 		})
 	})
@@ -90,7 +92,7 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	}
 	a.emailPages[message.ID] = page
 	services := c.Services()
-	view.Page().OnDidFinishLoad(func() {
+	view.Page().OnDOMReady(func() {
 		_, _ = view.Page().Eval(emailHeightScript)
 	})
 	view.Page().OnDidFailLoad(func(*mygo.LoadError) {
