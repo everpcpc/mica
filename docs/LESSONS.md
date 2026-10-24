@@ -94,6 +94,8 @@
 - Downloads, forwards, and WebView inline images must share one attachment cache boundary. Carry owner, thread, message, and position keys through the real protocol loader, and bind writes to the captured owner generation and the cache drain. Testing only a standalone loader misses a production WebView binding that omits the store; a stale-owner regression and a blocked write must prove deletion fencing and waiting.
 - Bound binary caches by both item size and per-account total size. Evict by the complete primary key, and verify binary bytes after reopening the database, quota eviction, and account cleanup.
 - Perform fallback cache scans before publishing a failed network result. Searching every cached body on the UI callback can stall rendering; a deferred-publish test proves where the work runs.
+- A message timestamp is not a cache revision. Record local write versions, choose one current summary before filtering, and never union labels from different list and detail snapshots. Read the candidates in one SQL statement so a concurrent write cannot split the read into different cache states.
+- Eviction and insertion belong to one immediate SQLite transaction. A failing insert must roll back evicted bytes, while concurrent writers still respect the per-account quota. Accept both BLOB and TEXT JSON snapshots and match legacy account keys case-insensitively.
 
 ## Serialize draft saves and preserve identity
 
