@@ -345,7 +345,7 @@ func TestCredentialStoresRejectLateWrites(t *testing.T) {
 	auth := NewOAuthForAccount("client", "secret", "project", email)
 	store := auth.store.(*keychainTokenStore)
 	store.secrets = secrets
-	AllowAccount(email)
+	AllowAccount(email, CredentialGeneration())
 	if err := auth.SaveToken(&oauth2.Token{AccessToken: "token"}); err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestCredentialStoresRejectLateWrites(t *testing.T) {
 		t.Fatal("token refresh was allowed after logout")
 	}
 	active := &activeAccountStore{secrets: secrets}
-	AllowAccount(email)
+	AllowAccount(email, CredentialGeneration())
 	if err := active.Save(email); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,12 @@ func TestCredentialStoresRejectLateWrites(t *testing.T) {
 	if err := active.Save(email); err == nil {
 		t.Fatal("active marker was allowed after logout")
 	}
-	AllowAccount(email)
+	stale := CredentialGeneration()
+	InvalidateCredentials()
+	if AllowAccount(email, stale) {
+		t.Fatal("stale authentication reopened credentials")
+	}
+	AllowAccount(email, CredentialGeneration())
 	if err := auth.SaveToken(&oauth2.Token{AccessToken: "new login"}); err != nil {
 		t.Fatal(err)
 	}

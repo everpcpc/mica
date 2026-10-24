@@ -92,6 +92,7 @@ type App struct {
 	serviceVersion       int
 	restoreAttempted     bool
 	authCancel           context.CancelFunc
+	authID               uint64
 	update               func(func())
 	schedule             func(func())
 	after                func(time.Duration, func())

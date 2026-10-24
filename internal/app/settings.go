@@ -193,6 +193,7 @@ func (s *pendingTokenStore) Delete() error {
 }
 
 func loginGmailService(ctx context.Context, store mailStore, clientID, clientSecret, projectID, expectedEmail string) (mail.Service, string, error) {
+	generation := gmail.CredentialGeneration()
 	pending := &pendingTokenStore{}
 	oauth := gmail.NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, pending)
 	client, err := oauth.Login(ctx)
@@ -221,7 +222,9 @@ func loginGmailService(ctx context.Context, store mailStore, clientID, clientSec
 			return nil, "", err
 		}
 	}
-	gmail.AllowAccount(account.Email)
+	if !gmail.AllowAccount(account.Email, generation) {
+		return nil, "", errors.New("gmail: authentication was cancelled")
+	}
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(pending.token); err != nil {
 		return nil, "", err
@@ -288,6 +291,8 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 }
 
 func (a *App) cancelAuthentication() {
+	a.authID++
+	gmail.InvalidateCredentials()
 	if a.authCancel != nil {
 		a.authCancel()
 		a.authCancel = nil
@@ -300,6 +305,7 @@ func (a *App) restoreGmail() {
 	}
 	a.restoreAttempted = true
 	a.cancelAuthentication()
+	auth := a.authID
 	ctx, cancel := context.WithCancel(context.Background())
 	a.authCancel = cancel
 	version := a.serviceVersion
@@ -341,7 +347,7 @@ func (a *App) restoreGmail() {
 			service, email, err = migrateLegacyGmail(ctx, store, clientID, clientSecret, projectID)
 		}
 		a.publish(func() {
-			if version == a.serviceVersion {
+			if version == a.serviceVersion && a.authID == auth {
 				a.authCancel = nil
 			}
 			if version != a.serviceVersion {
@@ -370,6 +376,7 @@ func restoreAccountGmail(ctx context.Context, clientID, clientSecret, projectID,
 }
 
 func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSecret, projectID string) (mail.Service, string, error) {
+	generation := gmail.CredentialGeneration()
 	legacy := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
 	client, err := legacy.Restore(ctx)
 	if err != nil {
@@ -402,7 +409,9 @@ func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSe
 	if token == nil {
 		return nil, "", gmail.ErrNoSession
 	}
-	gmail.AllowAccount(account.Email)
+	if !gmail.AllowAccount(account.Email, generation) {
+		return nil, "", errors.New("gmail: authentication was cancelled")
+	}
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(token); err != nil {
 		return nil, "", err
@@ -434,6 +443,7 @@ func (a *App) reauthorizeGmail() {
 		return
 	}
 	a.cancelAuthentication()
+	auth := a.authID
 	ctx, cancel := context.WithCancel(context.Background())
 	a.authCancel = cancel
 	version := a.serviceVersion
@@ -441,7 +451,7 @@ func (a *App) reauthorizeGmail() {
 	a.schedule(func() {
 		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, expectedEmail)
 		a.publish(func() {
-			if version == a.serviceVersion {
+			if version == a.serviceVersion && a.authID == auth {
 				a.authCancel = nil
 			}
 			if version != a.serviceVersion {

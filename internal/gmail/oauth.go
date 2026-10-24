@@ -67,9 +67,32 @@ func accountTokenKey(email string) string {
 	return oauthTokenKey + ":" + strings.ToLower(strings.TrimSpace(email))
 }
 
-func AllowAccount(email string) {
+var credentialLifecycle struct {
+	mu         sync.RWMutex
+	generation uint64
+}
+
+func CredentialGeneration() uint64 {
+	credentialLifecycle.mu.RLock()
+	defer credentialLifecycle.mu.RUnlock()
+	return credentialLifecycle.generation
+}
+
+func InvalidateCredentials() {
+	credentialLifecycle.mu.Lock()
+	credentialLifecycle.generation++
+	credentialLifecycle.mu.Unlock()
+}
+
+func AllowAccount(email string, generation uint64) bool {
+	credentialLifecycle.mu.Lock()
+	defer credentialLifecycle.mu.Unlock()
+	if generation != credentialLifecycle.generation {
+		return false
+	}
 	credentialStateFor(accountTokenKey(email)).allow()
 	credentialStateFor(activeEmailKey).allow()
+	return true
 }
 
 func (s *credentialState) allow() {
