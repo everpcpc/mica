@@ -138,6 +138,7 @@
 - Scope state guards to the action rather than a shared record lookup. Retry and Delete have similar lookups, but a guard intended only for Delete can otherwise disable Send now; cover both dispatch paths independently.
 - Admit the complete claim-send-final-write operation before starting background work, and read the quitting flag under its mutex. Waiting only for SQLite does not cover a blocked remote send, and an asynchronous publication can otherwise race the drain.
 - Advance the fake clock to a timer's due time when firing it manually. Forcing the claim to compensate for an early test clock would bypass the production due-date guard.
+- Assert wall-clock values in the fixture's explicit zone, not the machine's local zone. A fixed UTC+8 preset that was asserted with `Local().Hour()` passed locally and failed in a UTC CI runner; naming the fixture zone checks the contract in both environments.
 
 ## Verify visuals through real rendering
 
