@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"mica/internal/mail"
 
@@ -120,31 +121,88 @@ func (s *Store) init(ctx context.Context) error {
 	return nil
 }
 
+func normalizeAccountEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (s *Store) Accounts(ctx context.Context) ([]mail.Account, error) {
+	rows, err := s.db.Query(ctx, "SELECT data FROM accounts ORDER BY email")
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]mail.Account, 0, len(rows.Values))
+	for _, values := range rows.Values {
+		if len(values) != 1 {
+			return nil, errors.New("store: invalid account result")
+		}
+		var data []byte
+		switch stored := values[0].(type) {
+		case []byte:
+			data = stored
+		case string:
+			data = []byte(stored)
+		default:
+			return nil, fmt.Errorf("store: invalid account data type %T", stored)
+		}
+		var account mail.Account
+		if err := json.Unmarshal(data, &account); err != nil {
+			return nil, fmt.Errorf("store: decode account: %w", err)
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, nil
+}
+
+func (s *Store) Account(ctx context.Context, email string) (mail.Account, bool, error) {
+	return readSnapshot[mail.Account](ctx, s.db,
+		"SELECT data FROM accounts WHERE email = ? COLLATE NOCASE", normalizeAccountEmail(email))
+}
+
+func (s *Store) SaveAccount(ctx context.Context, account mail.Account) error {
+	account.Email = normalizeAccountEmail(account.Email)
+	data, err := json.Marshal(account)
+	if err != nil {
+		return fmt.Errorf("store: encode account: %w", err)
+	}
+	_, err = s.db.Execute(ctx, `INSERT INTO accounts(email, data) VALUES(?, ?)
+		ON CONFLICT(email) DO UPDATE SET data = excluded.data`, account.Email, data)
+	if err != nil {
+		return fmt.Errorf("store: save account: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) SetLastAccount(ctx context.Context, email string) error {
+	result, err := s.db.Execute(ctx, `INSERT INTO last_account(id, email)
+		SELECT 1, email FROM accounts WHERE email = ? COLLATE NOCASE
+		ON CONFLICT(id) DO UPDATE SET email = excluded.email`, normalizeAccountEmail(email))
+	if err != nil {
+		return fmt.Errorf("store: set last account: %w", err)
+	}
+	if result.Changes == 0 {
+		return errors.New("store: set last account: account not found")
+	}
+	return nil
+}
+
 func (s *Store) LastAccount(ctx context.Context) (mail.Account, bool, error) {
 	return readSnapshot[mail.Account](ctx, s.db, `SELECT accounts.data
 		FROM last_account JOIN accounts ON accounts.email = last_account.email
 		WHERE last_account.id = 1`)
 }
 
-func (s *Store) SaveAccount(ctx context.Context, account mail.Account) error {
-	data, err := json.Marshal(account)
-	if err != nil {
-		return fmt.Errorf("store: encode account: %w", err)
-	}
-	_, err = s.db.Transaction(ctx, []sqlite.Statement{
-		{
-			SQL: `INSERT INTO accounts(email, data) VALUES(?, ?)
-				ON CONFLICT(email) DO UPDATE SET data = excluded.data`,
-			Args: []any{account.Email, data},
-		},
-		{
-			SQL: `INSERT INTO last_account(id, email) VALUES(1, ?)
-				ON CONFLICT(id) DO UPDATE SET email = excluded.email`,
-			Args: []any{account.Email},
-		},
+func (s *Store) DeleteAccount(ctx context.Context, email string) error {
+	email = normalizeAccountEmail(email)
+	_, err := s.db.Transaction(ctx, []sqlite.Statement{
+		{SQL: "DELETE FROM labels WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM thread_lists WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM threads WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM draft_snapshots WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM last_account WHERE id = 1 AND email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM accounts WHERE email = ? COLLATE NOCASE", Args: []any{email}},
 	})
 	if err != nil {
-		return fmt.Errorf("store: save account: %w", err)
+		return fmt.Errorf("store: delete account: %w", err)
 	}
 	return nil
 }

@@ -20,7 +20,7 @@ type draftStore interface {
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
-	if !ok || email == "" || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
+	if a.accountTransition != nil || !ok || email == "" || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
 		return
 	}
 	a.draftRestoreAccount = email
@@ -29,7 +29,7 @@ func (a *App) restoreDraftSnapshot() {
 		snapshot, found, err := store.DraftSnapshot(context.Background(), email)
 		logCacheError(err)
 		a.publish(func() {
-			if version != a.serviceVersion || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found {
+			if a.accountTransition != nil || version != a.serviceVersion || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found {
 				return
 			}
 			a.openRecoveredDraft(snapshot, email)
@@ -72,7 +72,7 @@ func (a *App) clearDraftSnapshot(m *composer) {
 
 func (a *App) writeDraftSnapshot(email string, snapshot *mailmodel.DraftSnapshot) {
 	store, ok := a.store.(draftStore)
-	if !ok || email == "" {
+	if !ok || email == "" || a.accountTransition != nil {
 		return
 	}
 	version := a.serviceVersion
@@ -80,7 +80,9 @@ func (a *App) writeDraftSnapshot(email string, snapshot *mailmodel.DraftSnapshot
 	a.cacheState.draftWrite++
 	write := a.cacheState.draftWrite
 	a.cacheState.mu.Unlock()
+	a.cacheState.writes.Add(1)
 	a.schedule(func() {
+		defer a.cacheState.writes.Done()
 		a.cacheState.mu.Lock()
 		defer a.cacheState.mu.Unlock()
 		if version != a.cacheState.version || write != a.cacheState.draftWrite {
@@ -99,7 +101,7 @@ func (a *App) writeDraftSnapshot(email string, snapshot *mailmodel.DraftSnapshot
 }
 
 func (a *App) openDraftMessage(draftID string, message mailmodel.Message) {
-	if a.compose != nil {
+	if a.compose != nil || a.accountTransition != nil {
 		return
 	}
 	compose := mailmodel.Compose{
@@ -113,7 +115,7 @@ func (a *App) openDraftMessage(draftID string, message mailmodel.Message) {
 }
 
 func (a *App) openRecoveredDraft(snapshot mailmodel.DraftSnapshot, email string) {
-	if a.compose != nil {
+	if a.compose != nil || a.accountTransition != nil {
 		return
 	}
 	m := newDraftComposer(snapshot.Compose)

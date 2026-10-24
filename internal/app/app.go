@@ -75,6 +75,15 @@ type App struct {
 	draftRestoreAccount  string
 	labelDialog          *labelDialogState
 	settings             *settingsState
+	accountTransition    *accountTransition
+	accountService       func(context.Context, string) (mail.Service, error)
+	saveActiveAccount    func(string) error
+	deleteActiveAccount  func() error
+	removeCredentials    func(context.Context, string) error
+	removeLegacy         func(context.Context, string) error
+	verifyLegacy         func(context.Context, string) (bool, error)
+	deleteCheckpoint     func(string) error
+	mutationWaiters      []func()
 	appearance           string
 	helpOpen             bool
 	chord                string
@@ -99,10 +108,10 @@ type App struct {
 	setBadge             func(int)
 	notify               func(string, string, string)
 	notificationsStarted bool
-	notificationCancel   context.CancelFunc
-	pushReauthAttempted  bool
+	notification         *notificationWorker
+	notificationDone     <-chan struct{}
 	unreadSeen           map[string]time.Time
-	pendingThread        string
+	pendingThread        notificationTarget
 	loadCheckpoint       func(string) (uint64, bool, error)
 	saveCheckpoint       func(string, uint64) error
 }
@@ -144,7 +153,7 @@ func (a *App) Start() {
 	store, email := a.store, a.storeAccount
 	a.schedule(func() {
 		if store != nil && email != "" {
-			cachedAccount, accountFound, accountCacheErr := store.LastAccount(context.Background())
+			cachedAccount, accountFound, accountCacheErr := store.Account(context.Background(), email)
 			cachedLabels, labelsFound, labelsCacheErr := store.Labels(context.Background(), email)
 			logCacheError(accountCacheErr)
 			logCacheError(labelsCacheErr)
@@ -152,7 +161,7 @@ func (a *App) Start() {
 				if version != a.serviceVersion || email != a.storeAccount {
 					return
 				}
-				if accountCacheErr == nil && accountFound && cachedAccount.Email == email && !a.accountVerified {
+				if accountCacheErr == nil && accountFound && normalizedEmail(cachedAccount.Email) == normalizedEmail(email) && !a.accountVerified {
 					a.account = cachedAccount
 					a.loadAccountPhoto(cachedAccount)
 					a.restoreDraftSnapshot()
@@ -484,7 +493,7 @@ func (a *App) openThreadFromList(id string) {
 }
 
 func (a *App) loadThread(id string) {
-	if id == "" {
+	if id == "" || a.accountTransition != nil {
 		return
 	}
 	if id == a.selectedThread {
@@ -584,6 +593,9 @@ func (a *App) selectedSummary() *mail.ThreadSummary {
 }
 
 func (a *App) markRead(id string) {
+	if a.accountTransition != nil {
+		return
+	}
 	a.updateThreadLabels(id, nil, []string{mail.Unread})
 	a.enqueueMutation(mutationJob{
 		service:    a.service,
@@ -659,6 +671,9 @@ func (a *App) toggleUnread() {
 }
 
 func (a *App) actionSummaries() []mail.ThreadSummary {
+	if a.accountTransition != nil {
+		return nil
+	}
 	threads := a.visibleThreads()
 	summaries := make([]mail.ThreadSummary, 0, a.threadSelection.Len())
 	for _, thread := range threads {

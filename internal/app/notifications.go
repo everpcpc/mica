@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,12 +23,26 @@ const (
 )
 
 type pushService interface {
+	mail.Service
 	EnsurePush(context.Context) error
 	Watch(context.Context) (gmail.WatchState, error)
 	History(context.Context, uint64, func(gmail.HistoryPage) error) (uint64, error)
-	Stream(context.Context, func(uint64) error) error
+	Stream(context.Context, func(gmail.PushNotification) error) error
 	Label(context.Context, string) (mail.Label, error)
 	ThreadState(context.Context, string) (mail.ThreadSummary, mail.Thread, error)
+}
+
+type notificationWorker struct {
+	ctx             context.Context
+	cancel          context.CancelFunc
+	done            chan struct{}
+	service         pushService
+	version         int
+	email           string
+	mu              sync.Mutex
+	stopping        bool
+	wg              sync.WaitGroup
+	reauthAttempted bool
 }
 
 func (a *App) SetNotificationHandlers(badge func(int), notify func(string, string, string)) {
@@ -35,65 +51,125 @@ func (a *App) SetNotificationHandlers(badge func(int), notify func(string, strin
 }
 
 func (a *App) startNotifications() {
-	if a.account.Demo || a.notificationsStarted {
+	if a.accountTransition != nil || a.account.Demo || a.notificationsStarted || a.notification != nil {
 		return
 	}
 	service, ok := a.service.(pushService)
 	if !ok {
 		return
 	}
-	a.notificationsStarted = true
 	ctx, cancel := context.WithCancel(context.Background())
-	a.notificationCancel = cancel
-	version, email := a.serviceVersion, a.account.Email
-	a.schedule(func() { a.runNotifications(ctx, service, version, email) })
-}
-
-func (a *App) stopNotifications() {
-	a.notificationsStarted = false
-	if a.notificationCancel != nil {
-		a.notificationCancel()
-		a.notificationCancel = nil
+	worker := &notificationWorker{
+		ctx: ctx, cancel: cancel, done: make(chan struct{}), service: service,
+		version: a.serviceVersion, email: normalizedEmail(a.account.Email),
 	}
+	worker.wg.Add(1)
+	a.notification = worker
+	a.notificationDone = nil
+	a.notificationsStarted = true
+	go func() {
+		<-worker.ctx.Done()
+		worker.wg.Wait()
+		close(worker.done)
+	}()
+	a.schedule(func() {
+		defer worker.wg.Done()
+		a.runNotifications(worker)
+	})
 }
 
-func (a *App) runNotifications(ctx context.Context, service pushService, version int, email string) {
+func (a *App) stopNotifications() <-chan struct{} {
+	worker := a.notification
+	a.notification = nil
+	a.notificationsStarted = false
+	if worker == nil {
+		if a.notificationDone != nil {
+			done := a.notificationDone
+			a.notificationDone = nil
+			return done
+		}
+		done := make(chan struct{})
+		close(done)
+		return done
+	}
+	a.notificationDone = worker.done
+	worker.mu.Lock()
+	worker.stopping = true
+	worker.mu.Unlock()
+	worker.cancel()
+	return worker.done
+}
+
+func (a *App) notificationActive(worker *notificationWorker) bool {
+	return worker != nil && a.notification == worker && a.serviceVersion == worker.version
+}
+
+func (worker *notificationWorker) after(app *App, delay time.Duration, fn func()) {
+	if worker.ctx.Err() != nil {
+		return
+	}
+	app.after(delay, func() {
+		worker.mu.Lock()
+		if worker.stopping || worker.ctx.Err() != nil {
+			worker.mu.Unlock()
+			return
+		}
+		worker.wg.Add(1)
+		worker.mu.Unlock()
+		defer worker.wg.Done()
+		fn()
+	})
+}
+
+func (a *App) runNotifications(worker *notificationWorker) {
+	service, ctx := worker.service, worker.ctx
 	if err := service.EnsurePush(ctx); err != nil {
-		a.handlePushError(err, version)
+		a.handlePushError(worker, err)
 		return
 	}
 	state, err := service.Watch(ctx)
 	if err != nil {
-		a.handlePushError(err, version)
+		a.handlePushError(worker, err)
 		return
 	}
-	synchronizer := &historySynchronizer{app: a, service: service, ctx: ctx, version: version, email: email, historyID: state.HistoryID}
-	checkpoint, ok, err := a.loadCheckpoint(email)
+	synchronizer := &historySynchronizer{app: a, worker: worker, service: service, ctx: ctx, version: worker.version, email: worker.email, historyID: state.HistoryID}
+	checkpoint, ok, err := a.loadCheckpoint(worker.email)
 	if err == nil && ok && checkpoint < state.HistoryID {
-		a.publish(func() { a.unreadSeen = make(map[string]time.Time) })
+		a.publish(func() {
+			if a.notificationActive(worker) {
+				a.unreadSeen = make(map[string]time.Time)
+			}
+		})
 		if err := synchronizer.sync(checkpoint); err != nil {
-			a.handlePushError(err, version)
+			a.handlePushError(worker, err)
 			return
 		}
-		a.publish(func() { a.unreadSeen = nil })
+		a.publish(func() {
+			if a.notificationActive(worker) {
+				a.unreadSeen = nil
+			}
+		})
 	}
-	a.refreshUnreadVersion(version)
-	if err := a.saveCheckpoint(email, synchronizer.current()); err != nil {
-		a.handlePushError(err, version)
+	synchronizer.refreshUnread()
+	if err := a.saveCheckpoint(worker.email, synchronizer.current()); err != nil {
+		a.handlePushError(worker, err)
 		return
 	}
-	a.after(watchRenewInterval, func() { a.renewWatch(ctx, service, version) })
-	a.after(historyReconcileInterval, func() { a.reconcileHistory(ctx, synchronizer) })
+	worker.after(a, watchRenewInterval, func() { a.renewWatch(worker) })
+	worker.after(a, historyReconcileInterval, func() { a.reconcileHistory(synchronizer) })
 	backoff := time.Second
 	for {
-		err := service.Stream(ctx, func(uint64) error {
+		err := service.Stream(ctx, func(notification gmail.PushNotification) error {
+			if normalizedEmail(notification.EmailAddress) != worker.email {
+				return nil
+			}
 			return synchronizer.trigger()
 		})
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil || version != a.serviceVersion {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return
 		}
 		if isPushAuthError(err) || isPushConfigError(err) {
-			a.handlePushError(err, version)
+			a.handlePushError(worker, err)
 			return
 		}
 		if !sleepContext(ctx, backoff) {
@@ -105,26 +181,26 @@ func (a *App) runNotifications(ctx context.Context, service pushService, version
 	}
 }
 
-func (a *App) renewWatch(ctx context.Context, service pushService, version int) {
-	if ctx.Err() != nil || version != a.serviceVersion {
+func (a *App) renewWatch(worker *notificationWorker) {
+	if worker.ctx.Err() != nil {
 		return
 	}
-	if _, err := service.Watch(ctx); err != nil {
-		a.handlePushError(err, version)
+	if _, err := worker.service.Watch(worker.ctx); err != nil {
+		a.handlePushError(worker, err)
 		return
 	}
-	a.after(watchRenewInterval, func() { a.renewWatch(ctx, service, version) })
+	worker.after(a, watchRenewInterval, func() { a.renewWatch(worker) })
 }
 
-func (a *App) reconcileHistory(ctx context.Context, synchronizer *historySynchronizer) {
-	if ctx.Err() != nil || synchronizer.version != a.serviceVersion {
+func (a *App) reconcileHistory(synchronizer *historySynchronizer) {
+	if synchronizer.ctx.Err() != nil {
 		return
 	}
 	if err := synchronizer.sync(synchronizer.current()); err != nil {
-		a.handlePushError(err, synchronizer.version)
+		a.handlePushError(synchronizer.worker, err)
 		return
 	}
-	a.after(historyReconcileInterval, func() { a.reconcileHistory(ctx, synchronizer) })
+	synchronizer.worker.after(a, historyReconcileInterval, func() { a.reconcileHistory(synchronizer) })
 }
 
 func sleepContext(ctx context.Context, duration time.Duration) bool {
@@ -138,21 +214,21 @@ func sleepContext(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
-func (a *App) handlePushError(err error, version int) {
+func (a *App) handlePushError(worker *notificationWorker, err error) {
 	if err == nil {
 		return
 	}
-	a.stopNotifications()
 	a.publish(func() {
-		if version != a.serviceVersion {
+		if !a.notificationActive(worker) {
 			return
 		}
+		a.stopNotifications()
 		if isPushConfigError(err) {
 			a.notice = err.Error()
 			return
 		}
-		if isPushAuthError(err) && !a.pushReauthAttempted {
-			a.pushReauthAttempted = true
+		if isPushAuthError(err) && !worker.reauthAttempted {
+			worker.reauthAttempted = true
 			a.reauthorizeGmail()
 			return
 		}
@@ -179,6 +255,7 @@ func isPushConfigError(err error) bool {
 
 type historySynchronizer struct {
 	app       *App
+	worker    *notificationWorker
 	service   pushService
 	ctx       context.Context
 	version   int
@@ -186,6 +263,13 @@ type historySynchronizer struct {
 	mu        sync.Mutex
 	historyID uint64
 	pending   bool
+}
+
+func (s *historySynchronizer) active() bool {
+	if s.worker != nil {
+		return s.app.notificationActive(s.worker)
+	}
+	return s.version == s.app.serviceVersion
 }
 
 func (s *historySynchronizer) current() uint64 {
@@ -201,11 +285,24 @@ func (s *historySynchronizer) trigger() error {
 		return nil
 	}
 	s.pending = true
-	s.app.after(historyBatchDelay, func() {
+	run := func() {
 		if err := s.sync(s.current()); err != nil {
-			s.app.handlePushError(err, s.version)
+			if s.worker != nil {
+				s.app.handlePushError(s.worker, err)
+			} else {
+				s.app.publish(func() {
+					if s.active() {
+						s.app.notice = err.Error()
+					}
+				})
+			}
 		}
-	})
+	}
+	if s.worker != nil {
+		s.worker.after(s.app, historyBatchDelay, run)
+	} else {
+		s.app.after(historyBatchDelay, run)
+	}
 	return nil
 }
 
@@ -236,8 +333,8 @@ func (s *historySynchronizer) sync(start uint64) error {
 			}
 		}
 		s.app.publish(func() {
-			if s.version == s.app.serviceVersion {
-				s.app.updateUnread(page.Added)
+			if s.active() {
+				s.app.updateUnreadForAccount(s.email, page.Added)
 			}
 		})
 		return nil
@@ -247,8 +344,12 @@ func (s *historySynchronizer) sync(start uint64) error {
 		if !errors.As(err, &apiErr) || apiErr.StatusCode != 404 {
 			return err
 		}
-		s.app.publish(func() { s.app.unreadSeen = nil })
-		s.app.refreshUnreadVersion(s.version)
+		s.app.publish(func() {
+			if s.active() {
+				s.app.unreadSeen = nil
+			}
+		})
+		s.refreshUnread()
 		watch, watchErr := s.service.Watch(s.ctx)
 		if watchErr != nil {
 			return watchErr
@@ -266,7 +367,7 @@ func (s *historySynchronizer) sync(start uint64) error {
 	}
 	label, labelErr := s.service.Label(s.ctx, mail.Inbox)
 	s.app.publish(func() {
-		if s.version != s.app.serviceVersion {
+		if !s.active() {
 			return
 		}
 		if labelErr == nil {
@@ -302,19 +403,18 @@ func (s *historySynchronizer) cacheThread(id string) (mail.ThreadSummary, bool, 
 	return summary, false, nil
 }
 
-func (a *App) refreshUnreadVersion(version int) {
-	service := a.service
-	threads, err := service.ListThreads(context.Background(), mail.Query{LabelID: mail.Inbox, Search: "is:unread", Limit: 100})
-	labels, labelsErr := service.Labels(context.Background())
-	a.publish(func() {
-		if version != a.serviceVersion {
+func (s *historySynchronizer) refreshUnread() {
+	threads, err := s.service.ListThreads(s.ctx, mail.Query{LabelID: mail.Inbox, Search: "is:unread", Limit: 100})
+	labels, labelsErr := s.service.Labels(s.ctx)
+	s.app.publish(func() {
+		if !s.active() {
 			return
 		}
 		if labelsErr == nil {
-			a.setLabels(labels)
+			s.app.setLabels(labels)
 		}
 		if err == nil {
-			a.updateUnread(threads)
+			s.app.updateUnreadForAccount(s.email, threads)
 		}
 	})
 }
@@ -354,6 +454,14 @@ func (a *App) updateBadge() {
 }
 
 func (a *App) updateUnread(threads []mail.ThreadSummary) {
+	email := a.storeAccount
+	if email == "" {
+		email = a.account.Email
+	}
+	a.updateUnreadForAccount(normalizedEmail(email), threads)
+}
+
+func (a *App) updateUnreadForAccount(email string, threads []mail.ThreadSummary) {
 	if a.unreadSeen == nil {
 		a.unreadSeen = make(map[string]time.Time)
 		for _, thread := range threads {
@@ -377,30 +485,79 @@ func (a *App) updateUnread(threads []mail.ThreadSummary) {
 			if title == "" {
 				title = locales.NewMessage()
 			}
-			a.notify(thread.ID, title, thread.Subject)
+			a.notify(notificationID(email, thread.ID), title, thread.Subject)
 		}
 	}
 }
 
+type notificationTarget struct {
+	email    string
+	threadID string
+}
+
+const notificationIDPrefix = "mica-thread-v1:"
+
+func notificationID(email, threadID string) string {
+	return notificationIDPrefix + base64.RawURLEncoding.EncodeToString([]byte(normalizedEmail(email))) + ":" + base64.RawURLEncoding.EncodeToString([]byte(threadID))
+}
+
+func parseNotificationID(id string) (notificationTarget, bool) {
+	encoded, found := strings.CutPrefix(id, notificationIDPrefix)
+	if !found {
+		return notificationTarget{}, false
+	}
+	emailPart, threadPart, found := strings.Cut(encoded, ":")
+	if !found {
+		return notificationTarget{}, false
+	}
+	email, err := base64.RawURLEncoding.DecodeString(emailPart)
+	if err != nil {
+		return notificationTarget{}, false
+	}
+	threadID, err := base64.RawURLEncoding.DecodeString(threadPart)
+	if err != nil || len(email) == 0 || len(threadID) == 0 {
+		return notificationTarget{}, false
+	}
+	return notificationTarget{email: normalizedEmail(string(email)), threadID: string(threadID)}, true
+}
+
 func (a *App) OpenThread(id string) {
-	if id == "" {
+	target, ok := parseNotificationID(id)
+	if !ok {
 		return
 	}
-	a.pendingThread = id
+	a.pendingThread = target
 	a.openPendingThread()
 }
 
 func (a *App) openPendingThread() {
-	if a.pendingThread == "" || a.account.Demo {
+	target := a.pendingThread
+	if target.threadID == "" {
 		return
 	}
-	id := a.pendingThread
-	a.pendingThread = ""
+	if a.account.Demo {
+		if a.store != nil {
+			a.switchAccount(target.email)
+		}
+		return
+	}
+	email := normalizedEmail(a.storeAccount)
+	if email == "" {
+		email = normalizedEmail(a.account.Email)
+	}
+	if email == "" {
+		return
+	}
+	if target.email != email {
+		a.switchAccount(target.email)
+		return
+	}
+	a.pendingThread = notificationTarget{}
 	if a.selectedLabel != mail.Inbox || a.query != "" {
 		a.selectedLabel = mail.Inbox
 		a.query = ""
 		a.clearThread()
 		a.refresh()
 	}
-	a.selectThread(id)
+	a.selectThread(target.threadID)
 }

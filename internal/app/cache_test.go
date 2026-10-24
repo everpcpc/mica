@@ -110,9 +110,11 @@ type cacheThreadKey struct {
 type fakeMailStore struct {
 	account          mail.Account
 	accountFound     bool
+	accounts         map[string]mail.Account
 	labels           map[string][]mail.Label
 	lists            map[cacheListKey][]mail.ThreadSummary
 	threads          map[cacheThreadKey]mail.Thread
+	drafts           map[string]mail.DraftSnapshot
 	preferences      map[string]string
 	preferenceWrites int
 	saveThreadErr    error
@@ -120,9 +122,11 @@ type fakeMailStore struct {
 
 func newFakeMailStore() *fakeMailStore {
 	return &fakeMailStore{
+		accounts:    make(map[string]mail.Account),
 		labels:      make(map[string][]mail.Label),
 		lists:       make(map[cacheListKey][]mail.ThreadSummary),
 		threads:     make(map[cacheThreadKey]mail.Thread),
+		drafts:      make(map[string]mail.DraftSnapshot),
 		preferences: make(map[string]string),
 	}
 }
@@ -138,11 +142,81 @@ func (s *fakeMailStore) SavePreference(_ context.Context, key, value string) err
 	return nil
 }
 
+func (s *fakeMailStore) Accounts(context.Context) ([]mail.Account, error) {
+	accounts := make([]mail.Account, 0, len(s.accounts)+1)
+	seen := make(map[string]bool)
+	for email, account := range s.accounts {
+		accounts = append(accounts, account)
+		seen[email] = true
+	}
+	if s.accountFound && !seen[normalizedEmail(s.account.Email)] {
+		accounts = append(accounts, s.account)
+	}
+	slices.SortFunc(accounts, func(a, b mail.Account) int {
+		switch {
+		case a.Email < b.Email:
+			return -1
+		case a.Email > b.Email:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return accounts, nil
+}
+func (s *fakeMailStore) Account(_ context.Context, email string) (mail.Account, bool, error) {
+	account, found := s.accounts[normalizedEmail(email)]
+	if !found && s.accountFound && normalizedEmail(s.account.Email) == normalizedEmail(email) {
+		account, found = s.account, true
+	}
+	return account, found, nil
+}
 func (s *fakeMailStore) LastAccount(context.Context) (mail.Account, bool, error) {
 	return s.account, s.accountFound, nil
 }
 func (s *fakeMailStore) SaveAccount(_ context.Context, account mail.Account) error {
+	account.Email = normalizedEmail(account.Email)
+	s.accounts[account.Email] = account
+	return nil
+}
+func (s *fakeMailStore) SetLastAccount(_ context.Context, email string) error {
+	account, found, _ := s.Account(context.Background(), email)
+	if !found {
+		return errors.New("account not found")
+	}
 	s.account, s.accountFound = account, true
+	return nil
+}
+func (s *fakeMailStore) DeleteAccount(_ context.Context, email string) error {
+	email = normalizedEmail(email)
+	delete(s.accounts, email)
+	if s.accountFound && normalizedEmail(s.account.Email) == email {
+		s.account, s.accountFound = mail.Account{}, false
+	}
+	delete(s.labels, email)
+	delete(s.drafts, email)
+	for key := range s.lists {
+		if normalizedEmail(key.email) == email {
+			delete(s.lists, key)
+		}
+	}
+	for key := range s.threads {
+		if normalizedEmail(key.email) == email {
+			delete(s.threads, key)
+		}
+	}
+	return nil
+}
+func (s *fakeMailStore) DraftSnapshot(_ context.Context, email string) (mail.DraftSnapshot, bool, error) {
+	snapshot, found := s.drafts[normalizedEmail(email)]
+	return snapshot, found, nil
+}
+func (s *fakeMailStore) SaveDraftSnapshot(_ context.Context, email string, snapshot mail.DraftSnapshot) error {
+	s.drafts[normalizedEmail(email)] = snapshot
+	return nil
+}
+func (s *fakeMailStore) DeleteDraftSnapshot(_ context.Context, email string) error {
+	delete(s.drafts, normalizedEmail(email))
 	return nil
 }
 func (s *fakeMailStore) Labels(_ context.Context, email string) ([]mail.Label, bool, error) {

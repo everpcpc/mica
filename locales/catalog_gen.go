@@ -1596,6 +1596,128 @@ func (msgs Messages) Connected() string {
 	return Catalog.Format(msgs.locale, "connected", nil)
 }
 
+// AddAccount says "Add account"
+// in the language the app shows.
+func AddAccount() string { return In(i18n.Locale()).AddAccount() }
+
+// AddAccount says "Add account"
+// in the language of msgs.
+func (msgs Messages) AddAccount() string {
+	return Catalog.Format(msgs.locale, "addAccount", nil)
+}
+
+// SwitchAccount says "Switch"
+// in the language the app shows.
+func SwitchAccount() string { return In(i18n.Locale()).SwitchAccount() }
+
+// SwitchAccount says "Switch"
+// in the language of msgs.
+func (msgs Messages) SwitchAccount() string {
+	return Catalog.Format(msgs.locale, "switchAccount", nil)
+}
+
+// ReauthorizeAccount says "Reauthorize"
+// in the language the app shows.
+func ReauthorizeAccount() string { return In(i18n.Locale()).ReauthorizeAccount() }
+
+// ReauthorizeAccount says "Reauthorize"
+// in the language of msgs.
+func (msgs Messages) ReauthorizeAccount() string {
+	return Catalog.Format(msgs.locale, "reauthorizeAccount", nil)
+}
+
+// RemoveAccount says "Remove…"
+// in the language the app shows.
+func RemoveAccount() string { return In(i18n.Locale()).RemoveAccount() }
+
+// RemoveAccount says "Remove…"
+// in the language of msgs.
+func (msgs Messages) RemoveAccount() string {
+	return Catalog.Format(msgs.locale, "removeAccount", nil)
+}
+
+// ConfirmRemoveAccount says "Remove account"
+// in the language the app shows.
+func ConfirmRemoveAccount() string { return In(i18n.Locale()).ConfirmRemoveAccount() }
+
+// ConfirmRemoveAccount says "Remove account"
+// in the language of msgs.
+func (msgs Messages) ConfirmRemoveAccount() string {
+	return Catalog.Format(msgs.locale, "confirmRemoveAccount", nil)
+}
+
+// RemoveAccountWarning says "Remove {email} from Mica? This deletes its sign-in credentials and local mail cache on this Mac. Mail on the Gmail se…"
+// in the language the app shows.
+func RemoveAccountWarning(email string) string { return In(i18n.Locale()).RemoveAccountWarning(email) }
+
+// RemoveAccountWarning says "Remove {email} from Mica? This deletes its sign-in credentials and local mail cache on this Mac. Mail on the Gmail se…"
+// in the language of msgs.
+func (msgs Messages) RemoveAccountWarning(email string) string {
+	return Catalog.Format(msgs.locale, "removeAccountWarning", map[string]any{"email": email})
+}
+
+// AccountDraftRemaining says "{email} has an unsent local draft. Switch to the account and send or discard the draft before removing it."
+// in the language the app shows.
+func AccountDraftRemaining(email string) string {
+	return In(i18n.Locale()).AccountDraftRemaining(email)
+}
+
+// AccountDraftRemaining says "{email} has an unsent local draft. Switch to the account and send or discard the draft before removing it."
+// in the language of msgs.
+func (msgs Messages) AccountDraftRemaining(email string) string {
+	return Catalog.Format(msgs.locale, "accountDraftRemaining", map[string]any{"email": email})
+}
+
+// AccountComposerRequired says "Close the composer before adding, switching, or removing an account."
+// in the language the app shows.
+func AccountComposerRequired() string { return In(i18n.Locale()).AccountComposerRequired() }
+
+// AccountComposerRequired says "Close the composer before adding, switching, or removing an account."
+// in the language of msgs.
+func (msgs Messages) AccountComposerRequired() string {
+	return Catalog.Format(msgs.locale, "accountComposerRequired", nil)
+}
+
+// AccountSwitchPending says "Wait for the account switch to finish and try again."
+// in the language the app shows.
+func AccountSwitchPending() string { return In(i18n.Locale()).AccountSwitchPending() }
+
+// AccountSwitchPending says "Wait for the account switch to finish and try again."
+// in the language of msgs.
+func (msgs Messages) AccountSwitchPending() string {
+	return Catalog.Format(msgs.locale, "accountSwitchPending", nil)
+}
+
+// AccountRemoveFailed says "Couldn't remove account: {error}"
+// in the language the app shows.
+func AccountRemoveFailed(error string) string { return In(i18n.Locale()).AccountRemoveFailed(error) }
+
+// AccountRemoveFailed says "Couldn't remove account: {error}"
+// in the language of msgs.
+func (msgs Messages) AccountRemoveFailed(error string) string {
+	return Catalog.Format(msgs.locale, "accountRemoveFailed", map[string]any{"error": error})
+}
+
+// AccountRemoved says "Removed {email} from Mica"
+// in the language the app shows.
+func AccountRemoved(email string) string { return In(i18n.Locale()).AccountRemoved(email) }
+
+// AccountRemoved says "Removed {email} from Mica"
+// in the language of msgs.
+func (msgs Messages) AccountRemoved(email string) string {
+	return Catalog.Format(msgs.locale, "accountRemoved", map[string]any{"email": email})
+}
+
+// AccountSwitchFailed says "Couldn't switch account: {error}"
+// in the language the app shows.
+func AccountSwitchFailed(error string) string { return In(i18n.Locale()).AccountSwitchFailed(error) }
+
+// AccountSwitchFailed says "Couldn't switch account: {error}"
+// in the language of msgs.
+func (msgs Messages) AccountSwitchFailed(error string) string {
+	return Catalog.Format(msgs.locale, "accountSwitchFailed", map[string]any{"error": error})
+}
+
 // Processing says "Working…"
 // in the language the app shows.
 func Processing() string { return In(i18n.Locale()).Processing() }
