@@ -21,6 +21,8 @@ type listCacheKey struct {
 type listCacheVersions map[listCacheKey]*atomic.Uint64
 
 func (a *App) nextListCacheVersion(email string, query mail.Query) (*atomic.Uint64, uint64) {
+	a.cacheState.versionsMu.Lock()
+	defer a.cacheState.versionsMu.Unlock()
 	if a.listVersions == nil {
 		a.listVersions = make(listCacheVersions)
 	}
@@ -41,6 +43,8 @@ type threadCacheKey struct {
 type threadCacheVersions map[threadCacheKey]*atomic.Uint64
 
 func (a *App) nextThreadCacheVersion(email, id string) (*atomic.Uint64, uint64) {
+	a.cacheState.versionsMu.Lock()
+	defer a.cacheState.versionsMu.Unlock()
 	if a.threadVersions == nil {
 		a.threadVersions = make(threadCacheVersions)
 	}
@@ -59,6 +63,7 @@ func (a *App) nextThreadCacheVersion(email, id string) (*atomic.Uint64, uint64) 
 
 type cacheState struct {
 	mu         sync.Mutex
+	versionsMu sync.Mutex
 	writes     sync.WaitGroup
 	version    int
 	widthSave  int

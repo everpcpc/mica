@@ -1069,3 +1069,38 @@ func TestUnifiedNewerReadSupersedesUnreadRollback(t *testing.T) {
 		t.Fatalf("stale rollback restored an unread detail: %+v", ownerThread)
 	}
 }
+
+func TestUnifiedHistoryReadSupersedesUnreadRollback(t *testing.T) {
+	h := newUnifiedHarness()
+	cached := unifiedInboxSummary("shared", "a@example.com", 20)
+	cached.Unread = true
+	cached.LabelIDs = append(cached.LabelIDs, mail.Unread)
+	cachedThread := unifiedAccountThread("a@example.com", "shared")
+	cachedThread.AccountEmail = "a@example.com"
+	cachedThread.LabelIDs = []string{mail.Inbox, mail.Unread}
+	cachedThread.Messages[0].LabelIDs = []string{mail.Unread}
+	h.store.lists[cacheListKey{email: "a@example.com", query: h.query}] = []mail.ThreadSummary{cached}
+	h.store.threads[cacheThreadKey{email: "a@example.com", id: "shared"}] = cachedThread
+	h.services["a@example.com"].threads = []mail.ThreadSummary{{ID: "shared", LabelIDs: []string{mail.Inbox}}}
+	h.services["a@example.com"].threadFunc = func(id string) (mail.Thread, error) {
+		thread := unifiedAccountThread("a@example.com", id)
+		thread.AccountEmail = "a@example.com"
+		return thread, nil
+	}
+	var jobs []func()
+	h.app.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	key := threadRefForAccount("a@example.com", "shared").key()
+	h.app.restoreUnread(key, h.query)
+	synchronizer := historySynchronizer{app: h.app, service: h.services["a@example.com"], ctx: context.Background(), email: "a@example.com"}
+	if _, _, err := synchronizer.cacheThread("shared"); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("rollback jobs = %d, want 1", len(jobs))
+	}
+	jobs[0]()
+	ownerThread := h.store.threads[cacheThreadKey{email: "a@example.com", id: "shared"}]
+	if containsLabel(ownerThread.LabelIDs, mail.Unread) || containsLabel(ownerThread.Messages[0].LabelIDs, mail.Unread) {
+		t.Fatalf("stale rollback overwrote history detail: %+v", ownerThread)
+	}
+}

@@ -391,11 +391,23 @@ func (s *historySynchronizer) cacheThread(id string) (mail.ThreadSummary, bool, 
 			if store == nil || s.email == "" {
 				return mail.ThreadSummary{}, true, nil
 			}
+			version, revision := s.app.nextThreadCacheVersion(s.email, id)
+			s.app.cacheState.mu.Lock()
+			defer s.app.cacheState.mu.Unlock()
+			if version.Load() != revision {
+				return mail.ThreadSummary{}, true, nil
+			}
 			return mail.ThreadSummary{}, true, store.DeleteThread(s.ctx, s.email, id)
 		}
 		return mail.ThreadSummary{}, false, err
 	}
 	if store := s.app.store; store != nil && s.email != "" {
+		version, revision := s.app.nextThreadCacheVersion(s.email, id)
+		s.app.cacheState.mu.Lock()
+		defer s.app.cacheState.mu.Unlock()
+		if version.Load() != revision {
+			return summary, false, nil
+		}
 		if err := store.SaveThread(s.ctx, s.email, thread); err != nil {
 			return mail.ThreadSummary{}, false, err
 		}
