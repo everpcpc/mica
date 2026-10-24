@@ -190,6 +190,12 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		} else {
 			ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
 		}
+		if a.showRemoteImagesAction(message) {
+			ui.Row(c).Gap(10).Padding(0, 24).AlignItems(ui.Center).Children(func() {
+				ui.Button(c, locales.LoadImages()).OnClick(func() { a.allowRemoteImages(message) })
+				ui.Text(c, locales.RemoteImagesBlocked()).FontSize(11).TextColor(t.TextMuted)
+			})
+		}
 		for i, attachment := range message.Attachments {
 			a.attachmentView(c, message, attachment, i)
 		}

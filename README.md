@@ -31,6 +31,7 @@
 - **Compose and reply.** Write new mail, reply, reply all, forward, and open or save attachments.
 - **Label management.** Assign, create, recolor, and delete custom Gmail labels.
 - **Comfortable reading.** Sanitized HTML mail, inline images, collapsible messages, light and dark appearances, and reduced-motion support.
+- **Remote image privacy.** Remote images are blocked by default. Allow them for one message or enable automatic loading in Settings.
 - **Multiple Gmail accounts.** Add, switch between, reauthorize, and remove accounts without mixing their credentials, caches, drafts, or notifications.
 - **Unified Inbox.** Merge multiple Gmail inboxes with independent per-account pagination, owner-aware reading, replies, drafts, and actions.
 - **Offline access and notifications.** A local SQLite cache keeps loaded mail available offline, while Gmail watch and history synchronization keep it current.

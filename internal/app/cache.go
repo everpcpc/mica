@@ -68,6 +68,8 @@ type cacheState struct {
 	version    int
 	widthSave  int
 	draftWrite uint64
+
+	remoteImagesSave uint64
 }
 
 type mailStore interface {
@@ -168,6 +170,10 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 			return store.SaveThreadList(context.Background(), email, query, groups[email])
 		})
 	}
+}
+
+func (a *App) WaitForCacheWrites() {
+	a.cacheState.writes.Wait()
 }
 
 func (a *App) persistThread(thread mail.Thread) {

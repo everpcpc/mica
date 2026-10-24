@@ -83,6 +83,7 @@ func (a *App) resetMessageViews() {
 	}
 	a.emailResources.activeVersion = a.currentCacheVersion
 	a.emailResources.mu.Unlock()
+	a.syncRemoteImagePolicy()
 }
 
 func prepareMessageHTML(message mail.Message) string {
@@ -138,6 +139,9 @@ func normalizeImageNode(node *xhtml.Node) {
 }
 
 func trackingImageNode(node *xhtml.Node) bool {
+	if node.Type != xhtml.ElementNode || node.DataAtom != atom.Img {
+		return false
+	}
 	style := imageStyle(node)
 	width, hasWidth := imageNodeDimension(node, "width", style)
 	height, hasHeight := imageNodeDimension(node, "height", style)
@@ -185,6 +189,9 @@ func messageImageNodeURL(message mail.Message, node *xhtml.Node) string {
 
 func messageImageURL(message mail.Message, source string) string {
 	source = strings.TrimSpace(source)
+	if strings.HasPrefix(source, "//") {
+		source = "https:" + source
+	}
 	if len(source) >= len("data:") && strings.EqualFold(source[:len("data:")], "data:") {
 		return "mica-data:" + source[len("data:"):]
 	}

@@ -1516,6 +1516,56 @@ func (msgs Messages) LanguageChinese() string {
 	return Catalog.Format(msgs.locale, "languageChinese", nil)
 }
 
+// RemoteImages says "Remote images"
+// in the language the app shows.
+func RemoteImages() string { return In(i18n.Locale()).RemoteImages() }
+
+// RemoteImages says "Remote images"
+// in the language of msgs.
+func (msgs Messages) RemoteImages() string {
+	return Catalog.Format(msgs.locale, "remoteImages", nil)
+}
+
+// LoadRemoteImages says "Load automatically"
+// in the language the app shows.
+func LoadRemoteImages() string { return In(i18n.Locale()).LoadRemoteImages() }
+
+// LoadRemoteImages says "Load automatically"
+// in the language of msgs.
+func (msgs Messages) LoadRemoteImages() string {
+	return Catalog.Format(msgs.locale, "loadRemoteImages", nil)
+}
+
+// RemoteImagesHint says "Remote images can track you. Allow them for one message or always load automatically."
+// in the language the app shows.
+func RemoteImagesHint() string { return In(i18n.Locale()).RemoteImagesHint() }
+
+// RemoteImagesHint says "Remote images can track you. Allow them for one message or always load automatically."
+// in the language of msgs.
+func (msgs Messages) RemoteImagesHint() string {
+	return Catalog.Format(msgs.locale, "remoteImagesHint", nil)
+}
+
+// LoadImages says "Load images"
+// in the language the app shows.
+func LoadImages() string { return In(i18n.Locale()).LoadImages() }
+
+// LoadImages says "Load images"
+// in the language of msgs.
+func (msgs Messages) LoadImages() string {
+	return Catalog.Format(msgs.locale, "loadImages", nil)
+}
+
+// RemoteImagesBlocked says "Remote images are blocked for this message."
+// in the language the app shows.
+func RemoteImagesBlocked() string { return In(i18n.Locale()).RemoteImagesBlocked() }
+
+// RemoteImagesBlocked says "Remote images are blocked for this message."
+// in the language of msgs.
+func (msgs Messages) RemoteImagesBlocked() string {
+	return Catalog.Format(msgs.locale, "remoteImagesBlocked", nil)
+}
+
 // Gmail says "Gmail"
 // in the language the app shows.
 func Gmail() string { return In(i18n.Locale()).Gmail() }
