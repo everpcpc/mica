@@ -71,6 +71,7 @@ type cacheState struct {
 
 	remoteImagesSave        uint64
 	attachmentWritesBlocked bool
+	quitting                bool
 }
 
 type mailStore interface {
@@ -157,6 +158,10 @@ func (a *App) SetMailStore(store mailStore) {
 	if outbox, ok := store.(outboxStore); ok {
 		a.outbox = outbox
 	}
+	a.snooze = nil
+	if snooze, ok := store.(snoozeStore); ok {
+		a.snooze = snooze
+	}
 	a.cacheState.version = a.serviceVersion
 	a.cacheState.mu.Unlock()
 	a.resetMessageViews()
@@ -173,6 +178,7 @@ func (a *App) currentCacheVersion() int {
 
 func (a *App) persistAccount(account mail.Account) {
 	a.configureMessageCache()
+	a.restoreSnoozes()
 	if account.Demo || account.Email == "" {
 		return
 	}
@@ -236,6 +242,7 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 
 func (a *App) WaitForCacheWrites() {
 	a.cacheState.mu.Lock()
+	a.cacheState.quitting = true
 	a.cacheState.attachmentWritesBlocked = true
 	a.cacheState.mu.Unlock()
 	a.cacheState.writes.Wait()

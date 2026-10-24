@@ -118,6 +118,9 @@ type fakeMailStore struct {
 	drafts           map[string]mail.DraftSnapshot
 	outbox           map[string]mail.OutboxMessage
 	outboxErr        error
+	snoozes          map[string]mail.SnoozeRecord
+	snoozeErr        error
+	snoozeReads      int
 	attachments      map[string][]byte
 	preferences      map[string]string
 	preferenceWrites int
@@ -132,6 +135,7 @@ func newFakeMailStore() *fakeMailStore {
 		threads:     make(map[cacheThreadKey]mail.Thread),
 		drafts:      make(map[string]mail.DraftSnapshot),
 		outbox:      make(map[string]mail.OutboxMessage),
+		snoozes:     make(map[string]mail.SnoozeRecord),
 		attachments: make(map[string][]byte),
 		preferences: make(map[string]string),
 	}
@@ -219,6 +223,11 @@ func (s *fakeMailStore) DeleteAccount(_ context.Context, email string) error {
 	for key := range s.attachments {
 		if strings.HasPrefix(key, email+"\x00") {
 			delete(s.attachments, key)
+		}
+	}
+	for key, record := range s.snoozes {
+		if normalizedEmail(record.AccountEmail) == email {
+			delete(s.snoozes, key)
 		}
 	}
 	return nil

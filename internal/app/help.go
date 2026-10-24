@@ -28,6 +28,7 @@ func (a *App) helpView(c *ui.Context) {
 		{locales.ShortcutActions(), []shortcutItem{
 			{"s", locales.AddStar()},
 			{"e", locales.Archive()},
+			{"b", locales.SnoozeAction()},
 			{"#", locales.MoveToTrash()},
 			{"!", locales.ReportSpam()},
 			{"r", locales.Reply()},

@@ -25,6 +25,7 @@ var applicationShortcuts = []shortcutBinding{
 	{name: "open", key: ui.KeyEnter, email: true},
 	{name: "close", key: ui.KeyU, email: true},
 	{name: "archive", key: ui.KeyE, email: true},
+	{name: "snooze", key: ui.KeyB, email: true},
 	{name: "star", key: ui.KeyS, email: true},
 	{name: "trash", key: ui.Key3, mods: ui.Shift, email: true},
 	{name: "spam", key: ui.Key1, mods: ui.Shift, email: true},
@@ -134,6 +135,8 @@ func (a *App) performShortcut(key ui.Key, mods ui.Modifiers) {
 		a.closeReader()
 	case mods == 0 && key == ui.KeyE:
 		a.archive()
+	case mods == 0 && key == ui.KeyB:
+		a.snoozeTomorrow()
 	case mods == 0 && key == ui.KeyS:
 		a.toggleStar()
 	case mods == ui.Shift && key == ui.Key3:

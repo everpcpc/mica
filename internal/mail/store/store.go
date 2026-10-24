@@ -90,6 +90,14 @@ var migrations = [][]string{{
 		UNION ALL
 		SELECT updated FROM threads
 	)`,
+}, {
+	`CREATE TABLE snoozed_threads (
+		account_email TEXT NOT NULL,
+		thread_id TEXT NOT NULL,
+		wake_at INTEGER NOT NULL,
+		data BLOB NOT NULL,
+		PRIMARY KEY (account_email, thread_id)
+	)`,
 }}
 
 type Store struct {
@@ -238,6 +246,7 @@ func (s *Store) DeleteAccount(ctx context.Context, email string) error {
 		{SQL: "DELETE FROM draft_snapshots WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM outbox_messages WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM attachments WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM snoozed_threads WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM last_account WHERE id = 1 AND email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM accounts WHERE email = ? COLLATE NOCASE", Args: []any{email}},
 	})

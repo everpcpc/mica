@@ -26,6 +26,10 @@ func fullTime(c *ui.Context, t time.Time) string {
 	return i18n.FormatDate(locale, t, i18n.DateOptions{Date: i18n.MediumStyle, Time: i18n.ShortStyle})
 }
 
+func snoozeTime(t time.Time) string {
+	return i18n.FormatDate(i18n.Locale(), t.Local(), i18n.DateOptions{Date: i18n.MediumStyle, Time: i18n.ShortStyle})
+}
+
 func addressName(s string) string {
 	address, err := mail.ParseAddress(s)
 	if err != nil {

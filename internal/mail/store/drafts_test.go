@@ -35,6 +35,7 @@ func TestDraftSnapshotMigrationRestartAndAccountIsolation(t *testing.T) {
 		"DROP TABLE IF EXISTS outbox_messages",
 		"DROP TABLE IF EXISTS attachments",
 		"DROP TABLE IF EXISTS cache_revision",
+		"DROP TABLE IF EXISTS snoozed_threads",
 		"ALTER TABLE thread_lists DROP COLUMN updated",
 		"ALTER TABLE threads DROP COLUMN updated",
 	} {

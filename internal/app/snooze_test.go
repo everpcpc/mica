@@ -1,0 +1,355 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"testing"
+	"time"
+
+	"mica/internal/mail"
+	"mica/locales"
+)
+
+func cloneSnoozeRecord(record mail.SnoozeRecord) mail.SnoozeRecord {
+	record.Summary.LabelIDs = slices.Clone(record.Summary.LabelIDs)
+	return record
+}
+
+func (s *fakeMailStore) SaveSnooze(_ context.Context, email string, record mail.SnoozeRecord) error {
+	if s.snoozeErr != nil {
+		return s.snoozeErr
+	}
+	record.AccountEmail = normalizedEmail(email)
+	record.WakeAt = record.WakeAt.UTC()
+	record.Summary.AccountEmail = record.AccountEmail
+	record.Summary.SnoozeAt = record.WakeAt
+	if record.Summary.ID == "" {
+		record.Summary.ID = record.ThreadID
+	}
+	s.snoozes[snoozeKey(record.AccountEmail, record.ThreadID)] = cloneSnoozeRecord(record)
+	return nil
+}
+
+func (s *fakeMailStore) SnoozeRecords(_ context.Context, email string) ([]mail.SnoozeRecord, error) {
+	s.snoozeReads++
+	if s.snoozeErr != nil {
+		return nil, s.snoozeErr
+	}
+	var records []mail.SnoozeRecord
+	for _, record := range s.snoozes {
+		if normalizedEmail(record.AccountEmail) == normalizedEmail(email) {
+			records = append(records, cloneSnoozeRecord(record))
+		}
+	}
+	slices.SortFunc(records, func(a, b mail.SnoozeRecord) int {
+		if a.WakeAt.Equal(b.WakeAt) {
+			if a.ThreadID < b.ThreadID {
+				return -1
+			}
+			if a.ThreadID > b.ThreadID {
+				return 1
+			}
+			return 0
+		}
+		if a.WakeAt.Before(b.WakeAt) {
+			return -1
+		}
+		return 1
+	})
+	return records, nil
+}
+
+func (s *fakeMailStore) SnoozeRecord(_ context.Context, email, threadID string, wakeAt time.Time) (mail.SnoozeRecord, bool, error) {
+	if s.snoozeErr != nil {
+		return mail.SnoozeRecord{}, false, s.snoozeErr
+	}
+	record, found := s.snoozes[snoozeKey(email, threadID)]
+	if !found || !record.WakeAt.Equal(wakeAt) {
+		return mail.SnoozeRecord{}, false, nil
+	}
+	return cloneSnoozeRecord(record), true, nil
+}
+
+func (s *fakeMailStore) DeleteSnooze(_ context.Context, email, threadID string, wakeAt time.Time) error {
+	if s.snoozeErr != nil {
+		return s.snoozeErr
+	}
+	key := snoozeKey(email, threadID)
+	record, found := s.snoozes[key]
+	if !found || !record.WakeAt.Equal(wakeAt) {
+		return errors.New("snooze conflict")
+	}
+	delete(s.snoozes, key)
+	return nil
+}
+
+func (s *fakeMailStore) CancelSnooze(_ context.Context, email, threadID string) error {
+	if s.snoozeErr != nil {
+		return s.snoozeErr
+	}
+	delete(s.snoozes, snoozeKey(email, threadID))
+	return nil
+}
+
+type snoozeService struct {
+	*fakeService
+	modifyErr error
+	onModify  func([]string, []string)
+}
+
+func (s *snoozeService) ModifyThread(ctx context.Context, id string, add, remove []string) error {
+	if s.onModify != nil {
+		s.onModify(add, remove)
+	}
+	if s.modifyErr != nil {
+		return s.modifyErr
+	}
+	return s.fakeService.ModifyThread(ctx, id, add, remove)
+}
+
+func newSnoozeApp(service mail.Service, store *fakeMailStore, after ...func(time.Duration, func())) *App {
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.notificationsStarted = true
+	if len(after) > 0 {
+		a.after = after[0]
+	}
+	a.SetMailStore(store)
+	a.Start()
+	return a
+}
+
+func TestSnoozePersistsBeforeRemote(t *testing.T) {
+	store := newFakeMailStore()
+	service := &snoozeService{fakeService: newFakeService()}
+	a := newSnoozeApp(service, store)
+	wakeAt := time.Now().Add(24 * time.Hour)
+	service.onModify = func(add, remove []string) {
+		if len(store.snoozes) != 1 {
+			t.Errorf("remote modification happened before snooze persistence: %v", store.snoozes)
+		}
+		if len(add) != 0 || len(remove) != 1 || remove[0] != mail.Inbox {
+			t.Errorf("remote labels = +%v -%v, want only -INBOX", add, remove)
+		}
+	}
+	a.snoozeUntil(a.threads, wakeAt)
+	if len(a.snoozeRuntime.records) != 1 || len(store.snoozes) != 1 {
+		t.Fatalf("snooze was not retained: runtime=%v store=%v", a.snoozeRuntime.records, store.snoozes)
+	}
+	for _, record := range store.snoozes {
+		if !record.WakeAt.Equal(wakeAt) || !record.Summary.SnoozeAt.Equal(wakeAt) || record.Summary.ID != "thread-1" {
+			t.Fatalf("snooze record = %+v, want %v", record, wakeAt)
+		}
+	}
+	if len(a.threads) != 0 {
+		t.Fatalf("snoozed conversation remained in Inbox: %+v", a.threads)
+	}
+}
+
+func TestSnoozeRestoresOfflineViewAndWakes(t *testing.T) {
+	store := newFakeMailStore()
+	wakeAt := time.Now().Add(-time.Hour)
+	if err := store.SaveSnooze(context.Background(), "demo@example.com", mail.SnoozeRecord{
+		ThreadID: "thread-1", WakeAt: wakeAt,
+		Summary: mail.ThreadSummary{ID: "thread-1", Subject: "Deferred", LabelIDs: []string{mail.Snoozed}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := &offlineSearchService{fakeService: newFakeService()}
+	var timer func()
+	a := newSnoozeApp(service, store, func(_ time.Duration, fn func()) { timer = fn })
+	a.selectedLabel = mail.Snoozed
+	a.refreshList()
+	if len(a.threads) != 1 || !a.threads[0].SnoozeAt.Equal(wakeAt) || a.err != locales.OfflineResults() {
+		t.Fatalf("offline Snoozed view = %+v err=%q", a.threads, a.err)
+	}
+	if timer == nil {
+		t.Fatal("restored snooze was not scheduled")
+	}
+	timer()
+	if len(store.snoozes) != 0 || len(a.snoozeRuntime.records) != 0 || len(a.threads) != 0 {
+		t.Fatalf("snooze did not complete: store=%v runtime=%v threads=%v", store.snoozes, a.snoozeRuntime.records, a.threads)
+	}
+	if len(service.add) != 1 || service.add[0] != mail.Inbox || len(service.remove) != 0 {
+		t.Fatalf("wake labels = +%v -%v, want only +INBOX", service.add, service.remove)
+	}
+}
+
+func TestSnoozeFailureRestoresInbox(t *testing.T) {
+	store := newFakeMailStore()
+	service := &snoozeService{fakeService: newFakeService(), modifyErr: errOffline}
+	a := newSnoozeApp(service, store)
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	if len(store.snoozes) != 0 || len(a.snoozeRuntime.records) != 0 || len(a.snoozeRuntime.timers) != 0 {
+		t.Fatalf("failed snooze left pending work: store=%v runtime=%v timers=%v", store.snoozes, a.snoozeRuntime.records, a.snoozeRuntime.timers)
+	}
+	if len(a.threads) != 1 || !containsLabel(a.threads[0].LabelIDs, mail.Inbox) || !a.threads[0].SnoozeAt.IsZero() {
+		t.Fatalf("failed snooze did not restore Inbox: %+v", a.threads)
+	}
+	if a.notice != locales.SnoozeFailed(errOffline.Error()) {
+		t.Fatalf("failure notice = %q", a.notice)
+	}
+}
+
+func TestSnoozeRescheduleUsesLatestTimer(t *testing.T) {
+	store := newFakeMailStore()
+	service := &snoozeService{fakeService: newFakeService()}
+	var jobs []func()
+	a := newSnoozeApp(service, store, func(_ time.Duration, fn func()) { jobs = append(jobs, fn) })
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	var record mail.SnoozeRecord
+	for _, current := range a.snoozeRuntime.records {
+		record = current
+	}
+	a.snoozeUntil([]mail.ThreadSummary{record.Summary}, time.Now().Add(2*time.Hour))
+	if len(jobs) != 2 {
+		t.Fatalf("scheduled jobs = %d, want old and replacement", len(jobs))
+	}
+	beforeStale := len(service.modified)
+	jobs[0]()
+	if len(store.snoozes) != 1 || len(service.modified) != beforeStale {
+		t.Fatalf("stale timer fired: store=%v modifications=%v", store.snoozes, service.modified)
+	}
+	jobs[1]()
+	if len(store.snoozes) != 0 || len(service.modified) != beforeStale+1 {
+		t.Fatalf("replacement timer did not complete exactly once: store=%v modifications=%v", store.snoozes, service.modified)
+	}
+	if service.add[0] != mail.Inbox {
+		t.Fatalf("replacement wake labels = +%v -%v", service.add, service.remove)
+	}
+}
+
+func TestSnoozeQuitDoesNotWrite(t *testing.T) {
+	store := newFakeMailStore()
+	service := &snoozeService{fakeService: newFakeService()}
+	a := newSnoozeApp(service, store)
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	beforeQuit := len(service.modified)
+	a.WaitForCacheWrites()
+	for _, record := range store.snoozes {
+		a.wakeSnooze(record)
+	}
+	reads := store.snoozeReads
+	a.restoreSnoozes()
+	if len(service.modified) != beforeQuit || len(store.snoozes) != 1 || store.snoozeReads != reads {
+		t.Fatalf("quit allowed snooze work: modifications=%v store=%v reads=%d", service.modified, store.snoozes, store.snoozeReads)
+	}
+	cache := a.snoozeCache("demo@example.com")
+	if cache == nil {
+		t.Fatal("snooze cache was not configured")
+	}
+	if err := cache(func(snoozeStore) error { return nil }); !errors.Is(err, errAccountClientUnavailable) {
+		t.Fatalf("cache operation after quit = %v", err)
+	}
+}
+
+func TestSnoozePresets(t *testing.T) {
+	zone := time.FixedZone("UTC+8", 8*60*60)
+	now := time.Date(2026, 10, 23, 15, 0, 0, 0, zone)
+	presets := snoozePresets(now)
+	if len(presets) != 3 {
+		t.Fatalf("presets = %v", presets)
+	}
+	for i, want := range []time.Weekday{time.Saturday, time.Saturday, time.Monday} {
+		if got := presets[i].wakeAt; got.Weekday() != want || got.Hour() != 8 || got.Location() != zone {
+			t.Errorf("preset %d = %v, want %v at 08:00 in %v", i, got, want, zone)
+		}
+	}
+}
+
+func TestSnoozeStoreFailurePreventsRemote(t *testing.T) {
+	store := newFakeMailStore()
+	store.snoozeErr = errOffline
+	service := &snoozeService{fakeService: newFakeService()}
+	a := newSnoozeApp(service, store)
+	before := len(service.modified)
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	if len(service.modified) != before {
+		t.Fatal("remote modification ran after snooze persistence failed")
+	}
+	if len(store.snoozes) != 0 || len(a.threads) != 1 || !containsLabel(a.threads[0].LabelIDs, mail.Inbox) {
+		t.Fatalf("failed persistence changed local state: store=%v threads=%v", store.snoozes, a.threads)
+	}
+}
+
+func TestSnoozeRestoreDoesNotOverrideLocalChange(t *testing.T) {
+	store := newFakeMailStore()
+	oldWake := time.Now().Add(time.Hour)
+	if err := store.SaveSnooze(context.Background(), "demo@example.com", mail.SnoozeRecord{ThreadID: "thread-1", WakeAt: oldWake, Summary: mail.ThreadSummary{ID: "thread-1", Subject: "Old"}}); err != nil {
+		t.Fatal(err)
+	}
+	service := &snoozeService{fakeService: newFakeService()}
+	a := newSnoozeApp(service, store)
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.restoreSnoozes()
+	newWake := oldWake.Add(time.Hour)
+	a.snoozeOne(mail.ThreadSummary{ID: "thread-1", AccountEmail: "demo@example.com", LabelIDs: []string{mail.Inbox}}, newWake)
+	if len(jobs) != 2 || len(updates) != 0 {
+		t.Fatalf("unexpected restore setup: jobs=%d updates=%d", len(jobs), len(updates))
+	}
+	jobs[0]()
+	jobs[1]()
+	if len(updates) != 2 {
+		t.Fatalf("restore updates = %d, want restore and mutation completion", len(updates))
+	}
+	updates[1]()
+	updates[0]()
+	record := a.snoozeRuntime.records[snoozeKey("demo@example.com", "thread-1")]
+	if !record.WakeAt.Equal(newWake) {
+		t.Fatalf("stale restore replaced the new snooze: %+v", record)
+	}
+}
+
+func TestSnoozeUnifiedOwnerAndRemoval(t *testing.T) {
+	store := newFakeMailStore()
+	serviceA := &snoozeService{fakeService: newFakeService()}
+	serviceB := &snoozeService{fakeService: newFakeService()}
+	a := newOwnerResourceApp(serviceA)
+	a.schedule = func(fn func()) { fn() }
+	a.SetMailStore(store)
+	a.registerAccountClient(serviceB, mail.Account{Email: "b@example.com"}, nil, true)
+	a.compositeThreads = true
+	a.threads = []mail.ThreadSummary{{ID: "shared", AccountEmail: "b@example.com", LabelIDs: []string{mail.Inbox}}}
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	if len(serviceA.modified) != 0 || len(serviceB.modified) != 1 {
+		t.Fatalf("snooze routed to the wrong owner: A=%v B=%v", serviceA.modified, serviceB.modified)
+	}
+	record := store.snoozes[snoozeKey("b@example.com", "shared")]
+	a.wakeSnooze(record)
+	if len(store.snoozes) != 0 || len(serviceB.modified) != 2 {
+		t.Fatalf("unified wake did not use owner B: store=%v B=%v", store.snoozes, serviceB.modified)
+	}
+	if err := store.SaveSnooze(context.Background(), record.AccountEmail, record); err != nil {
+		t.Fatal(err)
+	}
+	a.setSnoozeRecord(record)
+	a.removeAccountClient("b@example.com")
+	a.wakeSnooze(record)
+	if len(store.snoozes) != 1 || len(serviceB.modified) != 2 {
+		t.Fatalf("removed owner was modified or deleted: store=%v B=%v", store.snoozes, serviceB.modified)
+	}
+}
+
+func TestSnoozeUnsnoozeFailureRestoresRecord(t *testing.T) {
+	store := newFakeMailStore()
+	service := &snoozeService{fakeService: newFakeService()}
+	a := newSnoozeApp(service, store)
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	a.selectedLabel = mail.Snoozed
+	a.refreshList()
+	service.modifyErr = errOffline
+	a.unsnooze(a.threads)
+	if len(store.snoozes) != 1 || len(a.snoozeRuntime.records) != 1 || len(a.snoozeRuntime.timers) != 1 {
+		t.Fatalf("failed Unsnooze lost pending state: store=%v runtime=%v timers=%v", store.snoozes, a.snoozeRuntime.records, a.snoozeRuntime.timers)
+	}
+	if len(a.threads) != 1 || !containsLabel(a.threads[0].LabelIDs, mail.Snoozed) {
+		t.Fatalf("failed Unsnooze did not restore Snoozed view: %+v", a.threads)
+	}
+	if a.notice != locales.SnoozeFailed(errOffline.Error()) {
+		t.Fatalf("Unsnooze failure notice = %q", a.notice)
+	}
+}

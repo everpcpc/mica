@@ -21,6 +21,8 @@ type App struct {
 	service                  mail.Service
 	store                    mailStore
 	outbox                   outboxStore
+	snooze                   snoozeStore
+	snoozeRuntime            snoozeRuntime
 	outboxRecords            map[string]mail.OutboxMessage
 	outboxBusy               string
 	outboxDeleteID           string
@@ -193,11 +195,16 @@ func (a *App) SetUpdate(update func(func())) {
 }
 
 func (a *App) Start() {
+	a.resetSnoozeRuntime()
 	a.startupPending = true
 	a.refresh()
 	service, version := a.service, a.serviceVersion
 	store, email := a.store, a.storeAccount
+	restore, restoreOK := a.prepareSnoozeRestore(email)
 	a.schedule(func() {
+		if restoreOK {
+			a.runSnoozeRestore(restore)
+		}
 		if store != nil && email != "" {
 			cachedAccount, accountFound, accountCacheErr := store.Account(context.Background(), email)
 			cachedLabels, labelsFound, labelsCacheErr := store.Labels(context.Background(), email)
@@ -391,6 +398,26 @@ func (a *App) refreshList() {
 		if err != nil {
 			if searchStore, ok := store.(offlineSearchStore); ok && email != "" {
 				cached, cacheErr = searchStore.SearchThreads(context.Background(), email, query)
+			}
+		}
+		if a.selectedLabel == mail.Snoozed {
+			var records []mail.SnoozeRecord
+			if cache := a.snoozeCache(email); cache != nil {
+				if err := cache(func(store snoozeStore) error {
+					var err error
+					records, err = store.SnoozeRecords(context.Background(), email)
+					return err
+				}); err != nil {
+					logCacheError(err)
+				}
+			}
+			if err == nil {
+				page.Threads = mergeSnoozedSummaries(page.Threads, records)
+			} else {
+				cached = mergeSnoozedSummaries(cached, records)
+				if len(cached) > 0 {
+					cacheErr = nil
+				}
 			}
 		}
 		a.publish(func() {
