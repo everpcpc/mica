@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"mica/internal/mail"
 
@@ -32,6 +33,25 @@ func TestEmailViewShowsWebViewBeforeFirstMeasurement(t *testing.T) {
 	}
 }
 
+func TestEmailViewFillsViewportBeforeFirstMeasurement(t *testing.T) {
+	a := New(newFakeService())
+	a.selectedThread = "thread-1"
+	a.thread = mail.Thread{ID: "thread-1", Messages: []mail.Message{{ID: "message-1", HTML: "<p>Body</p>"}}}
+	a.emailPages = map[string]*emailPage{
+		"message-1": {messageID: "message-1", view: new(mygo.WebView), height: a.estimatedEmailHeight("message-1")},
+	}
+	tt := ui.NewTester(a.View, 1280, 800)
+	if tt.WebViewAt(900, 600) == nil {
+		t.Fatal("unmeasured email does not fill the reading viewport")
+	}
+	a.setEmailHeight(a.emailPages["message-1"], 48)
+	tt.Frame()
+	tt.Advance(200 * time.Millisecond)
+	if tt.WebViewAt(900, 600) != nil {
+		t.Fatal("email kept the viewport placeholder after its real height arrived")
+	}
+}
+
 func TestEmailShortcutBinding(t *testing.T) {
 	binding, ok := emailShortcutBinding("archive")
 	if !ok || binding.key != ui.KeyE || binding.mods != 0 {
@@ -45,8 +65,8 @@ func TestEmailShortcutBinding(t *testing.T) {
 func TestEmailHeightEstimateAndUpdate(t *testing.T) {
 	a := New(newFakeService())
 	height := a.estimatedEmailHeight("message-1")
-	if height != 24 {
-		t.Fatalf("initial email height = %v, want one-line placeholder", height)
+	if height != 0 {
+		t.Fatalf("initial email height = %v, want unknown height", height)
 	}
 	page := &emailPage{messageID: "message-1", height: height, failed: true}
 	a.setEmailHeight(page, 480)

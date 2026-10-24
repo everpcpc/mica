@@ -14,6 +14,7 @@ The interface uses the system font, subtle dividers, unread weight and dots, mut
 The reader uses one continuous theme background across native UI and email WebViews.
 Email documents follow live appearance changes through `prefers-color-scheme`, keeping an open message readable without reloading it.
 HTML and plain-text bodies have a 24px horizontal reading inset. Root email styles and top-level inline padding take precedence over the HTML default.
+Before the first HTML measurement, the body fills the available reader viewport instead of a one-line placeholder. Measurement starts at DOM readiness, and measured or cached heights replace the placeholder.
 Subjects, sender metadata, and recipients use a compact Gmail-style hierarchy, with Reply, Reply all, and Forward after the conversation.
 The reader toolbar floats above the conversation with a lightly tinted Liquid Glass material and a subtle shadow. Primary actions share a blue-indigo gradient and restrained shadow.
 Grouped dialog content uses 12pt-radius bordered panels with consistent padding. Conversation rows use rounded selection with a small inset.
