@@ -222,9 +222,11 @@ func loginGmailService(ctx context.Context, store mailStore, clientID, clientSec
 			return nil, "", err
 		}
 	}
-	if !gmail.AllowAccount(account.Email, generation) {
+	commit, ok := gmail.BeginAccountCommit(account.Email, generation)
+	if !ok {
 		return nil, "", errors.New("gmail: authentication was cancelled")
 	}
+	defer commit()
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(pending.token); err != nil {
 		return nil, "", err
@@ -257,9 +259,17 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 	}
 	s.busy = true
 	s.err = ""
+	a.cancelAuthentication()
+	auth := a.authID
 	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
 	s.cancel = cancel
 	a.schedule(func() {
+		defer a.publish(func() {
+			if a.authID == auth {
+				a.authCancel = nil
+			}
+		})
 		if custom {
 			if err := saveOAuthCredentials(clientID, clientSecret, projectID); err != nil {
 				a.publish(func() {
@@ -409,9 +419,11 @@ func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSe
 	if token == nil {
 		return nil, "", gmail.ErrNoSession
 	}
-	if !gmail.AllowAccount(account.Email, generation) {
+	commit, ok := gmail.BeginAccountCommit(account.Email, generation)
+	if !ok {
 		return nil, "", errors.New("gmail: authentication was cancelled")
 	}
+	defer commit()
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(token); err != nil {
 		return nil, "", err

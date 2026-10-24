@@ -84,15 +84,15 @@ func InvalidateCredentials() {
 	credentialLifecycle.mu.Unlock()
 }
 
-func AllowAccount(email string, generation uint64) bool {
+func BeginAccountCommit(email string, generation uint64) (func(), bool) {
 	credentialLifecycle.mu.Lock()
-	defer credentialLifecycle.mu.Unlock()
 	if generation != credentialLifecycle.generation {
-		return false
+		credentialLifecycle.mu.Unlock()
+		return nil, false
 	}
 	credentialStateFor(accountTokenKey(email)).allow()
 	credentialStateFor(activeEmailKey).allow()
-	return true
+	return credentialLifecycle.mu.Unlock, true
 }
 
 func (s *credentialState) allow() {
