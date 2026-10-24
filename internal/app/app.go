@@ -523,6 +523,7 @@ func (a *App) selectLabel() {
 	if a.compositeThreads != (a.selectedLabel == mail.Unified) {
 		a.request++
 		a.threads = nil
+		a.threadCache = nil
 		a.nextPageToken = ""
 		a.loadingMore = false
 		a.loading = true
@@ -1113,11 +1114,13 @@ func (a *App) removeThread(id string) {
 }
 
 func (a *App) updateThreadLabels(id string, add, remove []string) {
+	found := false
 	for i := range a.threads {
 		if a.summaryKey(a.threads[i]) == id {
 			a.threads[i].LabelIDs = modifyLabelIDs(a.threads[i].LabelIDs, add, remove)
 			a.threads[i].Unread = containsLabel(a.threads[i].LabelIDs, mail.Unread)
 			a.threads[i].Starred = containsLabel(a.threads[i].LabelIDs, mail.Starred)
+			found = true
 			break
 		}
 	}
@@ -1127,12 +1130,17 @@ func (a *App) updateThreadLabels(id string, add, remove []string) {
 			thread.Messages[i].LabelIDs = modifyLabelIDs(thread.Messages[i].LabelIDs, add, remove)
 		}
 		a.threadCache[id] = thread
+		found = true
 	}
 	if a.threadKey(a.thread) == id {
 		a.thread.LabelIDs = modifyLabelIDs(a.thread.LabelIDs, add, remove)
 		for i := range a.thread.Messages {
 			a.thread.Messages[i].LabelIDs = modifyLabelIDs(a.thread.Messages[i].LabelIDs, add, remove)
 		}
+		found = true
+	}
+	if !found {
+		return
 	}
 	a.syncUnifiedSummary(id)
 	a.syncThreadSelection(false)

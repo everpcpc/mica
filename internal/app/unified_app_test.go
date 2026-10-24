@@ -19,6 +19,7 @@ type unifiedFakeService struct {
 	attachments     map[string][]byte
 	attachmentCalls []string
 	pages           []mail.ThreadPage
+	modifyErr       error
 	listErr         error
 	pageErr         map[string]error
 	listCalls       []mail.Query
@@ -55,6 +56,14 @@ func (s *unifiedFakeService) ListThreadPage(_ context.Context, query mail.Query)
 		}
 	}
 	return mail.ThreadPage{}, nil
+}
+
+func (s *unifiedFakeService) ModifyThread(ctx context.Context, id string, add, remove []string) error {
+	if s.modifyErr != nil {
+		s.modified = append(s.modified, id)
+		return s.modifyErr
+	}
+	return s.fakeService.ModifyThread(ctx, id, add, remove)
 }
 
 func (s *unifiedFakeService) Drafts(ctx context.Context, query mail.Query) (mail.DraftPage, error) {
@@ -963,5 +972,50 @@ func TestUnifiedLeaveDuringMutationDoesNotExposeOwnerlessRows(t *testing.T) {
 	}
 	if len(h.app.threads) != 1 || h.app.threads[0].AccountEmail != "a@example.com" || unifiedContainsThread(h.app.threads, "b@example.com", "shared") {
 		t.Fatalf("deferred refresh installed the wrong list: %+v", h.app.threads)
+	}
+}
+
+func TestUnifiedReadFailureAfterModeChangePreservesCache(t *testing.T) {
+	h := newUnifiedHarness()
+	h.app.startupSelectionDone = true
+	summary := unifiedInboxSummary("shared", "b@example.com", 20)
+	summary.Unread = true
+	summary.LabelIDs = append(summary.LabelIDs, mail.Unread)
+	h.setPages("a@example.com", mail.ThreadPage{})
+	h.setPages("b@example.com", mail.ThreadPage{Threads: []mail.ThreadSummary{summary}})
+	h.services["b@example.com"].threadFunc = func(id string) (mail.Thread, error) {
+		thread := unifiedAccountThread("b@example.com", id)
+		thread.LabelIDs = []string{mail.Inbox, mail.Unread}
+		thread.Messages[0].LabelIDs = []string{mail.Unread}
+		return thread, nil
+	}
+	h.app.refreshUnified()
+	var jobs []func()
+	h.app.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	h.app.selectThread(threadRefForAccount("b@example.com", "shared").key())
+	if len(jobs) != 1 {
+		t.Fatalf("thread detail jobs = %d, want 1", len(jobs))
+	}
+	jobs[0]()
+	jobs = jobs[1:]
+	for len(jobs) > 1 {
+		job := jobs[0]
+		jobs = jobs[1:]
+		job()
+	}
+	if len(jobs) != 1 || !h.app.mutationsPending() {
+		t.Fatalf("automatic read did not leave one pending mutation: jobs=%d pending=%v", len(jobs), h.app.mutationsPending())
+	}
+	h.app.selectedLabel = mail.Inbox
+	h.app.selectLabel()
+	cached := unifiedInboxSummary("cached-a", "a@example.com", 10)
+	h.store.lists[cacheListKey{email: "a@example.com", query: h.query}] = []mail.ThreadSummary{cached}
+	h.services["b@example.com"].modifyErr = errOffline
+	h.services["a@example.com"].listErr = errOffline
+	h.app.schedule = func(fn func()) { fn() }
+	jobs[0]()
+	got := h.store.lists[cacheListKey{email: "a@example.com", query: h.query}]
+	if len(got) != 1 || got[0].ID != "cached-a" {
+		t.Fatalf("read failure overwrote the ordinary cache during transition: %+v", got)
 	}
 }
