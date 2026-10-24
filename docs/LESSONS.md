@@ -28,6 +28,8 @@
 - Opening a thread by ID must also synchronize the selected row before detail loading. A regression reproduced `selectedRow == -1` before loading; do not synchronize only in `showThread`.
 - Run automatic startup selection once for each account's first non-empty list. The previous behavior left no selection after offline restoration and account switches. New mail inserted above may move only the selected row by ID; it must not reselect or switch the detail.
 - When single selection is bound only by row index, archiving the first conversation lets the next one occupy the same row and makes the list keep tracking the old key. Highlight the list with a Selection keyed by thread ID, and use first/last archive comparisons to verify that detail and selection stay aligned.
+- A multi-selection is not the reader. Programmatic opens may collapse it, but list input must preserve it; filters and history should prune only invisible keys without clearing the remaining set.
+- `Selection.All()` is unordered and retains disappeared keys. Resolve action targets in visible-list order, and represent a batch Undo as one action with ordered items rather than looping over a single-slot Undo.
 
 ## Label assignment and label lifecycle are different operations
 
