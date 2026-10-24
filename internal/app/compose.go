@@ -57,7 +57,7 @@ func (a *App) storedMessageOwner(message mailmodel.Message) string {
 	if email := normalizedEmail(message.AccountEmail); email != "" {
 		return email
 	}
-	return normalizedEmail(a.storeAccount)
+	return a.activeComposeOwner()
 }
 
 func (a *App) composerOwner(m *composer) string {

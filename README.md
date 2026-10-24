@@ -36,7 +36,7 @@
 - **Remote image privacy.** Remote images are blocked by default. Allow them for one message or enable automatic loading in Settings.
 - **Multiple Gmail accounts.** Add, switch between, reauthorize, and remove accounts without mixing their credentials, caches, drafts, or notifications.
 - **All Inboxes.** Merge multiple Gmail inboxes with independent per-account pagination, owner-aware reading, replies, drafts, and actions, or expand the account group to open one account's Inbox.
-- **Offline access and notifications.** A local SQLite cache keeps loaded mail available offline, while Gmail watch and history synchronization keep it current.
+- **Offline access and notifications.** Search previously loaded mail in the active account and reopen cached attachments without a network connection. Local search does not cover Gmail's complete index or every Gmail search operator. Gmail watch and history synchronization keep the cache current.
 - **English and Simplified Chinese.** Follow the system language or choose one in Settings.
 - **A complete demo mailbox.** Explore the workflow without connecting a Google account.
 
@@ -90,7 +90,7 @@ Mica is written in Go using [MyGo](https://github.com/egoist/mygo) native UI. Th
 Run the project checks before submitting a change:
 
 ```sh
-go tool mygo generate
+go tool mygo generate .
 go tool mygo i18n check .
 CGO_ENABLED=0 go test ./...
 go test -race ./...
@@ -104,7 +104,7 @@ Tests use fake services or the demo mailbox. Never run destructive tests against
 ## Privacy and security
 
 - OAuth tokens are stored in the macOS Keychain.
-- Account metadata, labels, and loaded conversations are cached locally in SQLite. Attachment binaries and remote images remain on demand.
+- Account metadata, labels, and loaded conversations are cached locally in SQLite. Attachments are cached after being opened, saved, forwarded, or displayed as inline images. Individual attachments over 32 MiB are not cached, and each account's attachment cache is limited to 128 MiB with oldest-first eviction. Remote images remain on demand.
 - HTML mail is sanitized and rendered in per-message sandboxed WebViews. Remote image requests never carry Gmail credentials.
 
 ## Contributing

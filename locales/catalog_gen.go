@@ -526,6 +526,16 @@ func (msgs Messages) Retry() string {
 	return Catalog.Format(msgs.locale, "retry", nil)
 }
 
+// OfflineResults says "Offline: showing cached results"
+// in the language the app shows.
+func OfflineResults() string { return In(i18n.Locale()).OfflineResults() }
+
+// OfflineResults says "Offline: showing cached results"
+// in the language of msgs.
+func (msgs Messages) OfflineResults() string {
+	return Catalog.Format(msgs.locale, "offlineResults", nil)
+}
+
 // EmptyMailbox says "No conversations here"
 // in the language the app shows.
 func EmptyMailbox() string { return In(i18n.Locale()).EmptyMailbox() }

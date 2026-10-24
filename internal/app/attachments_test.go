@@ -17,11 +17,13 @@ type fakeAttachmentService struct {
 	*fakeService
 	data         []byte
 	err          error
+	calls        int
 	messageID    string
 	attachmentID string
 }
 
 func (s *fakeAttachmentService) Attachment(_ context.Context, messageID, attachmentID string) ([]byte, error) {
+	s.calls++
 	s.messageID, s.attachmentID = messageID, attachmentID
 	return s.data, s.err
 }

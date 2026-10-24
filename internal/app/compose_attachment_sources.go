@@ -30,8 +30,11 @@ func (s localComposeAttachmentSource) read(_ context.Context, limit int64) (mail
 
 type messageComposeAttachmentSource struct {
 	fetcher    mailmodel.AttachmentFetcher
+	store      attachmentStore
+	save       attachmentCacheWriter
 	message    messageRef
 	attachment mailmodel.Attachment
+	position   int
 }
 
 func (s messageComposeAttachmentSource) name() string {
@@ -47,7 +50,16 @@ func (s messageComposeAttachmentSource) read(ctx context.Context, limit int64) (
 		return outgoing, errComposeAttachmentTooLarge
 	}
 	data := s.attachment.Data
-	if data == nil {
+	fromCache := false
+	if data == nil && s.store != nil {
+		cached, found, err := s.store.Attachment(ctx, s.message.AccountEmail, s.message.ThreadID, s.message.MessageID, attachmentStorageID(s.attachment, s.position))
+		if err != nil {
+			logCacheError(err)
+		} else if found {
+			data, fromCache = cached, true
+		}
+	}
+	if data == nil && !fromCache {
 		if s.fetcher == nil {
 			return outgoing, errComposeAttachmentUnavailable
 		}
@@ -55,6 +67,15 @@ func (s messageComposeAttachmentSource) read(ctx context.Context, limit int64) (
 		data, err = s.fetcher.Attachment(ctx, s.message.MessageID, s.attachment.ID)
 		if err != nil {
 			return outgoing, err
+		}
+	}
+	if !fromCache {
+		if s.save != nil {
+			s.save(s.message.ThreadID, s.message.MessageID, attachmentStorageID(s.attachment, s.position), data)
+		} else if s.store != nil {
+			if err := s.store.SaveAttachment(ctx, s.message.AccountEmail, s.message.ThreadID, s.message.MessageID, attachmentStorageID(s.attachment, s.position), data); err != nil {
+				logCacheError(err)
+			}
 		}
 	}
 	if int64(len(data)) > limit {
@@ -78,12 +99,14 @@ func validateOutgoingAttachmentName(name string) error {
 
 func (a *App) addMessageAttachments(message mailmodel.Message) {
 	owner := a.storedMessageOwner(message)
-	service, _ := a.ownerService(owner)
+	service, generation := a.ownerService(owner)
 	fetcher, _ := service.(mailmodel.AttachmentFetcher)
+	store, _ := a.store.(attachmentStore)
+	save := a.attachmentCacheWriter(owner, generation)
 	ref := messageRefForAccount(owner, message.ThreadID, message.ID)
 	sources := make([]composeAttachmentSource, len(message.Attachments))
 	for i, attachment := range message.Attachments {
-		sources[i] = messageComposeAttachmentSource{fetcher: fetcher, message: ref, attachment: attachment}
+		sources[i] = messageComposeAttachmentSource{fetcher: fetcher, store: store, save: save, message: ref, attachment: attachment, position: i}
 	}
 	a.addComposeAttachmentSources(sources, false)
 }

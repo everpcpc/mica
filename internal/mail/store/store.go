@@ -66,6 +66,16 @@ var migrations = [][]string{{
 	BEFORE UPDATE OF state, attempt, data ON outbox_messages
 	WHEN OLD.attempt > NEW.attempt
 	BEGIN SELECT RAISE(ABORT, 'stale outbox attempt'); END`,
+}, {
+	`CREATE TABLE attachments (
+		account_email TEXT NOT NULL,
+		thread_id TEXT NOT NULL,
+		message_id TEXT NOT NULL,
+		attachment_id TEXT NOT NULL,
+		data BLOB NOT NULL,
+		updated INTEGER NOT NULL,
+		PRIMARY KEY (account_email, thread_id, message_id, attachment_id)
+	)`,
 }}
 
 type Store struct {
@@ -213,6 +223,7 @@ func (s *Store) DeleteAccount(ctx context.Context, email string) error {
 		{SQL: "DELETE FROM threads WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM draft_snapshots WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM outbox_messages WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
+		{SQL: "DELETE FROM attachments WHERE account_email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM last_account WHERE id = 1 AND email = ? COLLATE NOCASE", Args: []any{email}},
 		{SQL: "DELETE FROM accounts WHERE email = ? COLLATE NOCASE", Args: []any{email}},
 	})

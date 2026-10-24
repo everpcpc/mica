@@ -167,7 +167,7 @@ func (a *App) removeAccount(email string) {
 	s.busy = true
 	s.err = ""
 	transition := &accountTransition{sourceVersion: a.serviceVersion, removeEmail: email}
-	a.accountTransition = transition
+	a.setAccountTransition(transition)
 	a.cancelAccountInboxRequest()
 	store, restore := a.store, a.accountService
 	outbox := a.outbox
@@ -231,7 +231,7 @@ func (a *App) removeAccount(email string) {
 					return
 				}
 				if snapshotFound || outboxFound {
-					a.accountTransition = nil
+					a.setAccountTransition(nil)
 					if a.settings == s {
 						s.busy = false
 						if snapshotFound {
@@ -248,8 +248,8 @@ func (a *App) removeAccount(email string) {
 					return
 				}
 				if email != current {
-					a.accountTransition = nil
 					a.removeAccountClient(email)
+					a.setAccountTransition(nil)
 					if a.settings == s {
 						s.busy = false
 						s.removeEmail = ""

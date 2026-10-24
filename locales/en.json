@@ -60,6 +60,7 @@
   "loadingMail": "Syncing mail…",
   "loadMailFailed": "Couldn't load mail",
   "retry": "Retry",
+  "offlineResults": "Offline: showing cached results",
   "emptyMailbox": "No conversations here",
   "emptyMailboxHint": "Try another label or search.",
   "selectMessage": "Select a message",

@@ -32,19 +32,26 @@ type emailResource struct {
 }
 
 type emailResourceStore struct {
-	loader          *messageImages
-	ownerService    func(string) (mail.Service, uint64)
-	ownerClient     func(string) *accountClient
-	activeVersion   func() int
-	automaticRemote bool
-	allowedRemote   map[string]bool
-	mu              sync.RWMutex
-	resources       map[string]emailResource
+	loader           *messageImages
+	store            attachmentStore
+	attachmentWriter func(string, uint64) attachmentCacheWriter
+	ownerService     func(string) (mail.Service, uint64)
+	ownerClient      func(string) *accountClient
+	activeVersion    func() int
+	automaticRemote  bool
+	allowedRemote    map[string]bool
+	mu               sync.RWMutex
+	resources        map[string]emailResource
 }
 
-func newEmailResourceStore(service mail.Service) *emailResourceStore {
+func newEmailResourceStore(service mail.Service, stores ...attachmentStore) *emailResourceStore {
+	var store attachmentStore
+	if len(stores) > 0 {
+		store = stores[0]
+	}
 	return &emailResourceStore{
-		loader: newMessageImageLoader(service), resources: make(map[string]emailResource), allowedRemote: make(map[string]bool),
+		loader: newMessageImageLoader(service, store),
+		store:  store, resources: make(map[string]emailResource), allowedRemote: make(map[string]bool),
 	}
 }
 
@@ -52,12 +59,16 @@ func (s *emailResourceStore) bindingFor(message mail.Message) emailResourceBindi
 	owner := normalizedEmail(message.AccountEmail)
 	s.mu.RLock()
 	fallback, resolve, ownerClient := s.loader, s.ownerService, s.ownerClient
+	store, attachmentWriter := s.store, s.attachmentWriter
 	s.mu.RUnlock()
 	if owner == "" || resolve == nil {
 		return emailResourceBinding{}
 	}
 	service, generation := resolve(owner)
-	loader := newMessageImageLoader(service)
+	loader := newMessageImageLoader(service, store)
+	if attachmentWriter != nil {
+		loader.save = attachmentWriter(owner, generation)
+	}
 	if fallback != nil {
 		loader.client = fallback.client
 	}
