@@ -126,13 +126,17 @@ func TestOutboxFailureRetryPreservesIdentityAndAttachments(t *testing.T) {
 	}
 	service.sendErr = nil
 	a.sendCompose()
+	if service.sendCalls != 1 || a.compose == nil || !strings.Contains(a.compose.err, "Check Sent") {
+		t.Fatalf("empty Sent result did not require review: calls=%d composer=%+v", service.sendCalls, a.compose)
+	}
+	a.sendCompose()
 	if a.compose != nil || len(store.outbox) != 0 {
 		t.Fatalf("retry did not finish: compose=%+v records=%+v", a.compose, store.outbox)
 	}
 	if len(service.beforeSend) != 2 || service.beforeSend[0] != 1 || service.beforeSend[1] != 2 {
 		t.Fatalf("retry attempts = %v", service.beforeSend)
 	}
-	if service.sent.MessageID != record.Compose.MessageID || len(checked) != 1 || checked[0] != record.Compose.MessageID {
+	if service.sent.MessageID != record.Compose.MessageID || len(checked) != 2 || checked[0] != record.Compose.MessageID || checked[1] != record.Compose.MessageID {
 		t.Fatalf("retry changed Message-ID: sent=%q checked=%v want=%q", service.sent.MessageID, checked, record.Compose.MessageID)
 	}
 	if len(service.sent.Attachments) != 1 || string(service.sent.Attachments[0].Data) != string(record.Compose.Attachments[0].Data) {
@@ -180,5 +184,99 @@ func TestOutboxExistingDraftUsesDraftSend(t *testing.T) {
 	a.sendCompose()
 	if service.sendDraftCalls != 1 || service.sendCalls != 0 || len(store.outbox) != 0 || a.compose != nil {
 		t.Fatalf("existing draft send: draft=%d message=%d records=%d compose=%+v", service.sendDraftCalls, service.sendCalls, len(store.outbox), a.compose)
+	}
+}
+
+func TestOutboxEnqueueInvalidatesOlderSnapshot(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	service.sendErr = errOffline
+	m := openOutboxTestCompose(a)
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.persistDraftSnapshot(m)
+	a.schedule = func(fn func()) { fn() }
+	a.sendCompose()
+	for _, job := range jobs {
+		job()
+	}
+	snapshot := store.drafts[a.storeAccount]
+	if snapshot.OutboxID != m.outboxID || snapshot.Compose.MessageID != m.messageID {
+		t.Fatalf("older snapshot replaced the linked identity: %+v", snapshot)
+	}
+}
+
+func TestOutboxEditAfterFailureGetsNewIdentity(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	service.sendErr = errOffline
+	m := openOutboxTestCompose(a)
+	a.sendCompose()
+	original := onlyOutboxRecord(t, store)
+	m.doc.SetText(richtext.NewText("edited body"))
+	a.markComposerEdited(m)
+	if m.outboxID != "" || m.messageID != "" {
+		t.Fatalf("edited composer retained the old identity: %+v", m)
+	}
+	service.sendErr = nil
+	a.sendCompose()
+	if service.sent.MessageID == original.Compose.MessageID || service.sent.Text != "edited body" {
+		t.Fatalf("edited send reused the original identity: %+v", service.sent)
+	}
+	if record := onlyOutboxRecord(t, store); record.ID != original.ID || record.Compose.Text != original.Compose.Text {
+		t.Fatalf("edited send replaced the original record: %+v", record)
+	}
+}
+
+func TestOutboxDiscardRemovesLinkedEntry(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	draft, err := service.CreateDraft(context.Background(), mail.Compose{To: "to@example.com", Text: "saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.openDraftMessage(draft.ID, draft.Message)
+	service.sendDraftErr = errOffline
+	a.sendCompose()
+	if len(store.outbox) != 1 {
+		t.Fatal("failed draft send did not create an Outbox entry")
+	}
+	a.discardCompose()
+	if len(store.outbox) != 0 || a.compose != nil {
+		t.Fatalf("discard left an unusable Outbox entry: records=%+v compose=%+v", store.outbox, a.compose)
+	}
+}
+
+func TestOutboxMissingRowStillReconciles(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	service.sendErr = errOffline
+	openOutboxTestCompose(a)
+	a.sendCompose()
+	record := onlyOutboxRecord(t, store)
+	delete(store.outbox, fakeOutboxKey(record.AccountEmail, record.ID))
+	service.sentMessageExistsFunc = func(messageID string) (bool, error) { return messageID == record.Compose.MessageID, nil }
+	service.sendErr = nil
+	a.sendCompose()
+	if service.sendCalls != 1 || a.compose != nil || len(store.outbox) != 0 {
+		t.Fatalf("missing Outbox row bypassed reconciliation: calls=%d records=%+v compose=%+v", service.sendCalls, store.outbox, a.compose)
+	}
+}
+
+func TestOutboxDiscardRemoteFailureRestoresEntry(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	draft, err := service.CreateDraft(context.Background(), mail.Compose{To: "to@example.com", Text: "saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.openDraftMessage(draft.ID, draft.Message)
+	service.sendDraftErr = errOffline
+	a.sendCompose()
+	service.deleteErr = errOffline
+	m := a.compose
+	a.discardCompose()
+	if len(store.outbox) != 1 || a.compose != m || store.drafts[a.storeAccount].OutboxID != m.outboxID {
+		t.Fatalf("remote delete failure lost local recovery: records=%+v compose=%+v snapshot=%+v", store.outbox, a.compose, store.drafts[a.storeAccount])
+	}
+	service.deleteErr = nil
+	a.discardCompose()
+	if len(store.outbox) != 0 || a.compose != nil {
+		t.Fatalf("second discard did not finish: records=%+v compose=%+v", store.outbox, a.compose)
 	}
 }

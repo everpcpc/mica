@@ -66,9 +66,12 @@ func TestSentMessageExistsUsesRFC822MessageID(t *testing.T) {
 			if got := r.URL.Query().Get("q"); got != "rfc822msgid:<stable@example.com>" {
 				t.Errorf("search query = %q", got)
 			}
+			if got := r.URL.Query().Get("labelIds"); got != mail.Sent {
+				t.Errorf("label scope = %q", got)
+			}
 			writeTestJSON(t, w, map[string]any{"threads": []map[string]string{{"id": "sent-1"}}})
 		case "/users/me/threads/sent-1":
-			writeTestJSON(t, w, apiThread{ID: "sent-1", Messages: []apiMessage{{ID: "message-1", Payload: apiPart{Headers: []apiHeader{{Name: "Subject", Value: "Outgoing"}}}}}})
+			writeTestJSON(t, w, apiThread{ID: "sent-1", Messages: []apiMessage{{ID: "message-1", LabelIDs: []string{mail.Sent}, Payload: apiPart{Headers: []apiHeader{{Name: "Subject", Value: "Outgoing"}}}}}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -78,5 +81,27 @@ func TestSentMessageExistsUsesRFC822MessageID(t *testing.T) {
 	found, err := service.SentMessageExists(context.Background(), "<stable@example.com>")
 	if err != nil || !found {
 		t.Fatalf("SentMessageExists = %v, %v", found, err)
+	}
+}
+
+func TestSentMessageExistsIgnoresNonSentMatches(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/users/me/threads":
+			if got := r.URL.Query().Get("labelIds"); got != mail.Sent {
+				t.Errorf("label scope = %q", got)
+			}
+			writeTestJSON(t, w, map[string]any{"threads": []map[string]string{{"id": "draft-1"}}})
+		case "/users/me/threads/draft-1":
+			writeTestJSON(t, w, apiThread{ID: "draft-1", Messages: []apiMessage{{ID: "message-1", LabelIDs: []string{mail.Draft}, Payload: apiPart{Headers: []apiHeader{{Name: "Subject", Value: "Outgoing"}}}}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	service := testService(server)
+	found, err := service.SentMessageExists(context.Background(), "<stable@example.com>")
+	if err != nil || found {
+		t.Fatalf("DRAFT-only match was accepted as Sent: found=%v err=%v", found, err)
 	}
 }

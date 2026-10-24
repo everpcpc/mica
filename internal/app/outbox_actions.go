@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"mica/internal/mail"
@@ -13,12 +14,19 @@ func (a *App) retryOutbox() {
 		return
 	}
 	id := outboxRecordKey(a.selectedThread)
+	if a.outboxReviewOpen && a.outboxReviewID != id {
+		return
+	}
 	record, found := a.outboxRecords[id]
 	if !found {
 		return
 	}
 	owner := normalizedEmail(record.AccountEmail)
 	if owner == "" || owner != a.activeComposeOwner() {
+		return
+	}
+	if !a.composeOwnerVerified(owner) {
+		a.notice = locales.DraftSaveFailedReason("account is not verified")
 		return
 	}
 	store := a.outbox
@@ -28,6 +36,10 @@ func (a *App) retryOutbox() {
 	}
 	manager, hasDrafts := service.(mail.DraftManager)
 	drafts, _ := a.store.(draftStore)
+	allowUncertain := a.outboxReviewOpen && a.outboxReviewID == id && a.outboxReviewed[id]
+	a.outboxReviewOpen = false
+	a.outboxReviewID = ""
+	delete(a.outboxReviewed, id)
 	a.outboxBusy = id
 	a.cacheState.writes.Add(1)
 	a.schedule(func() {
@@ -42,7 +54,7 @@ func (a *App) retryOutbox() {
 				record.Attempt++
 				record.State = mail.OutboxSending
 				record.Updated = time.Now()
-				result = attemptOutboxSend(store, owner, record, nil, service, manager, hasDrafts)
+				result = attemptOutboxSend(store, owner, record, nil, service, manager, hasDrafts, allowUncertain)
 			}
 		}
 		if result.sent && result.err == nil {
@@ -53,6 +65,16 @@ func (a *App) retryOutbox() {
 				a.outboxBusy = ""
 			}
 			if !a.ownerOperationCurrent(owner, generation) {
+				return
+			}
+			if errors.Is(result.err, errOutboxReviewRequired) {
+				if a.outboxReviewed == nil {
+					a.outboxReviewed = make(map[string]bool)
+				}
+				a.outboxReviewed[id] = true
+				a.outboxReviewID = id
+				a.outboxReviewOpen = true
+				a.refresh()
 				return
 			}
 			switch {
@@ -81,8 +103,44 @@ func clearOutboxSnapshot(store draftStore, owner, id string) {
 	}
 }
 
+func discardOutboxDraft(store outboxStore, owner, outboxID string, manager mail.DraftManager, draftID string) error {
+	if outboxID == "" {
+		if draftID == "" {
+			return nil
+		}
+		return manager.DeleteDraft(context.Background(), draftID)
+	}
+	if store == nil {
+		return errOutboxUnavailable
+	}
+	record, found, err := store.OutboxMessage(context.Background(), owner, outboxID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		if draftID == "" {
+			return nil
+		}
+		return manager.DeleteDraft(context.Background(), draftID)
+	}
+	if err := store.CompleteOutbox(context.Background(), owner, outboxID, record.Attempt); err != nil {
+		return err
+	}
+	if draftID == "" {
+		return nil
+	}
+	if err := manager.DeleteDraft(context.Background(), draftID); err != nil {
+		snapshot := mail.DraftSnapshot{DraftID: record.DraftID, OutboxID: record.ID, Compose: record.Compose}
+		if restoreErr := store.EnqueueOutbox(context.Background(), owner, record, snapshot); restoreErr != nil {
+			return errors.Join(err, restoreErr)
+		}
+		return err
+	}
+	return nil
+}
+
 func (a *App) requestDeleteOutbox() {
-	if a.compose != nil || a.accountTransition != nil || a.outboxBusy != "" {
+	if a.compose != nil || a.accountTransition != nil || a.outboxBusy != "" || a.outboxReviewOpen {
 		return
 	}
 	id := outboxRecordKey(a.selectedThread)
@@ -94,7 +152,7 @@ func (a *App) requestDeleteOutbox() {
 }
 
 func (a *App) deleteOutbox() {
-	if a.outboxBusy != "" || a.accountTransition != nil || a.compose != nil {
+	if a.outboxBusy != "" || a.accountTransition != nil || a.compose != nil || a.outboxReviewOpen {
 		return
 	}
 	id := a.outboxDeleteID
@@ -116,7 +174,7 @@ func (a *App) deleteOutbox() {
 	a.cacheState.writes.Add(1)
 	a.schedule(func() {
 		defer a.cacheState.writes.Done()
-		err := store.DeleteOutboxMessage(context.Background(), owner, id, record.Attempt)
+		err := store.CompleteOutbox(context.Background(), owner, id, record.Attempt)
 		a.publish(func() {
 			if a.outboxBusy == id {
 				a.outboxBusy = ""

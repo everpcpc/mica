@@ -60,6 +60,17 @@ func untrackDraftSnapshotWrite(a *App) {
 	}
 }
 
+func (a *App) invalidateDraftSnapshotWrites(email string) {
+	email = normalizedEmail(email)
+	a.cacheState.mu.Lock()
+	a.cacheState.draftWrite++
+	write := a.cacheState.draftWrite
+	a.cacheState.mu.Unlock()
+	draftSnapshotWrites.Lock()
+	draftSnapshotWrites.latest[draftSnapshotWriteKey{app: a, email: email}] = write
+	draftSnapshotWrites.Unlock()
+}
+
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
@@ -186,6 +197,7 @@ func (a *App) openRecoveredDraft(snapshot mailmodel.DraftSnapshot, email string)
 	m := newDraftComposer(snapshot.Compose, email)
 	m.draftID = snapshot.DraftID
 	m.outboxID = snapshot.OutboxID
+	m.outboxAttempted = snapshot.OutboxID != ""
 	m.recoveryAccount = email
 	m.revision = 1
 	m.savedRevision = 0

@@ -1190,6 +1190,46 @@ func (msgs Messages) EmptyOutboxHint() string {
 	return Catalog.Format(msgs.locale, "emptyOutboxHint", nil)
 }
 
+// OutboxReviewRequired says "Check Sent before retrying. If it is not there, choose Send again."
+// in the language the app shows.
+func OutboxReviewRequired() string { return In(i18n.Locale()).OutboxReviewRequired() }
+
+// OutboxReviewRequired says "Check Sent before retrying. If it is not there, choose Send again."
+// in the language of msgs.
+func (msgs Messages) OutboxReviewRequired() string {
+	return Catalog.Format(msgs.locale, "outboxReviewRequired", nil)
+}
+
+// OutboxReviewQuestion says "Check before sending again"
+// in the language the app shows.
+func OutboxReviewQuestion() string { return In(i18n.Locale()).OutboxReviewQuestion() }
+
+// OutboxReviewQuestion says "Check before sending again"
+// in the language of msgs.
+func (msgs Messages) OutboxReviewQuestion() string {
+	return Catalog.Format(msgs.locale, "outboxReviewQuestion", nil)
+}
+
+// OutboxReviewConfirmation says "The first attempt may have been sent. Check Gmail Sent, then choose Send again only if it is not there."
+// in the language the app shows.
+func OutboxReviewConfirmation() string { return In(i18n.Locale()).OutboxReviewConfirmation() }
+
+// OutboxReviewConfirmation says "The first attempt may have been sent. Check Gmail Sent, then choose Send again only if it is not there."
+// in the language of msgs.
+func (msgs Messages) OutboxReviewConfirmation() string {
+	return Catalog.Format(msgs.locale, "outboxReviewConfirmation", nil)
+}
+
+// OutboxReviewConfirm says "Send again"
+// in the language the app shows.
+func OutboxReviewConfirm() string { return In(i18n.Locale()).OutboxReviewConfirm() }
+
+// OutboxReviewConfirm says "Send again"
+// in the language of msgs.
+func (msgs Messages) OutboxReviewConfirm() string {
+	return Catalog.Format(msgs.locale, "outboxReviewConfirm", nil)
+}
+
 // RecipientRequired says "Add a recipient"
 // in the language the app shows.
 func RecipientRequired() string { return In(i18n.Locale()).RecipientRequired() }

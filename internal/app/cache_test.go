@@ -312,6 +312,26 @@ func (s *fakeMailStore) DeleteOutboxMessage(_ context.Context, email, id string,
 	return nil
 }
 
+func (s *fakeMailStore) CompleteOutbox(_ context.Context, email, id string, attempt uint64) error {
+	if s.outboxErr != nil {
+		return s.outboxErr
+	}
+	key := fakeOutboxKey(email, id)
+	record, found := s.outbox[key]
+	if !found {
+		return nil
+	}
+	if record.Attempt != attempt {
+		return errors.New("outbox conflict")
+	}
+	delete(s.outbox, key)
+	email = normalizedEmail(email)
+	if snapshot, found := s.drafts[email]; found && snapshot.OutboxID == id {
+		delete(s.drafts, email)
+	}
+	return nil
+}
+
 func (s *fakeMailStore) Labels(_ context.Context, email string) ([]mail.Label, bool, error) {
 	labels, found := s.labels[email]
 	return slices.Clone(labels), found, nil

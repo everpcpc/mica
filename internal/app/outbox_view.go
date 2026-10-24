@@ -123,6 +123,23 @@ func (a *App) refreshOutbox() {
 	})
 }
 
+func (a *App) outboxReviewView(c *ui.Context) {
+	ui.Modal(c, &a.outboxReviewOpen, func() {
+		ui.Column(c).Width(440).Padding(20).Gap(16).Children(func() {
+			ui.Text(c, locales.OutboxReviewQuestion()).FontSize(17).Bold()
+			ui.Text(c, locales.OutboxReviewConfirmation()).LineHeight(1.4)
+			ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
+				ui.Button(c, locales.Cancel()).OnClick(func() {
+					a.outboxReviewOpen = false
+					delete(a.outboxReviewed, a.outboxReviewID)
+					a.outboxReviewID = ""
+				})
+				ui.Button(c, locales.OutboxReviewConfirm()).Disabled(a.outboxBusy != "").OnClick(a.retryOutbox)
+			})
+		})
+	})
+}
+
 func (a *App) outboxDeleteView(c *ui.Context) {
 	ui.Modal(c, &a.outboxDeleteOpen, func() {
 		ui.Column(c).Width(400).Padding(20).Gap(16).Children(func() {

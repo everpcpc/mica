@@ -13,9 +13,16 @@ func (s *Service) SentMessageExists(ctx context.Context, messageID string) (bool
 	if messageID == "" {
 		return false, errors.New("gmail: empty message ID")
 	}
-	threads, err := s.ListThreads(ctx, mail.Query{Search: "rfc822msgid:" + messageID, Limit: 1})
+	threads, err := s.ListThreads(ctx, mail.Query{LabelID: mail.Sent, Search: "rfc822msgid:" + messageID, Limit: 1})
 	if err != nil {
 		return false, err
 	}
-	return len(threads) > 0, nil
+	for _, thread := range threads {
+		for _, label := range thread.LabelIDs {
+			if label == mail.Sent {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }

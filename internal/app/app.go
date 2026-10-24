@@ -25,6 +25,9 @@ type App struct {
 	outboxBusy               string
 	outboxDeleteID           string
 	outboxDeleteOpen         bool
+	outboxReviewed           map[string]bool
+	outboxReviewOpen         bool
+	outboxReviewID           string
 	cacheState               cacheState
 	accountClients           map[string]*accountClient
 	accountGenerationCounter uint64

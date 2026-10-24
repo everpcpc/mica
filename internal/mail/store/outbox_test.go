@@ -97,6 +97,38 @@ func TestOutboxRejectsStaleAttemptAtomically(t *testing.T) {
 	}
 }
 
+func TestCompleteOutboxRemovesSnapshotAndRejectsStaleAttempt(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
+	record := outboxFixture("a@example.com", "outbox-a", 1)
+	if err := s.EnqueueOutbox(ctx, record.AccountEmail, record, mail.DraftSnapshot{}); err != nil {
+		t.Fatal(err)
+	}
+	newer := record
+	newer.Attempt = 2
+	if err := s.EnqueueOutbox(ctx, newer.AccountEmail, newer, mail.DraftSnapshot{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CompleteOutbox(ctx, record.AccountEmail, record.ID, 1); !errors.Is(err, ErrOutboxConflict) {
+		t.Fatalf("stale completion error = %v", err)
+	}
+	if _, found, _ := s.DraftSnapshot(ctx, record.AccountEmail); !found {
+		t.Fatal("stale completion removed the linked snapshot")
+	}
+	if err := s.CompleteOutbox(ctx, record.AccountEmail, record.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := s.OutboxMessage(ctx, record.AccountEmail, record.ID); found {
+		t.Fatal("completion retained the Outbox row")
+	}
+	if _, found, _ := s.DraftSnapshot(ctx, record.AccountEmail); found {
+		t.Fatal("completion retained the linked snapshot")
+	}
+	if err := s.CompleteOutbox(ctx, record.AccountEmail, record.ID, 2); err != nil {
+		t.Fatalf("missing completion was not idempotent: %v", err)
+	}
+}
+
 func TestDeleteAccountRemovesOutbox(t *testing.T) {
 	ctx := context.Background()
 	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))

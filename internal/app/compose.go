@@ -32,6 +32,8 @@ type composer struct {
 	readingAttachment bool
 	draftID           string
 	outboxID          string
+	outboxAttempted   bool
+	outboxReviewed    bool
 	messageID         string
 	revision          uint64
 	savedRevision     uint64

@@ -567,6 +567,10 @@ func TestSendFailurePreservesComposer(t *testing.T) {
 	}
 	service.sendErr = nil
 	a.sendCompose()
+	if a.compose == nil || !strings.Contains(a.compose.err, "Check Sent") {
+		t.Fatalf("retry did not require a Sent review: %+v", a.compose)
+	}
+	a.sendCompose()
 	if a.compose != nil {
 		t.Fatal("composer stayed open after a successful send")
 	}

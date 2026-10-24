@@ -126,3 +126,28 @@ func (s *Store) DeleteOutboxMessage(ctx context.Context, email, id string, attem
 	}
 	return nil
 }
+
+func (s *Store) CompleteOutbox(ctx context.Context, email, id string, attempt uint64) error {
+	email = normalizeAccountEmail(email)
+	results, err := s.db.Transaction(ctx, []sqlite.Statement{
+		{SQL: `DELETE FROM draft_snapshots
+			WHERE account_email = ? AND json_extract(data, '$.OutboxID') = ?
+			AND EXISTS (SELECT 1 FROM outbox_messages WHERE account_email = ? AND id = ? AND attempt = ?)`,
+			Args: []any{email, id, email, id, attempt}},
+		{SQL: "DELETE FROM outbox_messages WHERE account_email = ? AND id = ? AND attempt = ?", Args: []any{email, id, attempt}},
+	})
+	if err != nil {
+		return fmt.Errorf("store: complete outbox: %w", err)
+	}
+	if results[len(results)-1].Changes > 0 {
+		return nil
+	}
+	_, found, err := s.OutboxMessage(ctx, email, id)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	return ErrOutboxConflict
+}

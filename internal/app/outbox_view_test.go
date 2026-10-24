@@ -45,6 +45,12 @@ func TestOutboxRenderedListPreviewAndRetry(t *testing.T) {
 	if err := tt.Click("Retry"); err != nil {
 		t.Fatal(err)
 	}
+	if !tt.HasText("Check before sending again") {
+		t.Fatalf("empty Sent result did not show the review dialog: %q", tt.Texts())
+	}
+	if err := tt.Click("Send again"); err != nil {
+		t.Fatal(err)
+	}
 	if len(store.outbox) != 0 || !tt.HasText("No outgoing mail") {
 		t.Fatalf("successful Outbox retry did not clear the view: records=%+v texts=%q", store.outbox, tt.Texts())
 	}
@@ -65,6 +71,9 @@ func TestOutboxDeleteRequiresConfirmation(t *testing.T) {
 	}
 	if len(store.outbox) != 0 || a.outboxDeleteOpen || !tt.HasText("No outgoing mail") {
 		t.Fatalf("confirmed deletion did not clear Outbox: records=%+v open=%v texts=%q", store.outbox, a.outboxDeleteOpen, tt.Texts())
+	}
+	if _, found := store.drafts[a.storeAccount]; found {
+		t.Fatal("confirmed deletion retained the linked snapshot")
 	}
 }
 
@@ -106,4 +115,13 @@ func TestOutboxViewTransitionsDoNotRetainOtherRows(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestOutboxRetryRequiresVerifiedOwner(t *testing.T) {
+	a, service, store, _ := newOutboxViewHarness(t)
+	a.accountVerified = false
+	a.retryOutbox()
+	if service.sendCalls != 1 || len(store.outbox) != 1 || a.notice == "" {
+		t.Fatalf("unverified account retried Outbox: calls=%d records=%+v notice=%q", service.sendCalls, store.outbox, a.notice)
+	}
 }
