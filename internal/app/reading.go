@@ -39,8 +39,10 @@ func (a *App) reader(c *ui.Context) {
 			}
 		})
 		ui.Toolbar(c, func() {
+			trashLabel, spamLabel := a.recoveryActionLabels()
 			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
-			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash || a.selectedLabel == mail.Draft)
+			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
+			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(a.selectedLabel == mail.Draft).Padding(5, 6).Children(func() {
 				ui.Icon(c, iconLabel).Size(16, 16)

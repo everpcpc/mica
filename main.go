@@ -16,7 +16,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Menu, func(bool)) {
+func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Menu, func(bool, string, string)) {
 	trash := &mygo.MenuItem{Label: locales.MoveToTrash(), Accelerator: "Shift+3", Click: func(*mygo.MenuItem, *mygo.Window) {
 		if shortcut != nil {
 			shortcut(ui.Key3, ui.Shift)
@@ -48,7 +48,9 @@ func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Me
 		{Label: locales.ShortcutActions(), Submenu: []*mygo.MenuItem{trash, spam}},
 		{Role: mygo.RoleHelp, Submenu: []*mygo.MenuItem{help}},
 	})
-	return menu, func(enabled bool) {
+	return menu, func(enabled bool, trashLabel, spamLabel string) {
+		trash.SetLabel(trashLabel)
+		spam.SetLabel(spamLabel)
 		for _, item := range []*mygo.MenuItem{trash, spam, help} {
 			item.SetEnabled(enabled)
 		}
@@ -70,7 +72,9 @@ func main() {
 	}
 	installMenu := func() {
 		menu, setEnabled := appMenu(openSettings, a.PerformShortcut)
-		a.SetShortcutMenuHandler(func(disabled bool) { setEnabled(!disabled) })
+		a.SetShortcutMenuHandler(func(disabled bool, trashLabel, spamLabel string) {
+			setEnabled(!disabled, trashLabel, spamLabel)
+		})
 		mygo.App.SetMenu(menu)
 	}
 	mygo.App.OnLocaleChanged(func(string) { installMenu() })

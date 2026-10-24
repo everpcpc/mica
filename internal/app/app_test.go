@@ -22,6 +22,7 @@ type fakeService struct {
 	add           []string
 	remove        []string
 	trashed       string
+	untrashed     string
 	sent          mail.Compose
 	sendErr       error
 	createdLabels []string
@@ -78,6 +79,10 @@ func (f *fakeService) ModifyThread(_ context.Context, id string, add, remove []s
 }
 func (f *fakeService) TrashThread(_ context.Context, id string) error {
 	f.trashed = id
+	return nil
+}
+func (f *fakeService) UntrashThread(_ context.Context, id string) error {
+	f.untrashed = id
 	return nil
 }
 func (f *fakeService) CreateLabel(_ context.Context, name string) (mail.Label, error) {
@@ -415,8 +420,55 @@ func TestTrashUndoMatchesQueuedLabels(t *testing.T) {
 		t.Fatal("trash undo was not queued after trash")
 	}
 	jobs[1]()
-	if service.trashed != "thread-1" || len(service.remove) != 1 || service.remove[0] != mail.Trash {
-		t.Fatalf("trash requests = %q, undo removals = %v", service.trashed, service.remove)
+	if service.trashed != "thread-1" || service.untrashed != "thread-1" || len(service.modified) != 0 {
+		t.Fatalf("trash requests = %q, untrash requests = %q, modify requests = %v", service.trashed, service.untrashed, service.modified)
+	}
+}
+
+func TestRecoveryKeepsThreadInMatchingView(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		view         string
+		removedLabel string
+		action       func(*App)
+	}{
+		{name: "untrash in spam", view: mail.Spam, removedLabel: mail.Trash, action: func(a *App) { a.untrash() }},
+		{name: "not spam in trash", view: mail.Trash, removedLabel: mail.Spam, action: func(a *App) { a.notSpam() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.threads[0].LabelIDs = []string{mail.Trash, mail.Spam}
+			service.threads[0].Unread = false
+			service.thread.LabelIDs = []string{mail.Trash, mail.Spam}
+			a := newTestApp(service)
+			a.selectedLabel = tc.view
+			a.selectLabel()
+			a.selectThread("thread-1")
+			tc.action(a)
+			if len(a.threads) != 1 || a.selectedThread != "thread-1" {
+				t.Fatalf("recovery removed a conversation that still matches %s: threads=%+v selected=%q", tc.view, a.threads, a.selectedThread)
+			}
+			labels := a.threads[0].LabelIDs
+			if !containsLabel(labels, tc.view) || containsLabel(labels, tc.removedLabel) {
+				t.Fatalf("recovery labels = %v, want %s without %s", labels, tc.view, tc.removedLabel)
+			}
+		})
+	}
+}
+
+func TestReportSpamFromAllRemovesThread(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	a.selectedLabel = mail.All
+	a.selectLabel()
+	a.selectThread("thread-1")
+	a.reportSpam()
+	if len(a.threads) != 1 || a.threads[0].ID != "thread-2" || a.selectedThread != "thread-2" {
+		t.Fatalf("All Mail report spam did not remove and advance: threads=%+v selected=%q", a.threads, a.selectedThread)
 	}
 }
 

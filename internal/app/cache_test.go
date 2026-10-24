@@ -33,8 +33,9 @@ func (offlineMailService) Thread(context.Context, string) (mail.Thread, error) {
 func (offlineMailService) ModifyThread(context.Context, string, []string, []string) error {
 	return errOffline
 }
-func (offlineMailService) TrashThread(context.Context, string) error { return errOffline }
-func (offlineMailService) Send(context.Context, mail.Compose) error  { return errOffline }
+func (offlineMailService) TrashThread(context.Context, string) error   { return errOffline }
+func (offlineMailService) UntrashThread(context.Context, string) error { return errOffline }
+func (offlineMailService) Send(context.Context, mail.Compose) error    { return errOffline }
 
 func TestSQLiteCacheRestoresMailOffline(t *testing.T) {
 	ctx := context.Background()

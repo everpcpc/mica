@@ -57,8 +57,10 @@ type App struct {
 	list                 ui.ListState
 	search               ui.Handle
 	searchFocused        bool
-	shortcutMenu         func(bool)
+	shortcutMenu         func(bool, string, string)
 	shortcutMenuDisabled bool
+	shortcutMenuTrash    string
+	shortcutMenuSpam     string
 	emailResources       *emailResourceStore
 	emailPages           map[string]*emailPage
 	emailHeights         map[string]float32
@@ -635,13 +637,25 @@ func (a *App) archive() {
 	a.mutate(summary.ID, nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
 }
 
+func (a *App) toggleTrash() {
+	summary := a.selectedSummary()
+	if summary == nil {
+		return
+	}
+	if containsLabel(summary.LabelIDs, mail.Trash) {
+		a.untrash()
+		return
+	}
+	a.trash()
+}
+
 func (a *App) trash() {
 	summary := a.selectedSummary()
-	if summary == nil || a.selectedLabel == mail.Trash {
+	if summary == nil || containsLabel(summary.LabelIDs, mail.Trash) {
 		return
 	}
 	id := summary.ID
-	a.recordUndo(id, nil, []string{mail.Trash})
+	a.recordUndoKind(id, mutationUntrash, nil, []string{mail.Trash})
 	a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
 	a.captureUndoSummary(id)
 	a.removeThread(id)
@@ -649,9 +663,29 @@ func (a *App) trash() {
 	a.enqueueMutation(mutationJob{
 		service: a.service,
 		id:      id,
-		trash:   true,
+		kind:    mutationTrash,
 		undo:    a.undo,
 		failure: locales.TrashFailed,
+	})
+}
+
+func (a *App) untrash() {
+	summary := a.selectedSummary()
+	if summary == nil || !containsLabel(summary.LabelIDs, mail.Trash) {
+		return
+	}
+	id := summary.ID
+	a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
+	a.updateThreadLabels(id, nil, []string{mail.Trash})
+	a.captureUndoSummary(id)
+	a.removeThreadIfHidden(id)
+	a.notice = locales.Untrashed()
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		id:      id,
+		kind:    mutationUntrash,
+		undo:    a.undo,
+		failure: locales.UntrashFailed,
 	})
 }
 
@@ -670,6 +704,18 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 		undo:    a.undo,
 		failure: locales.ActionFailed,
 	})
+}
+
+func (a *App) removeThreadIfHidden(id string) {
+	query := a.currentQuery()
+	if query.Search == "" {
+		for _, summary := range a.threads {
+			if summary.ID == id && historyListContains(query, summary) {
+				return
+			}
+		}
+	}
+	a.removeThread(id)
 }
 
 func (a *App) removeThread(id string) {

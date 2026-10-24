@@ -414,6 +414,13 @@ func (s *Service) TrashThread(ctx context.Context, id string) error {
 	return s.doJSON(ctx, http.MethodPost, "/threads/"+url.PathEscape(id)+"/trash", nil, nil, nil)
 }
 
+func (s *Service) UntrashThread(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("gmail: empty thread ID")
+	}
+	return s.doJSON(ctx, http.MethodPost, "/threads/"+url.PathEscape(id)+"/untrash", nil, nil, nil)
+}
+
 func (s *Service) Send(ctx context.Context, compose mail.Compose) error {
 	if err := mail.ValidateComposeForSend(compose); err != nil {
 		return err

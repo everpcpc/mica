@@ -393,6 +393,10 @@ func (d *Demo) TrashThread(ctx context.Context, id string) error {
 	return d.ModifyThread(ctx, id, []string{Trash}, []string{Inbox})
 }
 
+func (d *Demo) UntrashThread(ctx context.Context, id string) error {
+	return d.ModifyThread(ctx, id, nil, []string{Trash})
+}
+
 func (d *Demo) Send(_ context.Context, compose Compose) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()

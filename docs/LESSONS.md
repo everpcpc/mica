@@ -11,8 +11,12 @@
 - Applying changes locally first does not allow requests to run concurrently and out of order; mail mutations must synchronize in FIFO order.
 - Consecutive actions, automatic read marking, and Undo belong to the same queue so later results cannot overwrite earlier actions.
 - Undo should capture the post-action snapshot and then apply the inverse mutation, keeping local state consistent with the server's final state.
+- Undo entries must preserve the operation kind, not only label deltas. Gmail Trash and Untrash are dedicated endpoints, so a label-only inverse cannot faithfully reverse them.
 - Failure reconciliation must avoid a refresh-mark-read-failure-refresh loop.
 - After an account switch, requests and Undo entries from the previous account must not write into the new state.
+- When an action toggles between forward and recovery behavior, update native application-menu labels as well as the toolbar. A shortcut dispatcher alone does not prevent the menu from promising the opposite action.
+- Removing a recovered conversation unconditionally can drop it from a view it still matches through another label. Check post-action labels against the current query before changing the list or persisted cache.
+- Keep recovery-specific visibility logic out of forward actions. Query-aware recovery must preserve Report spam's existing All Mail removal and selection behavior, with a regression test on that path.
 
 ## Filtering, pagination, and selection are one problem
 

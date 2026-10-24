@@ -85,15 +85,19 @@ func TestAppMenuShiftedGmailShortcuts(t *testing.T) {
 		if item.Label != want.label || item.Accelerator != want.accelerator {
 			t.Errorf("menu item %d = %q %q, want %q %q", i, item.Label, item.Accelerator, want.label, want.accelerator)
 		}
-		setEnabled(false)
+		setEnabled(false, "Move to Trash", "Report spam")
 		if item.IsEnabled() {
 			t.Errorf("%s remained enabled with text input", item.Label)
 		}
-		setEnabled(true)
+		setEnabled(true, "Move to Trash", "Report spam")
 		item.Click(item, nil)
 		if len(keys) != i+1 || keys[i] != want.key {
 			t.Errorf("%s invoked %v, want %v", item.Label, keys, want.key)
 		}
+	}
+	setEnabled(true, "Move out of Trash", "Not spam")
+	if items[0].Label != "Move out of Trash" || items[1].Label != "Not spam" {
+		t.Fatalf("recovery menu labels = %q, %q", items[0].Label, items[1].Label)
 	}
 }
 

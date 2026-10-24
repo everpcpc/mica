@@ -7,8 +7,17 @@ import (
 	"mica/locales"
 )
 
+type threadMutation int
+
+const (
+	mutationModify threadMutation = iota
+	mutationTrash
+	mutationUntrash
+)
+
 type undoAction struct {
 	id      string
+	kind    threadMutation
 	add     []string
 	remove  []string
 	summary mail.ThreadSummary
@@ -17,9 +26,9 @@ type undoAction struct {
 type mutationJob struct {
 	service     mail.Service
 	id          string
+	kind        threadMutation
 	add         []string
 	remove      []string
-	trash       bool
 	deleteLabel bool
 	labelColor  *mail.LabelColor
 	readStatus  bool
@@ -35,14 +44,21 @@ func (j mutationJob) run() error {
 	if j.labelColor != nil {
 		return j.service.(mail.LabelManager).UpdateLabelColor(context.Background(), j.id, *j.labelColor)
 	}
-	if j.trash {
+	switch j.kind {
+	case mutationTrash:
 		return j.service.TrashThread(context.Background(), j.id)
+	case mutationUntrash:
+		return j.service.UntrashThread(context.Background(), j.id)
 	}
 	return j.service.ModifyThread(context.Background(), j.id, j.add, j.remove)
 }
 
 func (a *App) recordUndo(id string, add, remove []string) {
-	a.undo = &undoAction{id: id, add: add, remove: remove}
+	a.recordUndoKind(id, mutationModify, add, remove)
+}
+
+func (a *App) recordUndoKind(id string, kind threadMutation, add, remove []string) {
+	a.undo = &undoAction{id: id, kind: kind, add: add, remove: remove}
 }
 
 func (a *App) captureUndoSummary(id string) {
@@ -90,6 +106,7 @@ func (a *App) undoLast() {
 	a.enqueueMutation(mutationJob{
 		service: a.service,
 		id:      action.id,
+		kind:    action.kind,
 		add:     action.add,
 		remove:  action.remove,
 		failure: locales.ActionFailed,
@@ -163,13 +180,61 @@ func (a *App) closeReader() {
 	a.messageScroll = -1
 }
 
-func (a *App) reportSpam() {
+func (a *App) recoveryActionLabels() (string, string) {
+	trashLabel, spamLabel := locales.MoveToTrash(), locales.ReportSpam()
+	summary := a.selectedSummary()
+	if summary == nil {
+		return trashLabel, spamLabel
+	}
+	if containsLabel(summary.LabelIDs, mail.Trash) {
+		trashLabel = locales.Untrash()
+	}
+	if containsLabel(summary.LabelIDs, mail.Spam) {
+		spamLabel = locales.NotSpam()
+	}
+	return trashLabel, spamLabel
+}
+
+func (a *App) toggleSpam() {
 	summary := a.selectedSummary()
 	if summary == nil {
 		return
 	}
+	if containsLabel(summary.LabelIDs, mail.Spam) {
+		a.notSpam()
+		return
+	}
+	a.reportSpam()
+}
+
+func (a *App) reportSpam() {
+	summary := a.selectedSummary()
+	if summary == nil || containsLabel(summary.LabelIDs, mail.Spam) {
+		return
+	}
 	a.recordUndo(summary.ID, []string{mail.Inbox}, []string{mail.Spam})
 	a.mutate(summary.ID, []string{mail.Spam}, []string{mail.Inbox}, true, locales.SpamReported)
+}
+
+func (a *App) notSpam() {
+	summary := a.selectedSummary()
+	if summary == nil || !containsLabel(summary.LabelIDs, mail.Spam) {
+		return
+	}
+	id := summary.ID
+	a.recordUndo(id, []string{mail.Spam}, []string{mail.Inbox})
+	a.updateThreadLabels(id, []string{mail.Inbox}, []string{mail.Spam})
+	a.captureUndoSummary(id)
+	a.removeThreadIfHidden(id)
+	a.notice = locales.NotSpamMarked()
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		id:      id,
+		add:     []string{mail.Inbox},
+		remove:  []string{mail.Spam},
+		undo:    a.undo,
+		failure: locales.ActionFailed,
+	})
 }
 
 func (a *App) toggleThreadLabel(label mail.Label) {

@@ -65,7 +65,7 @@ func TestShiftedPunctuationDoesNotOverrideSearchInput(t *testing.T) {
 func TestShortcutMenuTracksSearchFocus(t *testing.T) {
 	a := newTestApp(newFakeService())
 	var states []bool
-	a.SetShortcutMenuHandler(func(disabled bool) { states = append(states, disabled) })
+	a.SetShortcutMenuHandler(func(disabled bool, _, _ string) { states = append(states, disabled) })
 	tt := ui.NewTester(a.View, 1280, 800)
 	if err := tt.Click("Search mail"); err != nil {
 		t.Fatal(err)
@@ -76,6 +76,33 @@ func TestShortcutMenuTracksSearchFocus(t *testing.T) {
 	a.PerformShortcut(ui.KeySlash, ui.Shift)
 	if a.helpOpen {
 		t.Fatal("disabled menu shortcut opened help")
+	}
+}
+
+func TestShortcutMenuTracksRecoveryLabels(t *testing.T) {
+	service := newFakeService()
+	service.threads[0].LabelIDs = []string{mail.Trash, mail.Spam}
+	service.threads[0].Unread = false
+	service.thread.LabelIDs = []string{mail.Trash, mail.Spam}
+	a := newTestApp(service)
+	a.selectedLabel = mail.Spam
+	a.selectLabel()
+	a.selectThread("thread-1")
+	var labels [][2]string
+	a.SetShortcutMenuHandler(func(_ bool, trash, spam string) {
+		labels = append(labels, [2]string{trash, spam})
+	})
+	tt := ui.NewTester(a.View, 1280, 800)
+	if len(labels) == 0 || labels[len(labels)-1] != [2]string{"Move out of Trash", "Not spam"} {
+		t.Fatalf("initial recovery menu labels = %v", labels)
+	}
+	a.toggleTrash()
+	tt.Frame()
+	if a.selectedThread != "thread-1" {
+		t.Fatal("recovery changed the selected conversation")
+	}
+	if labels[len(labels)-1] != [2]string{"Move to Trash", "Not spam"} {
+		t.Fatalf("updated recovery menu labels = %v", labels)
 	}
 }
 
