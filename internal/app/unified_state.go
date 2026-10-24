@@ -54,11 +54,16 @@ func (a *App) unifiedAccountCurrent(email string, generation uint64) bool {
 }
 
 func (a *App) refreshUnifiedAfterAccountRemoval(email string) {
+	email = normalizedEmail(email)
 	if a.selectedLabel != mail.Unified {
+		if accountInboxLabel(a.selectedLabel) == email {
+			a.selectedLabel = mail.Inbox
+			a.clearThread()
+			a.refresh()
+		}
 		return
 	}
 	a.undo = nil
-	email = normalizedEmail(email)
 	for id := range a.threadSelection.All() {
 		if normalizedEmail(parseThreadRef(id).AccountEmail) == email {
 			a.threadSelection.Remove(id)
@@ -104,6 +109,7 @@ func (a *App) refreshUnified() {
 				return
 			}
 			a.accountCount = len(accounts)
+			a.unifiedAccounts = accounts
 			if len(accounts) < 2 {
 				a.selectedLabel = mail.Inbox
 				a.compositeThreads = false

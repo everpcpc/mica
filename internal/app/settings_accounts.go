@@ -21,6 +21,7 @@ func (a *App) refreshAccountList() {
 			s.accounts = []mail.Account{a.account}
 			a.accountCount = 1
 		}
+		a.unifiedAccounts = s.accounts
 		return
 	}
 	a.schedule(func() {
@@ -35,6 +36,7 @@ func (a *App) refreshAccountList() {
 			}
 			s.accounts = accounts
 			a.accountCount = len(accounts)
+			a.unifiedAccounts = accounts
 		})
 	})
 }
