@@ -635,13 +635,25 @@ func (a *App) archive() {
 	a.mutate(summary.ID, nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
 }
 
+func (a *App) toggleTrash() {
+	summary := a.selectedSummary()
+	if summary == nil {
+		return
+	}
+	if containsLabel(summary.LabelIDs, mail.Trash) {
+		a.untrash()
+		return
+	}
+	a.trash()
+}
+
 func (a *App) trash() {
 	summary := a.selectedSummary()
-	if summary == nil || a.selectedLabel == mail.Trash {
+	if summary == nil || containsLabel(summary.LabelIDs, mail.Trash) {
 		return
 	}
 	id := summary.ID
-	a.recordUndo(id, nil, []string{mail.Trash})
+	a.recordUndoKind(id, mutationUntrash, nil, []string{mail.Trash})
 	a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
 	a.captureUndoSummary(id)
 	a.removeThread(id)
@@ -649,9 +661,29 @@ func (a *App) trash() {
 	a.enqueueMutation(mutationJob{
 		service: a.service,
 		id:      id,
-		trash:   true,
+		kind:    mutationTrash,
 		undo:    a.undo,
 		failure: locales.TrashFailed,
+	})
+}
+
+func (a *App) untrash() {
+	summary := a.selectedSummary()
+	if summary == nil || !containsLabel(summary.LabelIDs, mail.Trash) {
+		return
+	}
+	id := summary.ID
+	a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
+	a.updateThreadLabels(id, nil, []string{mail.Trash})
+	a.captureUndoSummary(id)
+	a.removeThread(id)
+	a.notice = locales.Untrashed()
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		id:      id,
+		kind:    mutationUntrash,
+		undo:    a.undo,
+		failure: locales.UntrashFailed,
 	})
 }
 

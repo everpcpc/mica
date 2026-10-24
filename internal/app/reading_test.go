@@ -122,6 +122,59 @@ func TestThreadActionsIncludeReplyAll(t *testing.T) {
 	}
 }
 
+func TestReaderRecoveryActions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		label  string
+		action string
+	}{
+		{name: "trash", label: mail.Trash, action: "Move out of Trash"},
+		{name: "spam", label: mail.Spam, action: "Not spam"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.threads[0].LabelIDs = []string{tc.label}
+			service.threads[0].Unread = false
+			service.thread.LabelIDs = []string{tc.label}
+			a := newTestApp(service)
+			a.selectedLabel = tc.label
+			a.selectLabel()
+			a.selectThread("thread-1")
+			tt := ui.NewTester(a.View, 1280, 800)
+			if err := tt.Click(tc.action); err != nil {
+				t.Fatal(err)
+			}
+			switch tc.label {
+			case mail.Trash:
+				if service.untrashed != "thread-1" {
+					t.Fatalf("untrash request = %q", service.untrashed)
+				}
+				a.undoLast()
+				if service.trashed != "thread-1" {
+					t.Fatalf("untrash undo request = %q", service.trashed)
+				}
+			case mail.Spam:
+				if len(service.add) != 1 || service.add[0] != mail.Inbox || len(service.remove) != 1 || service.remove[0] != mail.Spam {
+					t.Fatalf("not-spam labels: add %v, remove %v", service.add, service.remove)
+				}
+				a.undoLast()
+				if len(service.add) != 1 || service.add[0] != mail.Spam || len(service.remove) != 1 || service.remove[0] != mail.Inbox {
+					t.Fatalf("not-spam undo labels: add %v, remove %v", service.add, service.remove)
+				}
+			}
+		})
+	}
+
+	t.Run("inbox keeps report spam", func(t *testing.T) {
+		a := newTestApp(newFakeService())
+		a.selectThread("thread-1")
+		tt := ui.NewTester(a.View, 1280, 800)
+		if _, ok := tt.Find("Report spam"); !ok {
+			t.Fatal("ordinary reader does not offer Report spam")
+		}
+	})
+}
+
 func TestMessageViewFallsBackToTextWhenHTMLIsEmpty(t *testing.T) {
 	service := newFakeService()
 	service.thread.Messages[0].Text = "Plain fallback"

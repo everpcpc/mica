@@ -134,9 +134,9 @@ func (a *App) performShortcut(key ui.Key, mods ui.Modifiers) {
 	case mods == 0 && key == ui.KeyS:
 		a.toggleStar()
 	case mods == ui.Shift && key == ui.Key3:
-		a.trash()
+		a.toggleTrash()
 	case mods == ui.Shift && key == ui.Key1:
-		a.reportSpam()
+		a.toggleSpam()
 	case mods == 0 && key == ui.KeyR:
 		a.openReply()
 	case mods == 0 && key == ui.KeyA:

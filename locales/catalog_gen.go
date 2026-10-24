@@ -606,6 +606,26 @@ func (msgs Messages) MoveToTrash() string {
 	return Catalog.Format(msgs.locale, "moveToTrash", nil)
 }
 
+// Untrash says "Move out of Trash"
+// in the language the app shows.
+func Untrash() string { return In(i18n.Locale()).Untrash() }
+
+// Untrash says "Move out of Trash"
+// in the language of msgs.
+func (msgs Messages) Untrash() string {
+	return Catalog.Format(msgs.locale, "untrash", nil)
+}
+
+// NotSpam says "Not spam"
+// in the language the app shows.
+func NotSpam() string { return In(i18n.Locale()).NotSpam() }
+
+// NotSpam says "Not spam"
+// in the language of msgs.
+func (msgs Messages) NotSpam() string {
+	return Catalog.Format(msgs.locale, "notSpam", nil)
+}
+
 // ReadUnread says "Read / Unread"
 // in the language the app shows.
 func ReadUnread() string { return In(i18n.Locale()).ReadUnread() }
@@ -1242,6 +1262,16 @@ func (msgs Messages) Trashed() string {
 	return Catalog.Format(msgs.locale, "trashed", nil)
 }
 
+// Untrashed says "Conversation moved out of Trash"
+// in the language the app shows.
+func Untrashed() string { return In(i18n.Locale()).Untrashed() }
+
+// Untrashed says "Conversation moved out of Trash"
+// in the language of msgs.
+func (msgs Messages) Untrashed() string {
+	return Catalog.Format(msgs.locale, "untrashed", nil)
+}
+
 // SpamReported says "Conversation reported as spam"
 // in the language the app shows.
 func SpamReported() string { return In(i18n.Locale()).SpamReported() }
@@ -1250,6 +1280,16 @@ func SpamReported() string { return In(i18n.Locale()).SpamReported() }
 // in the language of msgs.
 func (msgs Messages) SpamReported() string {
 	return Catalog.Format(msgs.locale, "spamReported", nil)
+}
+
+// NotSpamMarked says "Marked as not spam"
+// in the language the app shows.
+func NotSpamMarked() string { return In(i18n.Locale()).NotSpamMarked() }
+
+// NotSpamMarked says "Marked as not spam"
+// in the language of msgs.
+func (msgs Messages) NotSpamMarked() string {
+	return Catalog.Format(msgs.locale, "notSpamMarked", nil)
 }
 
 // ActionFailed says "Action failed: {error}"
@@ -1280,6 +1320,16 @@ func TrashFailed(error string) string { return In(i18n.Locale()).TrashFailed(err
 // in the language of msgs.
 func (msgs Messages) TrashFailed(error string) string {
 	return Catalog.Format(msgs.locale, "trashFailed", map[string]any{"error": error})
+}
+
+// UntrashFailed says "Couldn't move out of Trash: {error}"
+// in the language the app shows.
+func UntrashFailed(error string) string { return In(i18n.Locale()).UntrashFailed(error) }
+
+// UntrashFailed says "Couldn't move out of Trash: {error}"
+// in the language of msgs.
+func (msgs Messages) UntrashFailed(error string) string {
+	return Catalog.Format(msgs.locale, "untrashFailed", map[string]any{"error": error})
 }
 
 // Appearance says "Appearance"

@@ -231,6 +231,18 @@ func TestDemoModifyTrashAndSend(t *testing.T) {
 	if len(threads) != 1 || threads[0].ID != "t-sync" {
 		t.Fatalf("trashed thread is not searchable in trash: %+v", threads)
 	}
+	if err := service.UntrashThread(ctx, "t-sync"); err != nil {
+		t.Fatal(err)
+	}
+	thread, err = service.Thread(ctx, "t-sync")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range thread.Messages {
+		if hasString(message.LabelIDs, Trash) || hasString(message.LabelIDs, Inbox) {
+			t.Fatalf("untrash did not only remove Trash: %+v", message.LabelIDs)
+		}
+	}
 
 	before, err := service.Thread(ctx, "t-launch")
 	if err != nil {

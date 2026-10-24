@@ -137,6 +137,7 @@ type Service interface {
 	Thread(context.Context, string) (Thread, error)
 	ModifyThread(context.Context, string, []string, []string) error
 	TrashThread(context.Context, string) error
+	UntrashThread(context.Context, string) error
 	Send(context.Context, Compose) error
 }
 

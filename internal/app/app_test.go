@@ -22,6 +22,7 @@ type fakeService struct {
 	add           []string
 	remove        []string
 	trashed       string
+	untrashed     string
 	sent          mail.Compose
 	sendErr       error
 	createdLabels []string
@@ -78,6 +79,10 @@ func (f *fakeService) ModifyThread(_ context.Context, id string, add, remove []s
 }
 func (f *fakeService) TrashThread(_ context.Context, id string) error {
 	f.trashed = id
+	return nil
+}
+func (f *fakeService) UntrashThread(_ context.Context, id string) error {
+	f.untrashed = id
 	return nil
 }
 func (f *fakeService) CreateLabel(_ context.Context, name string) (mail.Label, error) {
@@ -415,8 +420,8 @@ func TestTrashUndoMatchesQueuedLabels(t *testing.T) {
 		t.Fatal("trash undo was not queued after trash")
 	}
 	jobs[1]()
-	if service.trashed != "thread-1" || len(service.remove) != 1 || service.remove[0] != mail.Trash {
-		t.Fatalf("trash requests = %q, undo removals = %v", service.trashed, service.remove)
+	if service.trashed != "thread-1" || service.untrashed != "thread-1" || len(service.modified) != 0 {
+		t.Fatalf("trash requests = %q, untrash requests = %q, modify requests = %v", service.trashed, service.untrashed, service.modified)
 	}
 }
 

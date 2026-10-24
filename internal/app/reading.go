@@ -39,8 +39,18 @@ func (a *App) reader(c *ui.Context) {
 			}
 		})
 		ui.Toolbar(c, func() {
+			summary := a.selectedSummary()
+			trashLabel := locales.MoveToTrash()
+			if summary != nil && containsLabel(summary.LabelIDs, mail.Trash) {
+				trashLabel = locales.Untrash()
+			}
+			spamLabel := locales.ReportSpam()
+			if summary != nil && containsLabel(summary.LabelIDs, mail.Spam) {
+				spamLabel = locales.NotSpam()
+			}
 			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
-			iconButton(c, locales.MoveToTrash(), iconTrash, a.trash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Trash || a.selectedLabel == mail.Draft)
+			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
+			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(a.selectedLabel == mail.Draft).Padding(5, 6).Children(func() {
 				ui.Icon(c, iconLabel).Size(16, 16)

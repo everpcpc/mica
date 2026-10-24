@@ -401,8 +401,8 @@ func TestThreadParsesNestedMIME(t *testing.T) {
 	}
 }
 
-func TestModifyAndTrashThread(t *testing.T) {
-	var modifyCalled, trashCalled bool
+func TestModifyTrashAndUntrashThread(t *testing.T) {
+	var modifyCalled, trashCalled, untrashCalled bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/users/me/threads/thread-1/modify":
@@ -424,6 +424,15 @@ func TestModifyAndTrashThread(t *testing.T) {
 				t.Errorf("trash method = %s", r.Method)
 			}
 			writeTestJSON(t, w, map[string]string{"id": "thread-1"})
+		case "/users/me/threads/thread-1/untrash":
+			untrashCalled = true
+			if r.Method != http.MethodPost {
+				t.Errorf("untrash method = %s", r.Method)
+			}
+			if r.ContentLength != 0 {
+				t.Errorf("untrash content length = %d, want 0", r.ContentLength)
+			}
+			writeTestJSON(t, w, map[string]string{"id": "thread-1"})
 		default:
 			http.NotFound(w, r)
 		}
@@ -437,8 +446,11 @@ func TestModifyAndTrashThread(t *testing.T) {
 	if err := service.TrashThread(ctx, "thread-1"); err != nil {
 		t.Fatal(err)
 	}
-	if !modifyCalled || !trashCalled {
-		t.Fatalf("modify called %v, trash called %v", modifyCalled, trashCalled)
+	if err := service.UntrashThread(ctx, "thread-1"); err != nil {
+		t.Fatal(err)
+	}
+	if !modifyCalled || !trashCalled || !untrashCalled {
+		t.Fatalf("modify called %v, trash called %v, untrash called %v", modifyCalled, trashCalled, untrashCalled)
 	}
 }
 
