@@ -213,7 +213,7 @@ func (a *App) threadList(c *ui.Context) {
 			a.threadRow(row, &threads[row.Index])
 		})
 		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {
-			a.selectThread(threads[a.selectedRow].ID)
+			a.openThreadFromList(threads[a.selectedRow].ID)
 		}
 		if a.list.AtEnd() {
 			a.loadMoreThreads()

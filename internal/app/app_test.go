@@ -206,6 +206,154 @@ func TestArchiveSelectsAdjacentThread(t *testing.T) {
 	}
 }
 
+func TestBatchArchiveAndUndo(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads,
+		mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}},
+		mail.ThreadSummary{ID: "thread-3", Subject: "Third", LabelIDs: []string{mail.Inbox}},
+	)
+	base := time.Now()
+	for i := range service.threads {
+		service.threads[i].Unread = false
+		service.threads[i].Updated = base.Add(-time.Duration(i) * time.Minute)
+	}
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Subject: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	a.threadSelection.Add("thread-2")
+	service.modified = nil
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.threadCache = map[string]mail.Thread{
+		"thread-3": {ID: "thread-3", Messages: []mail.Message{{ID: "message-3", ThreadID: "thread-3", Text: "Third body"}}},
+	}
+	a.archive()
+	if len(a.threads) != 1 || a.threads[0].ID != "thread-3" || a.selectedThread != "thread-3" {
+		t.Fatalf("batch archive left threads=%+v selected=%q", a.threads, a.selectedThread)
+	}
+	a.undoLast()
+	if len(a.threads) != 3 {
+		t.Fatalf("batch undo restored %d conversations, want 3", len(a.threads))
+	}
+	for _, thread := range a.threads {
+		if !containsLabel(thread.LabelIDs, mail.Inbox) {
+			t.Fatalf("batch undo did not restore INBOX: %+v", thread)
+		}
+	}
+	if len(jobs) != 1 || len(a.mutationQueue) != 4 {
+		t.Fatalf("batch archive and undo have %d scheduled and %d queued requests, want 1 and 4", len(jobs), len(a.mutationQueue))
+	}
+	for range 4 {
+		if len(jobs) == 0 {
+			t.Fatal("mutation queue did not schedule the next request")
+		}
+		job := jobs[0]
+		jobs = jobs[1:]
+		job()
+	}
+	want := []string{"thread-1", "thread-2", "thread-1", "thread-2"}
+	if len(service.modified) != len(want) {
+		t.Fatalf("mutation order = %v, want %v", service.modified, want)
+	}
+	for i := range want {
+		if service.modified[i] != want[i] {
+			t.Fatalf("mutation order = %v, want %v", service.modified, want)
+		}
+	}
+}
+
+func TestBatchArchiveReaderSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		reader        string
+		selected      []string
+		wantReader    string
+		wantRow       int
+		wantSelection int
+	}{
+		{name: "previous after last", reader: "thread-3", selected: []string{"thread-2", "thread-3"}, wantReader: "thread-1", wantRow: 0, wantSelection: 1},
+		{name: "reader outside batch", reader: "thread-1", selected: []string{"thread-2", "thread-3"}, wantReader: "thread-1", wantRow: 0, wantSelection: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.threads = append(service.threads,
+				mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}},
+				mail.ThreadSummary{ID: "thread-3", Subject: "Third", LabelIDs: []string{mail.Inbox}},
+			)
+			service.threadFunc = func(id string) (mail.Thread, error) {
+				return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+			}
+			a := newTestApp(service)
+			a.selectThread(tc.reader)
+			a.threadSelection.Clear()
+			for _, id := range tc.selected {
+				a.threadSelection.Add(id)
+			}
+			a.archive()
+			if len(a.threads) != 1 || a.selectedThread != tc.wantReader || a.selectedRow != tc.wantRow || a.thread.ID != tc.wantReader {
+				t.Fatalf("batch reader = %q at row %d, detail=%q, threads=%+v", a.selectedThread, a.selectedRow, a.thread.ID, a.threads)
+			}
+			if a.threadSelection.Len() != tc.wantSelection {
+				t.Fatalf("batch selection size = %d, want %d", a.threadSelection.Len(), tc.wantSelection)
+			}
+		})
+	}
+}
+
+func TestBatchArchiveKeepsNonInboxThreads(t *testing.T) {
+	for _, view := range []string{mail.Starred, mail.All} {
+		t.Run(view, func(t *testing.T) {
+			service := newFakeService()
+			labels := []string{mail.Inbox}
+			if view == mail.Starred {
+				labels = append(labels, mail.Starred)
+			}
+			service.threads[0].LabelIDs = append([]string(nil), labels...)
+			service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: append([]string(nil), labels...)})
+			service.thread.LabelIDs = append([]string(nil), labels...)
+			service.threadFunc = func(id string) (mail.Thread, error) {
+				return mail.Thread{ID: id, LabelIDs: append([]string(nil), labels...), Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+			}
+			a := newTestApp(service)
+			a.selectedLabel = view
+			a.selectLabel()
+			a.selectThread("thread-1")
+			a.threadSelection.Add("thread-2")
+			a.archive()
+			if len(a.threads) != 2 || a.selectedThread != "thread-1" {
+				t.Fatalf("batch archive removed matching conversations from %s: %+v", view, a.threads)
+			}
+			for _, thread := range a.threads {
+				if containsLabel(thread.LabelIDs, mail.Inbox) {
+					t.Fatalf("batch archive did not remove INBOX in %s: %+v", view, thread.LabelIDs)
+				}
+			}
+		})
+	}
+}
+
+func TestBatchArchiveSelectsNextSurvivor(t *testing.T) {
+	service := newFakeService()
+	service.threads = nil
+	for _, id := range []string{"A", "B", "C", "D", "E"} {
+		service.threads = append(service.threads, mail.ThreadSummary{ID: id, Subject: id, LabelIDs: []string{mail.Inbox}})
+	}
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	a.selectThread("C")
+	a.threadSelection.Clear()
+	a.threadSelection.Add("A")
+	a.threadSelection.Add("C")
+	a.archive()
+	if a.selectedThread != "D" || a.selectedRow != 1 || a.thread.ID != "D" {
+		t.Fatalf("non-contiguous archive selected %q at row %d with detail %q, want D at row 1", a.selectedThread, a.selectedRow, a.thread.ID)
+	}
+}
+
 func TestArchiveKeepsStarredSearchResult(t *testing.T) {
 	service := newFakeService()
 	a := newTestApp(service)

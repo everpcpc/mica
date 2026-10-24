@@ -15,12 +15,16 @@ const (
 	mutationUntrash
 )
 
-type undoAction struct {
+type undoItem struct {
 	id      string
 	kind    threadMutation
 	add     []string
 	remove  []string
 	summary mail.ThreadSummary
+}
+
+type undoAction struct {
+	items []undoItem
 }
 
 type mutationJob struct {
@@ -58,41 +62,57 @@ func (a *App) recordUndo(id string, add, remove []string) {
 }
 
 func (a *App) recordUndoKind(id string, kind threadMutation, add, remove []string) {
-	a.undo = &undoAction{id: id, kind: kind, add: add, remove: remove}
+	a.undo = &undoAction{items: []undoItem{{id: id, kind: kind, add: add, remove: remove}}}
 }
 
 func (a *App) captureUndoSummary(id string) {
-	if a.undo == nil || a.undo.id != id {
+	if a.undo == nil {
 		return
 	}
-	for i := range a.threads {
-		if a.threads[i].ID == id {
-			a.undo.summary = a.threads[i]
-			a.undo.summary.LabelIDs = append([]string(nil), a.undo.summary.LabelIDs...)
-			return
+	for i := len(a.undo.items) - 1; i >= 0; i-- {
+		if a.undo.items[i].id != id {
+			continue
+		}
+		for j := range a.threads {
+			if a.threads[j].ID == id {
+				a.undo.items[i].summary = a.threads[j]
+				a.undo.items[i].summary.LabelIDs = append([]string(nil), a.undo.items[i].summary.LabelIDs...)
+				return
+			}
 		}
 	}
 }
 
 func (a *App) restoreUndo(action *undoAction) {
-	a.updateThreadLabels(action.id, action.add, action.remove)
-	if action.summary.ID == "" {
-		return
-	}
-	summary := action.summary
-	summary.LabelIDs = modifyLabelIDs(summary.LabelIDs, action.add, action.remove)
-	summary.Unread = containsLabel(summary.LabelIDs, mail.Unread)
-	summary.Starred = containsLabel(summary.LabelIDs, mail.Starred)
-	if a.currentQuery().Search != "" {
-		for i := range a.threads {
-			if a.threads[i].ID == action.id {
-				return
-			}
+	search := a.currentQuery().Search != ""
+	summaries := make([]mail.ThreadSummary, 0, len(action.items))
+	for _, item := range action.items {
+		a.updateThreadLabels(item.id, item.add, item.remove)
+		if item.summary.ID == "" {
+			continue
 		}
-		a.mutationRefresh = true
-		return
+		summary := item.summary
+		summary.LabelIDs = modifyLabelIDs(summary.LabelIDs, item.add, item.remove)
+		summary.Unread = containsLabel(summary.LabelIDs, mail.Unread)
+		summary.Starred = containsLabel(summary.LabelIDs, mail.Starred)
+		if search {
+			found := false
+			for i := range a.threads {
+				if a.threads[i].ID == item.id {
+					found = true
+					break
+				}
+			}
+			if !found {
+				a.mutationRefresh = true
+			}
+			continue
+		}
+		summaries = append(summaries, summary)
 	}
-	a.applyHistoryChanges([]mail.ThreadSummary{summary}, nil)
+	if !search && len(summaries) > 0 {
+		a.applyHistoryChanges(summaries, nil)
+	}
 }
 
 func (a *App) undoLast() {
@@ -103,14 +123,16 @@ func (a *App) undoLast() {
 	a.undo = nil
 	a.restoreUndo(action)
 	a.notice = locales.ActionUndone()
-	a.enqueueMutation(mutationJob{
-		service: a.service,
-		id:      action.id,
-		kind:    action.kind,
-		add:     action.add,
-		remove:  action.remove,
-		failure: locales.ActionFailed,
-	})
+	for _, item := range action.items {
+		a.enqueueMutation(mutationJob{
+			service: a.service,
+			id:      item.id,
+			kind:    item.kind,
+			add:     item.add,
+			remove:  item.remove,
+			failure: locales.ActionFailed,
+		})
+	}
 }
 
 func (a *App) mutationsPending() bool {
