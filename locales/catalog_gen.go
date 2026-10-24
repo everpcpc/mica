@@ -94,6 +94,86 @@ func (msgs Messages) Snoozed() string {
 	return Catalog.Format(msgs.locale, "snoozed", nil)
 }
 
+// SnoozeAction says "Snooze"
+// in the language the app shows.
+func SnoozeAction() string { return In(i18n.Locale()).SnoozeAction() }
+
+// SnoozeAction says "Snooze"
+// in the language of msgs.
+func (msgs Messages) SnoozeAction() string {
+	return Catalog.Format(msgs.locale, "snoozeAction", nil)
+}
+
+// Unsnooze says "Unsnooze"
+// in the language the app shows.
+func Unsnooze() string { return In(i18n.Locale()).Unsnooze() }
+
+// Unsnooze says "Unsnooze"
+// in the language of msgs.
+func (msgs Messages) Unsnooze() string {
+	return Catalog.Format(msgs.locale, "unsnooze", nil)
+}
+
+// TomorrowMorning says "Tomorrow morning"
+// in the language the app shows.
+func TomorrowMorning() string { return In(i18n.Locale()).TomorrowMorning() }
+
+// TomorrowMorning says "Tomorrow morning"
+// in the language of msgs.
+func (msgs Messages) TomorrowMorning() string {
+	return Catalog.Format(msgs.locale, "tomorrowMorning", nil)
+}
+
+// ThisWeekend says "This weekend"
+// in the language the app shows.
+func ThisWeekend() string { return In(i18n.Locale()).ThisWeekend() }
+
+// ThisWeekend says "This weekend"
+// in the language of msgs.
+func (msgs Messages) ThisWeekend() string {
+	return Catalog.Format(msgs.locale, "thisWeekend", nil)
+}
+
+// NextWeek says "Next week"
+// in the language the app shows.
+func NextWeek() string { return In(i18n.Locale()).NextWeek() }
+
+// NextWeek says "Next week"
+// in the language of msgs.
+func (msgs Messages) NextWeek() string {
+	return Catalog.Format(msgs.locale, "nextWeek", nil)
+}
+
+// SnoozeUntil says "Snoozed until {time}"
+// in the language the app shows.
+func SnoozeUntil(time_ string) string { return In(i18n.Locale()).SnoozeUntil(time_) }
+
+// SnoozeUntil says "Snoozed until {time}"
+// in the language of msgs.
+func (msgs Messages) SnoozeUntil(time_ string) string {
+	return Catalog.Format(msgs.locale, "snoozeUntil", map[string]any{"time": time_})
+}
+
+// SnoozeRestored says "Returned to Inbox"
+// in the language the app shows.
+func SnoozeRestored() string { return In(i18n.Locale()).SnoozeRestored() }
+
+// SnoozeRestored says "Returned to Inbox"
+// in the language of msgs.
+func (msgs Messages) SnoozeRestored() string {
+	return Catalog.Format(msgs.locale, "snoozeRestored", nil)
+}
+
+// SnoozeFailed says "Couldn't snooze: {error}"
+// in the language the app shows.
+func SnoozeFailed(error string) string { return In(i18n.Locale()).SnoozeFailed(error) }
+
+// SnoozeFailed says "Couldn't snooze: {error}"
+// in the language of msgs.
+func (msgs Messages) SnoozeFailed(error string) string {
+	return Catalog.Format(msgs.locale, "snoozeFailed", map[string]any{"error": error})
+}
+
 // Drafts says "Drafts"
 // in the language the app shows.
 func Drafts() string { return In(i18n.Locale()).Drafts() }

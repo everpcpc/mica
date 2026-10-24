@@ -292,7 +292,11 @@ func (a *App) threadRow(row ui.ListRow, thread *mail.ThreadSummary) {
 			if thread.Unread {
 				senders.Bold()
 			}
-			ui.Text(c, shortTime(c, thread.Updated)).FontSize(11).TextColor(secondary)
+			date := shortTime(c, thread.Updated)
+			if !thread.SnoozeAt.IsZero() {
+				date = locales.SnoozeUntil(snoozeTime(thread.SnoozeAt))
+			}
+			ui.Text(c, date).FontSize(11).TextColor(secondary)
 		})
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			subject := ui.Text(c, thread.Subject).Grow(1).MinWidth(0).SingleLine().TextColor(primary)

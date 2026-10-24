@@ -252,7 +252,7 @@ const emailHeightScript = `
     });
   }, {passive: false});
   const keyShortcuts = {
-    c: "compose", j: "next", k: "previous", o: "open", u: "close", e: "archive",
+    c: "compose", j: "next", k: "previous", o: "open", u: "close", e: "archive", b: "snooze",
     s: "star", r: "reply", a: "replyAll", f: "forward", z: "undo",
     n: "nextMessage", p: "previousMessage", g: "go", i: "inbox", t: "sent"
   };

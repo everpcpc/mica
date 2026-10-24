@@ -30,6 +30,7 @@
 - **Fast local actions with undo.** Archive, star, trash, report spam, and change read state immediately while changes synchronize in the background.
 - **Compose and reply.** Write new mail, reply, reply all, forward, and open or save attachments.
 - **Persistent Outbox.** Sends are journaled locally with attachments and a stable Message-ID. Review, retry, or delete outgoing mail; retries check Sent and require confirmation before sending again.
+- **Persistent Snooze.** Archive conversations until a local wake time, see them in Snoozed, reschedule or cancel, and restore them after restarts. Gmail changes stay ordered through the same background queue.
 - **Email links.** Open `mailto:` links into a draft, with an explicit default email app setting in macOS.
 - **Label management.** Assign, create, recolor, and delete custom Gmail labels.
 - **Comfortable reading.** Sanitized HTML mail, inline images, collapsible messages, light and dark appearances, and reduced-motion support.

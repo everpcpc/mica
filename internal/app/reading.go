@@ -51,6 +51,9 @@ func (a *App) reader(c *ui.Context) {
 			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(len(actionTargets) == 0 || compositionView)
 			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(len(actionTargets) == 0 || compositionView)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(len(actionTargets) == 0 || compositionView)
+			ui.Button(c, "").Label(locales.SnoozeAction()).Tooltip(locales.SnoozeAction()).Disabled(len(actionTargets) == 0 || compositionView).Padding(5, 6).Children(func() {
+				ui.Icon(c, iconSnoozed).Size(16, 16)
+			}).Menu(a.snoozeMenu)
 			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(compositionView).Padding(5, 6).Children(func() {
 				ui.Icon(c, iconLabel).Size(16, 16)
 			}).Menu(a.labelMenu)

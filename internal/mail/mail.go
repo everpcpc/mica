@@ -58,10 +58,19 @@ type ThreadSummary struct {
 	Snippet      string
 	Senders      string
 	Updated      time.Time
+	SnoozeAt     time.Time `json:",omitempty"`
 	MessageCount int
 	LabelIDs     []string
 	Unread       bool
 	Starred      bool
+}
+
+type SnoozeRecord struct {
+	AccountEmail string
+	ThreadID     string
+	WakeAt       time.Time
+	Restoring    bool
+	Summary      ThreadSummary
 }
 
 type Thread struct {

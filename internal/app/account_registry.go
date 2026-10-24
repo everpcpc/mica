@@ -97,6 +97,7 @@ func (a *App) removeAccountClient(email string) {
 	email = normalizedEmail(email)
 	a.cancelAccountClientLoads(email)
 	generation := a.nextAccountGeneration(email)
+	a.removeSnoozesForAccount(email)
 	client := a.accountClients[email]
 	if client == nil {
 		return

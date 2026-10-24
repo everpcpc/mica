@@ -88,8 +88,9 @@ func (a *App) restoreUnifiedSummary(summary mail.ThreadSummary) {
 	if !ok {
 		return
 	}
-	delete(state.removed, key)
 	summary.AccountEmail = stream.email
+	rememberUnifiedSummary(state, summary)
+	delete(state.removed, key)
 	summary.LabelIDs = append([]string(nil), summary.LabelIDs...)
 	streamFound := false
 	for i := range stream.threads {

@@ -99,6 +99,20 @@
 - When replacing wall-clock revisions with a database counter, seed the counter above the largest existing revision during migration. Starting at one would make every legacy snapshot win over new writes.
 - Eviction and insertion belong to one immediate SQLite transaction. A failing insert must roll back evicted bytes, while concurrent writers still respect the per-account quota. Accept both BLOB and TEXT JSON snapshots and match legacy account keys case-insensitively.
 
+## Keep local schedules ordered with remote mutations
+
+- A local wake time is not a Gmail field. Persist it before the remote archive, keep the virtual SNOOZED label out of API mutations, and use only idempotent INBOX changes for waking. Failed persistence must not reach the remote mutation, and failures must restore the previous schedule or inbox state.
+- Reuse the account-loading job for startup restoration. A later profile callback can request a deduplicated follow-up, but it must not overwrite a newer local action. Account generation, restore-load identity, and per-thread local versions are separate guards.
+- Single-account views use raw thread selection IDs, while owner-routed views use composite IDs. Remote work must resolve service from the record owner, not from the current view's selection key; a timer can outlive Unified. Apply local updates only when that owner is visible.
+- Invalidate a changed schedule's timer before entering the FIFO, and install its replacement after success. A stale callback must not clear a newer runtime record or timer.
+- A stored summary is a fallback, not an authority over newer mail metadata. Merge wake metadata into the current summary, reinsert restored mail into the visible Inbox or Unified view, and filter completed local schedules out of offline snapshots.
+- Capture the cache operation and owner generation before starting a background refresh. Reading the account registry from that worker can race client replacement even when ordinary tests pass.
+- Merge Snoozed responses with current local summaries on the UI publication path, not in the background worker. Invalidate superseded ordinary-list requests together with their loading state, while allowing current Unified responses to merge through the local modification overlay; request invalidation alone can strand loading or discard account completions.
+- Supersede timer callbacks with per-thread tokens and verify the exact wake time before changing Gmail. Retry overdue failures with a delay, and close new cache work on quit while admitted operations finish.
+- Check the owner generation at mutation completion as well as enqueue. The selection ID may be empty after leaving Unified, but the owner still identifies the correct service and cache. Notices belong to the visible owner only.
+- Persist a restoring state before a remote wake or unsnooze. Restart must resume that cleanup instead of waiting for the original wake time or reviving the cancelled conversation. A remote success followed by a local deletion failure is pending cleanup, not a completed action.
+- Not every MyGo application getter is safe off the main thread. Formatting in a background workflow must use the current i18n locale rather than `App.Region`, which deadlocked a direct Snooze action. Verify menu behavior and real rendered English output after adding a toolbar action.
+
 ## Serialize draft saves and preserve identity
 
 - Persist send intent before any network request, and link the Outbox record and draft snapshot in one transaction. A separate snapshot and Outbox entry can otherwise become two independent send paths after a crash.
