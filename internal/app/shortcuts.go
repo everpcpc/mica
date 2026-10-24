@@ -41,11 +41,12 @@ var applicationShortcuts = []shortcutBinding{
 	{name: "sent", key: ui.KeyT, email: true},
 }
 
-func (a *App) SetShortcutMenuHandler(handler func(bool)) {
+func (a *App) SetShortcutMenuHandler(handler func(bool, string, string)) {
 	a.shortcutMenu = handler
 	a.shortcutMenuDisabled = a.shortcutsDisabled()
+	a.shortcutMenuTrash, a.shortcutMenuSpam = a.recoveryActionLabels()
 	if handler != nil {
-		handler(a.shortcutMenuDisabled)
+		handler(a.shortcutMenuDisabled, a.shortcutMenuTrash, a.shortcutMenuSpam)
 	}
 }
 
@@ -55,12 +56,14 @@ func (a *App) shortcutsDisabled() bool {
 
 func (a *App) syncShortcutMenu() {
 	disabled := a.shortcutsDisabled()
-	if disabled == a.shortcutMenuDisabled {
+	trashLabel, spamLabel := a.recoveryActionLabels()
+	if disabled == a.shortcutMenuDisabled && trashLabel == a.shortcutMenuTrash && spamLabel == a.shortcutMenuSpam {
 		return
 	}
 	a.shortcutMenuDisabled = disabled
+	a.shortcutMenuTrash, a.shortcutMenuSpam = trashLabel, spamLabel
 	if a.shortcutMenu != nil {
-		a.shortcutMenu(disabled)
+		a.shortcutMenu(disabled, trashLabel, spamLabel)
 	}
 }
 

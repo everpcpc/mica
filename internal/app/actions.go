@@ -180,6 +180,21 @@ func (a *App) closeReader() {
 	a.messageScroll = -1
 }
 
+func (a *App) recoveryActionLabels() (string, string) {
+	trashLabel, spamLabel := locales.MoveToTrash(), locales.ReportSpam()
+	summary := a.selectedSummary()
+	if summary == nil {
+		return trashLabel, spamLabel
+	}
+	if containsLabel(summary.LabelIDs, mail.Trash) {
+		trashLabel = locales.Untrash()
+	}
+	if containsLabel(summary.LabelIDs, mail.Spam) {
+		spamLabel = locales.NotSpam()
+	}
+	return trashLabel, spamLabel
+}
+
 func (a *App) toggleSpam() {
 	summary := a.selectedSummary()
 	if summary == nil {

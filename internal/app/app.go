@@ -57,8 +57,10 @@ type App struct {
 	list                 ui.ListState
 	search               ui.Handle
 	searchFocused        bool
-	shortcutMenu         func(bool)
+	shortcutMenu         func(bool, string, string)
 	shortcutMenuDisabled bool
+	shortcutMenuTrash    string
+	shortcutMenuSpam     string
 	emailResources       *emailResourceStore
 	emailPages           map[string]*emailPage
 	emailHeights         map[string]float32
@@ -676,7 +678,7 @@ func (a *App) untrash() {
 	a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
 	a.updateThreadLabels(id, nil, []string{mail.Trash})
 	a.captureUndoSummary(id)
-	a.removeThread(id)
+	a.removeThreadIfHidden(id)
 	a.notice = locales.Untrashed()
 	a.enqueueMutation(mutationJob{
 		service: a.service,
@@ -691,7 +693,7 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 	a.updateThreadLabels(id, add, remove)
 	a.captureUndoSummary(id)
 	if removeFromList {
-		a.removeThread(id)
+		a.removeThreadIfHidden(id)
 	}
 	a.notice = message()
 	a.enqueueMutation(mutationJob{
@@ -702,6 +704,18 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 		undo:    a.undo,
 		failure: locales.ActionFailed,
 	})
+}
+
+func (a *App) removeThreadIfHidden(id string) {
+	query := a.currentQuery()
+	if query.Search == "" {
+		for _, summary := range a.threads {
+			if summary.ID == id && historyListContains(query, summary) {
+				return
+			}
+		}
+	}
+	a.removeThread(id)
 }
 
 func (a *App) removeThread(id string) {

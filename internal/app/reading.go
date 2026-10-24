@@ -39,15 +39,7 @@ func (a *App) reader(c *ui.Context) {
 			}
 		})
 		ui.Toolbar(c, func() {
-			summary := a.selectedSummary()
-			trashLabel := locales.MoveToTrash()
-			if summary != nil && containsLabel(summary.LabelIDs, mail.Trash) {
-				trashLabel = locales.Untrash()
-			}
-			spamLabel := locales.ReportSpam()
-			if summary != nil && containsLabel(summary.LabelIDs, mail.Spam) {
-				spamLabel = locales.NotSpam()
-			}
+			trashLabel, spamLabel := a.recoveryActionLabels()
 			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)

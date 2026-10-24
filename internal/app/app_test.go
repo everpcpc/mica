@@ -425,6 +425,37 @@ func TestTrashUndoMatchesQueuedLabels(t *testing.T) {
 	}
 }
 
+func TestRecoveryKeepsThreadInMatchingView(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		view         string
+		removedLabel string
+		action       func(*App)
+	}{
+		{name: "untrash in spam", view: mail.Spam, removedLabel: mail.Trash, action: func(a *App) { a.untrash() }},
+		{name: "not spam in trash", view: mail.Trash, removedLabel: mail.Spam, action: func(a *App) { a.notSpam() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := newFakeService()
+			service.threads[0].LabelIDs = []string{mail.Trash, mail.Spam}
+			service.threads[0].Unread = false
+			service.thread.LabelIDs = []string{mail.Trash, mail.Spam}
+			a := newTestApp(service)
+			a.selectedLabel = tc.view
+			a.selectLabel()
+			a.selectThread("thread-1")
+			tc.action(a)
+			if len(a.threads) != 1 || a.selectedThread != "thread-1" {
+				t.Fatalf("recovery removed a conversation that still matches %s: threads=%+v selected=%q", tc.view, a.threads, a.selectedThread)
+			}
+			labels := a.threads[0].LabelIDs
+			if !containsLabel(labels, tc.view) || containsLabel(labels, tc.removedLabel) {
+				t.Fatalf("recovery labels = %v, want %s without %s", labels, tc.view, tc.removedLabel)
+			}
+		})
+	}
+}
+
 type pagingService struct {
 	*fakeService
 	pages   []mail.ThreadPage
