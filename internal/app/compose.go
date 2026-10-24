@@ -51,7 +51,11 @@ func (a *App) openReply() {
 	if len(a.thread.Messages) == 0 {
 		return
 	}
-	a.openCompose(&a.thread.Messages[len(a.thread.Messages)-1])
+	a.openReplyMessage(a.thread.Messages[len(a.thread.Messages)-1])
+}
+
+func (a *App) openReplyMessage(message mailmodel.Message) {
+	a.openCompose(&message)
 }
 
 func (a *App) composeView(c *ui.Context) {

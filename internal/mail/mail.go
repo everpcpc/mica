@@ -91,6 +91,7 @@ type Attachment struct {
 	MIMEType  string
 	Size      int64
 	ContentID string
+	Data      []byte `json:"-"`
 }
 
 const MaxComposeAttachmentBytes int64 = 25 << 20

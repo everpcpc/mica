@@ -173,6 +173,7 @@ func TestRoundTripPersistsAcrossReopen(t *testing.T) {
 				MIMEType:  "application/pdf",
 				Size:      12345,
 				ContentID: "content-id",
+				Data:      []byte("inline attachment"),
 			}},
 		}},
 	}
@@ -200,6 +201,10 @@ func TestRoundTripPersistsAcrossReopen(t *testing.T) {
 	gotSummaries, found, err := s.ThreadList(ctx, account.Email, query)
 	requireSnapshot(t, gotSummaries, found, err, summaries)
 	gotThread, found, err := s.Thread(ctx, account.Email, thread.ID)
+	if len(gotThread.Messages) == 1 && len(gotThread.Messages[0].Attachments) == 1 && gotThread.Messages[0].Attachments[0].Data != nil {
+		t.Fatal("inline attachment data was persisted")
+	}
+	thread.Messages[0].Attachments[0].Data = nil
 	requireSnapshot(t, gotThread, found, err, thread)
 }
 

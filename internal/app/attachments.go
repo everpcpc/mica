@@ -67,7 +67,7 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 		a.attachmentDownloads = make(map[string]attachmentDownload)
 	}
 	fetcher, ok := a.service.(mail.AttachmentFetcher)
-	if !ok {
+	if attachment.Data == nil && !ok {
 		state.err = locales.AttachmentUnavailable()
 		a.attachmentDownloads[key] = state
 		return
@@ -77,7 +77,11 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 	a.attachmentDownloads[key] = state
 	version := a.serviceVersion
 	a.schedule(func() {
-		data, err := fetcher.Attachment(context.Background(), message.ID, attachment.ID)
+		data := attachment.Data
+		var err error
+		if data == nil {
+			data, err = fetcher.Attachment(context.Background(), message.ID, attachment.ID)
+		}
 		if err == nil {
 			if save {
 				err = a.saveAttachment(attachment, data)

@@ -686,6 +686,16 @@ func (msgs Messages) Forward() string {
 	return Catalog.Format(msgs.locale, "forward", nil)
 }
 
+// MessageActions says "Message actions"
+// in the language the app shows.
+func MessageActions() string { return In(i18n.Locale()).MessageActions() }
+
+// MessageActions says "Message actions"
+// in the language of msgs.
+func (msgs Messages) MessageActions() string {
+	return Catalog.Format(msgs.locale, "messageActions", nil)
+}
+
 // ReportSpam says "Report spam"
 // in the language the app shows.
 func ReportSpam() string { return In(i18n.Locale()).ReportSpam() }

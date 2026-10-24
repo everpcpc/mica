@@ -88,6 +88,25 @@ func TestDownloadAttachmentOpen(t *testing.T) {
 	}
 }
 
+func TestDownloadInlineAttachmentWithoutFetcher(t *testing.T) {
+	a := New(newFakeService())
+	a.schedule = func(fn func()) { fn() }
+	var opened string
+	a.openPath = func(path string) error {
+		opened = path
+		return nil
+	}
+	a.downloadAttachment(mail.Message{ID: "message-inline"}, mail.Attachment{Name: "inline.txt", Data: []byte("inline data")}, false)
+	defer os.Remove(opened)
+	if opened == "" {
+		t.Fatal("inline attachment was not opened")
+	}
+	data, err := os.ReadFile(opened)
+	if err != nil || string(data) != "inline data" {
+		t.Fatalf("inline content = %q, err=%v", data, err)
+	}
+}
+
 func TestDownloadAttachmentSave(t *testing.T) {
 	service := &fakeAttachmentService{fakeService: newFakeService(), data: []byte("saved-data")}
 	a := New(service)

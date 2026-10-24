@@ -24,6 +24,7 @@ var (
 	iconFilter       = icon(`<path d="M3 4h14l-5.5 6.5v5L8.5 17v-6.5z"/>`)
 	iconMail         = icon(`<rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="m3.5 5 6.5 5 6.5-5"/>`)
 	iconLabel        = icon(`<path d="M3 3h6l8 8-6 6-8-8z"/><circle cx="6.5" cy="6.5" r="1"/>`)
+	iconMore         = icon(`<circle cx="4" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1" fill="currentColor" stroke="none"/>`)
 	iconChevronRight = icon(`<path d="m7 3 7 7-7 7"/>`)
 	iconChevronDown  = icon(`<path d="m3 7 7 7 7-7"/>`)
 )

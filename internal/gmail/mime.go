@@ -47,13 +47,24 @@ func makeMessage(threadID string, message apiMessage) (mail.Message, error) {
 func walkParts(part apiPart, text, html *[]string) ([]mail.Attachment, error) {
 	kind := canonicalMIMEType(part.MIMEType)
 	if part.Filename != "" || part.Body.AttachmentID != "" {
-		return []mail.Attachment{{
+		attachment := mail.Attachment{
 			ID:        part.Body.AttachmentID,
 			Name:      part.Filename,
 			MIMEType:  kind,
 			Size:      part.Body.Size,
 			ContentID: strings.Trim(strings.TrimSpace(header(part, "Content-ID")), "<>"),
-		}}, nil
+		}
+		if attachment.ID == "" && part.Body.Data != "" {
+			data, err := decodeBase64URL(part.Body.Data)
+			if err != nil {
+				return nil, fmt.Errorf("gmail: decode MIME part: %w", err)
+			}
+			attachment.Data = data
+			if attachment.Size == 0 {
+				attachment.Size = int64(len(data))
+			}
+		}
+		return []mail.Attachment{attachment}, nil
 	}
 	var attachments []mail.Attachment
 	if strings.HasPrefix(kind, "multipart/") || len(part.Parts) > 0 {

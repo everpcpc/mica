@@ -500,6 +500,9 @@ func cloneThread(thread Thread) Thread {
 		clone.Messages[i] = message
 		clone.Messages[i].LabelIDs = append([]string(nil), message.LabelIDs...)
 		clone.Messages[i].Attachments = append([]Attachment(nil), message.Attachments...)
+		for j := range clone.Messages[i].Attachments {
+			clone.Messages[i].Attachments[j].Data = append([]byte(nil), message.Attachments[j].Data...)
+		}
 	}
 	clone.LabelIDs = combinedLabels(clone.Messages)
 	return clone
