@@ -81,6 +81,7 @@
 
 ## Regression tests must prove the guard works
 
+- Use controllable timers for debounce in UI tests. A real `time.AfterFunc` can run concurrently with direct test publishes and create data races even though production publishes through `Window.Update`.
 - Confirm that the test fails on the old behavior before implementing the fix; avoid tests that always pass.
 - Assertions must target the behavior itself. A build failure does not count as a reproduction.
 - When restoring behavior by hand for verification, break and restore one thing at a time so uncommitted fixes are not overwritten.
