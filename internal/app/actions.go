@@ -28,18 +28,21 @@ type undoAction struct {
 }
 
 type mutationJob struct {
-	service     mail.Service
-	runFunc     func() error
-	id          string
-	kind        threadMutation
-	add         []string
-	remove      []string
-	deleteLabel bool
-	labelColor  *mail.LabelColor
-	readStatus  bool
-	undo        *undoAction
-	failure     func(string) string
-	done        func(error)
+	service         mail.Service
+	runFunc         func() error
+	id              string
+	kind            threadMutation
+	add             []string
+	remove          []string
+	deleteLabel     bool
+	labelColor      *mail.LabelColor
+	readStatus      bool
+	undo            *undoAction
+	failure         func(string) string
+	done            func(error)
+	sequence        uint64
+	viewVersion     int
+	ownerGeneration uint64
 }
 
 func (j mutationJob) run() error {
@@ -52,13 +55,14 @@ func (j mutationJob) run() error {
 	if j.labelColor != nil {
 		return j.service.(mail.LabelManager).UpdateLabelColor(context.Background(), j.id, *j.labelColor)
 	}
+	id := parseThreadRef(j.id).ID
 	switch j.kind {
 	case mutationTrash:
-		return j.service.TrashThread(context.Background(), j.id)
+		return j.service.TrashThread(context.Background(), id)
 	case mutationUntrash:
-		return j.service.UntrashThread(context.Background(), j.id)
+		return j.service.UntrashThread(context.Background(), id)
 	}
-	return j.service.ModifyThread(context.Background(), j.id, j.add, j.remove)
+	return j.service.ModifyThread(context.Background(), id, j.add, j.remove)
 }
 
 func (a *App) recordUndo(id string, add, remove []string) {
@@ -78,7 +82,7 @@ func (a *App) captureUndoSummary(id string) {
 			continue
 		}
 		for j := range a.threads {
-			if a.threads[j].ID == id {
+			if a.summaryKey(a.threads[j]) == id {
 				a.undo.items[i].summary = a.threads[j]
 				a.undo.items[i].summary.LabelIDs = append([]string(nil), a.undo.items[i].summary.LabelIDs...)
 				return
@@ -102,7 +106,7 @@ func (a *App) restoreUndo(action *undoAction) {
 		if search {
 			found := false
 			for i := range a.threads {
-				if a.threads[i].ID == item.id {
+				if a.summaryKey(a.threads[i]) == item.id {
 					found = true
 					break
 				}
@@ -132,7 +136,7 @@ func (a *App) undoLast() {
 	a.notice = locales.ActionUndone()
 	for _, item := range action.items {
 		a.enqueueMutation(mutationJob{
-			service: a.service,
+			service: a.serviceForThreadKey(item.id),
 			id:      item.id,
 			kind:    item.kind,
 			add:     item.add,
@@ -162,6 +166,10 @@ func (a *App) enqueueMutation(job mutationJob) {
 		a.notice = locales.AccountSwitchPending()
 		return
 	}
+	a.mutationSequence++
+	job.sequence = a.mutationSequence
+	job.viewVersion = a.serviceVersion
+	job.ownerGeneration = a.generationForThreadKey(job.id)
 	a.mutationQueue = append(a.mutationQueue, job)
 	a.pumpMutations()
 }
@@ -187,12 +195,20 @@ func (a *App) pumpMutations() {
 		return
 	}
 	job := a.mutationQueue[0]
-	version := a.serviceVersion
 	a.mutationRunning = true
 	a.schedule(func() {
 		err := job.run()
 		a.publish(func() {
-			if version != a.serviceVersion {
+			if len(a.mutationQueue) == 0 || a.mutationQueue[0].sequence != job.sequence {
+				return
+			}
+			if job.viewVersion != a.serviceVersion || job.ownerGeneration != a.generationForThreadKey(job.id) {
+				a.mutationQueue = a.mutationQueue[1:]
+				a.mutationRunning = false
+				if job.done != nil {
+					job.done(errAccountClientUnavailable)
+				}
+				a.pumpMutations()
 				return
 			}
 			a.mutationQueue = a.mutationQueue[1:]
@@ -269,8 +285,8 @@ func (a *App) reportSpam() {
 	}
 	if len(targets) == 1 {
 		summary := targets[0]
-		a.recordUndo(summary.ID, []string{mail.Inbox}, []string{mail.Spam})
-		a.mutate(summary.ID, []string{mail.Spam}, []string{mail.Inbox}, true, locales.SpamReported)
+		a.recordUndo(a.summaryKey(summary), []string{mail.Inbox}, []string{mail.Spam})
+		a.mutate(a.summaryKey(summary), []string{mail.Spam}, []string{mail.Inbox}, true, locales.SpamReported)
 		return
 	}
 	a.mutateThreads(targets, batchMutation{
@@ -292,14 +308,14 @@ func (a *App) notSpam() {
 	}
 	if len(targets) == 1 {
 		summary := targets[0]
-		id := summary.ID
+		id := a.summaryKey(summary)
 		a.recordUndo(id, []string{mail.Spam}, []string{mail.Inbox})
 		a.updateThreadLabels(id, []string{mail.Inbox}, []string{mail.Spam})
 		a.captureUndoSummary(id)
 		a.removeThreadIfHidden(id)
 		a.notice = locales.NotSpamMarked()
 		a.enqueueMutation(mutationJob{
-			service: a.service,
+			service: a.serviceForThreadKey(id),
 			id:      id,
 			add:     []string{mail.Inbox},
 			remove:  []string{mail.Spam},
@@ -327,8 +343,8 @@ func (a *App) toggleThreadLabel(label mail.Label) {
 	if !added {
 		add, remove = remove, add
 	}
-	a.recordUndo(summary.ID, remove, add)
-	a.mutate(summary.ID, add, remove, !added && a.selectedLabel == label.ID, func() string {
+	a.recordUndo(a.summaryKey(*summary), remove, add)
+	a.mutate(a.summaryKey(*summary), add, remove, !added && a.selectedLabel == label.ID, func() string {
 		if added {
 			return locales.LabelAdded(label.Name)
 		}
@@ -353,8 +369,8 @@ func (a *App) setUnread(unread bool) {
 	}
 	if len(targets) == 1 {
 		summary := targets[0]
-		a.recordUndo(summary.ID, remove, add)
-		a.mutate(summary.ID, add, remove, false, func() string {
+		a.recordUndo(a.summaryKey(summary), remove, add)
+		a.mutate(a.summaryKey(summary), add, remove, false, func() string {
 			if unread {
 				return locales.MarkedUnread()
 			}

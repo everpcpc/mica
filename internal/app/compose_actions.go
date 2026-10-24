@@ -25,7 +25,7 @@ func (a *App) openReplyAllMessage(message mailmodel.Message) {
 	if a.compose == nil {
 		return
 	}
-	a.compose.to, a.compose.cc = replyAllRecipients(message, a.account.Email)
+	a.compose.to, a.compose.cc = replyAllRecipients(message, a.compose.accountEmail)
 }
 
 func replyAddress(message mailmodel.Message) string {
@@ -111,12 +111,17 @@ func (a *App) openForwardMessage(message mailmodel.Message) {
 		"Date: " + message.Date.Format(time.RFC1123Z) + "\n" +
 		"Subject: " + message.Subject + "\n" +
 		"To: " + message.To + "\n\n" + body
+	owner := a.storedMessageOwner(message)
+	if owner == "" {
+		owner = a.activeComposeOwner()
+	}
 	a.compose = &composer{
-		open:       true,
-		forward:    true,
-		generation: 1,
-		subject:    subject,
-		doc:        richtext.NewDocument(richtext.NewText(quote)),
+		open:         true,
+		accountEmail: owner,
+		forward:      true,
+		generation:   1,
+		subject:      subject,
+		doc:          richtext.NewDocument(richtext.NewText(quote)),
 	}
 	a.addMessageAttachments(message)
 }

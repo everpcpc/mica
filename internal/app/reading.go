@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
+	xhtml "golang.org/x/net/html"
 )
 
 func (a *App) reader(c *ui.Context) {
@@ -76,8 +77,12 @@ func (a *App) emptyReader(c *ui.Context) {
 }
 
 func (a *App) labelMenu(m *ui.Menu) {
-	labels := assignableLabels(a.labels)
 	summary := a.selectedSummary()
+	owner := a.thread.AccountEmail
+	if owner == "" && summary != nil {
+		owner = summary.AccountEmail
+	}
+	labels := assignableLabels(a.ownerLabels(owner))
 	if len(labels) == 0 {
 		m.Item(locales.NoCustomLabels()).Disabled(true)
 	}
@@ -109,7 +114,7 @@ func (a *App) threadContent(c *ui.Context) {
 								ui.Badge(c, a.labelName(id))
 							}
 						}
-						for _, label := range assignableLabels(a.labels) {
+						for _, label := range assignableLabels(a.ownerLabels(thread.AccountEmail)) {
 							if containsLabel(thread.LabelIDs, label.ID) {
 								ui.Badge(c, label.Name)
 							}
@@ -149,7 +154,7 @@ func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func()) {
 
 func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 	t := c.Theme()
-	container := ui.Column(c.Key(message.ID)).Gap(12).Transition(ui.ElementTransition{Animation: &ui.Snappy})
+	container := ui.Column(c.Key(readerMessageKey(message))).Gap(12).Transition(ui.ElementTransition{Animation: &ui.Snappy})
 	if a.messageScroll == index {
 		container.ScrollIntoView()
 		a.messageScroll = -1
@@ -176,9 +181,9 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 				}
 			})
 			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted).Shrink(0)
-			iconButton(c, locales.CollapseMessage(), iconChevronDown, func() { a.setMessageExpanded(message.ID, false) })
+			iconButton(c, locales.CollapseMessage(), iconChevronDown, func() { a.setExpandedMessage(message, false) })
 		})
-		if message.HTML != "" && a.emailDocument(message).hasContent {
+		if message.HTML != "" && a.readerEmailDocument(message).hasContent {
 			a.emailView(c, message)
 		} else if message.Text != "" {
 			ui.Text(c, message.Text).FontSize(14).LineHeight(1.55).Selectable().Padding(20, 24)
@@ -222,7 +227,7 @@ func (a *App) collapsedMessageView(c *ui.Context, message mail.Message) {
 	t := c.Theme()
 	ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 		ui.Button(c, "").Label(locales.ExpandMessage()).Grow(1).MinWidth(0).Padding(8, 10).Radius(8).Background(t.Background).OnClick(func() {
-			a.setMessageExpanded(message.ID, true)
+			a.setExpandedMessage(message, true)
 		}).Children(func() {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				ui.Avatar(c, addressName(message.From), nil)
@@ -241,26 +246,54 @@ func (a *App) collapsedMessageView(c *ui.Context, message mail.Message) {
 }
 
 func (a *App) messageExpanded(index int, message mail.Message) bool {
-	if expanded, ok := a.expandedMessages[message.ID]; ok {
+	if expanded, ok := a.expandedMessages[readerMessageKey(message)]; ok {
 		return expanded
 	}
 	return index == len(a.thread.Messages)-1 || containsLabel(message.LabelIDs, mail.Unread)
 }
 
 func (a *App) setMessageExpanded(id string, expanded bool) {
+	message := mail.Message{ID: id}
+	for _, candidate := range a.thread.Messages {
+		if candidate.ID == id {
+			message = candidate
+			break
+		}
+	}
+	a.setExpandedMessage(message, expanded)
+}
+
+func (a *App) setExpandedMessage(message mail.Message, expanded bool) {
+	key := readerMessageKey(message)
 	if a.expandedMessages == nil {
 		a.expandedMessages = make(map[string]bool)
 	}
-	a.expandedMessages[id] = expanded
+	a.expandedMessages[key] = expanded
 	if !expanded {
-		a.closeEmailView(id)
+		a.closeEmailView(key)
 	}
+}
+
+func (a *App) readerEmailDocument(message mail.Message) *emailDocument {
+	key := readerMessageKey(message)
+	if document, ok := a.documents[key]; ok {
+		return document
+	}
+	source := prepareMessageHTML(message)
+	root, _ := xhtml.Parse(strings.NewReader(source))
+	preview := emailMarkdown(emailOuterHTML(root))
+	document := &emailDocument{preview: preview, hasContent: strings.TrimSpace(preview) != ""}
+	if a.documents == nil {
+		a.documents = make(map[string]*emailDocument)
+	}
+	a.documents[key] = document
+	return document
 }
 
 func (a *App) messagePreview(message mail.Message) string {
 	preview := strings.TrimSpace(message.Text)
 	if preview == "" {
-		preview = a.emailDocument(message).preview
+		preview = a.readerEmailDocument(message).preview
 	}
 	preview = strings.Join(strings.Fields(preview), " ")
 	if preview == "" {

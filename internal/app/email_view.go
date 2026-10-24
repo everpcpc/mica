@@ -16,10 +16,17 @@ import (
 const emailInitialHeight float32 = 24
 
 type emailPage struct {
-	messageID string
-	view      *mygo.WebView
-	height    float32
-	failed    bool
+	messageKey string
+	view       *mygo.WebView
+	height     float32
+	failed     bool
+}
+
+func readerMessageKey(message mail.Message) string {
+	if normalizedEmail(message.AccountEmail) == "" {
+		return message.ID
+	}
+	return messageRefForAccount(message.AccountEmail, message.ThreadID, message.ID).key()
 }
 
 func RegisterEmailRenderer(a *App) error {
@@ -34,8 +41,8 @@ func (a *App) SetEmailViewFactory(factory func() (*mygo.WebView, error)) {
 	a.newEmailView = factory
 }
 
-func (a *App) estimatedEmailHeight(id string) float32 {
-	return a.emailHeights[id]
+func (a *App) estimatedEmailHeight(key string) float32 {
+	return a.emailHeights[key]
 }
 
 func (a *App) setEmailHeight(page *emailPage, height float32) {
@@ -44,24 +51,24 @@ func (a *App) setEmailHeight(page *emailPage, height float32) {
 	if a.emailHeights == nil {
 		a.emailHeights = make(map[string]float32)
 	}
-	a.emailHeights[page.messageID] = height
+	a.emailHeights[page.messageKey] = height
 }
 
 func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 	page := a.emailPage(c, message)
 	if page == nil {
-		return ui.Text(c, a.emailDocument(message).preview).Selectable().Padding(20, 24)
+		return ui.Text(c, a.readerEmailDocument(message).preview).Selectable().Padding(20, 24)
 	}
 	height := page.height
 	if height <= 0 {
 		_, viewportHeight := c.Size()
 		height = max(emailInitialHeight, viewportHeight-titleBarHeight)
 	}
-	return ui.Column(c.Key("email-body-" + message.ID)).Height(height).Transition(ui.ElementTransition{
+	return ui.Column(c.Key("email-body-" + readerMessageKey(message))).Height(height).Transition(ui.ElementTransition{
 		Size: true, Duration: 160 * time.Millisecond,
 	}).Children(func() {
 		if page.failed {
-			ui.Text(c, a.emailDocument(message).preview).Selectable().Padding(20, 24)
+			ui.Text(c, a.readerEmailDocument(message).preview).Selectable().Padding(20, 24)
 			return
 		}
 		ui.WebView(c, page.view).Height(height).Transition(ui.ElementTransition{
@@ -71,7 +78,8 @@ func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 }
 
 func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
-	if page := a.emailPages[message.ID]; page != nil {
+	key := readerMessageKey(message)
+	if page := a.emailPages[key]; page != nil {
 		return page
 	}
 	if a.newEmailView == nil {
@@ -85,12 +93,12 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	if err != nil {
 		return nil
 	}
-	height := a.estimatedEmailHeight(message.ID)
-	page := &emailPage{messageID: message.ID, view: view, height: height}
+	height := a.estimatedEmailHeight(key)
+	page := &emailPage{messageKey: key, view: view, height: height}
 	if a.emailPages == nil {
 		a.emailPages = make(map[string]*emailPage)
 	}
-	a.emailPages[message.ID] = page
+	a.emailPages[key] = page
 	services := c.Services()
 	view.Page().OnDOMReady(func() {
 		_, _ = view.Page().Eval(emailHeightScript)
@@ -114,30 +122,30 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	return page
 }
 
-func (a *App) closeEmailView(id string) {
-	if page := a.emailPages[id]; page != nil {
+func (a *App) closeEmailView(key string) {
+	if page := a.emailPages[key]; page != nil {
 		page.view.Destroy()
-		delete(a.emailPages, id)
+		delete(a.emailPages, key)
 	}
 	if a.emailResources != nil {
-		a.emailResources.revokeMessage(id)
+		a.emailResources.revokeMessage(key)
 	}
 }
 
 func (a *App) closeEmailViews() {
-	for id := range a.emailPages {
-		a.closeEmailView(id)
+	for key := range a.emailPages {
+		a.closeEmailView(key)
 	}
 }
 
 func (a *App) retainEmailViews(thread mail.Thread) {
 	messages := make(map[string]bool, len(thread.Messages))
 	for _, message := range thread.Messages {
-		messages[message.ID] = true
+		messages[readerMessageKey(message)] = true
 	}
-	for id := range a.emailPages {
-		if !messages[id] {
-			a.closeEmailView(id)
+	for key := range a.emailPages {
+		if !messages[key] {
+			a.closeEmailView(key)
 		}
 	}
 }

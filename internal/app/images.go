@@ -74,9 +74,15 @@ func (a *App) resetMessageViews() {
 	a.expandedMessages = nil
 	if a.emailResources == nil {
 		a.emailResources = newEmailResourceStore(a.service)
-	} else {
-		a.emailResources.loader = newMessageImageLoader(a.service)
 	}
+	a.emailResources.mu.Lock()
+	a.emailResources.loader = newMessageImageLoader(a.service)
+	a.emailResources.ownerService = a.ownerService
+	a.emailResources.ownerClient = func(email string) *accountClient {
+		return a.accountClients[normalizedEmail(email)]
+	}
+	a.emailResources.activeVersion = a.currentCacheVersion
+	a.emailResources.mu.Unlock()
 }
 
 func prepareMessageHTML(message mail.Message) string {

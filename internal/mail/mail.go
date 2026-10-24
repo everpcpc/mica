@@ -51,6 +51,7 @@ type Label struct {
 
 type ThreadSummary struct {
 	ID           string
+	AccountEmail string
 	Subject      string
 	Snippet      string
 	Senders      string
@@ -62,29 +63,31 @@ type ThreadSummary struct {
 }
 
 type Thread struct {
-	ID       string
-	Subject  string
-	LabelIDs []string
-	Messages []Message
+	ID           string
+	AccountEmail string
+	Subject      string
+	LabelIDs     []string
+	Messages     []Message
 }
 
 type Message struct {
-	ID          string
-	ThreadID    string
-	From        string
-	ReplyTo     string
-	To          string
-	Cc          string
-	Bcc         string
-	Subject     string
-	MessageID   string
-	InReplyTo   string
-	References  string
-	Date        time.Time
-	Text        string
-	HTML        string
-	LabelIDs    []string
-	Attachments []Attachment
+	ID           string
+	AccountEmail string
+	ThreadID     string
+	From         string
+	ReplyTo      string
+	To           string
+	Cc           string
+	Bcc          string
+	Subject      string
+	MessageID    string
+	InReplyTo    string
+	References   string
+	Date         time.Time
+	Text         string
+	HTML         string
+	LabelIDs     []string
+	Attachments  []Attachment
 }
 
 type Attachment struct {

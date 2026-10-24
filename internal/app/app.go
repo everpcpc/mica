@@ -17,17 +17,23 @@ import (
 const threadPageSize = 25
 
 type App struct {
-	service                mail.Service
-	store                  mailStore
-	cacheState             cacheState
-	storeAccount           string
-	account                mail.Account
-	accountPhoto           *ui.Bitmap
-	labels                 []mail.Label
-	threads                []mail.ThreadSummary
-	thread                 mail.Thread
-	threadCache            map[string]mail.Thread
-	profileReauthAttempted bool
+	service                  mail.Service
+	store                    mailStore
+	cacheState               cacheState
+	accountClients           map[string]*accountClient
+	accountGenerationCounter uint64
+	accountGenerations       map[string]uint64
+	accountClientLoads       map[string]uint64
+	accountClientPending     map[string][]func(error)
+	storeAccount             string
+	account                  mail.Account
+	accountPhoto             *ui.Bitmap
+	labels                   []mail.Label
+	threads                  []mail.ThreadSummary
+	compositeThreads         bool
+	thread                   mail.Thread
+	threadCache              map[string]mail.Thread
+	profileReauthAttempted   bool
 
 	selectedLabel        string
 	selectedThread       string
@@ -39,20 +45,21 @@ type App struct {
 	query                string
 	unreadOnly           bool
 
-	loading         bool
-	loadingMore     bool
-	nextPageToken   string
-	threadLoading   bool
-	mutationQueue   []mutationJob
-	mutationRunning bool
-	mutationRefresh bool
-	mutationLabels  bool
-	err             string
-	threadErr       string
-	notice          string
-	noticeID        uint64
-	noticeToastID   string
-	expiredNoticeID string
+	loading          bool
+	loadingMore      bool
+	nextPageToken    string
+	threadLoading    bool
+	mutationQueue    []mutationJob
+	mutationSequence uint64
+	mutationRunning  bool
+	mutationRefresh  bool
+	mutationLabels   bool
+	err              string
+	threadErr        string
+	notice           string
+	noticeID         uint64
+	noticeToastID    string
+	expiredNoticeID  string
 
 	list                 ui.ListState
 	search               ui.Handle
@@ -118,24 +125,28 @@ type App struct {
 
 func New(service mail.Service) *App {
 	a := &App{
-		service:        service,
-		emailResources: newEmailResourceStore(service),
-		openPath:       mygo.Shell.OpenPath,
-		openDialog:     mygo.Dialog.Open,
-		saveDialog:     mygo.Dialog.Save,
-		account:        mail.Account{Name: "Mica", Demo: true},
-		threadCache:    make(map[string]mail.Thread),
-		selectedLabel:  mail.Inbox,
-		selectedRow:    -1,
-		sidebarWidth:   204,
-		listWidth:      342,
-		appearance:     "system",
-		focusedMessage: -1,
-		messageScroll:  -1,
-		schedule:       func(fn func()) { go fn() },
-		after:          func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
-		loadCheckpoint: loadHistoryCheckpoint,
-		saveCheckpoint: saveHistoryCheckpoint,
+		service:              service,
+		emailResources:       newEmailResourceStore(service),
+		accountClients:       make(map[string]*accountClient),
+		accountGenerations:   make(map[string]uint64),
+		accountClientLoads:   make(map[string]uint64),
+		accountClientPending: make(map[string][]func(error)),
+		openPath:             mygo.Shell.OpenPath,
+		openDialog:           mygo.Dialog.Open,
+		saveDialog:           mygo.Dialog.Save,
+		account:              mail.Account{Name: "Mica", Demo: true},
+		threadCache:          make(map[string]mail.Thread),
+		selectedLabel:        mail.Inbox,
+		selectedRow:          -1,
+		sidebarWidth:         204,
+		listWidth:            342,
+		appearance:           "system",
+		focusedMessage:       -1,
+		messageScroll:        -1,
+		schedule:             func(fn func()) { go fn() },
+		after:                func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
+		loadCheckpoint:       loadHistoryCheckpoint,
+		saveCheckpoint:       saveHistoryCheckpoint,
 	}
 	a.resetMessageViews()
 	a.list.Selected = &a.selectedRow
@@ -376,7 +387,7 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 	threads := a.visibleThreads()
 	visible := make(map[string]bool, len(threads))
 	for _, thread := range threads {
-		visible[thread.ID] = true
+		visible[a.summaryKey(thread)] = true
 	}
 	for id := range a.threadSelection.All() {
 		if !visible[id] {
@@ -390,7 +401,7 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 		return
 	}
 	for i := range threads {
-		if threads[i].ID == a.selectedThread {
+		if a.summaryKey(threads[i]) == a.selectedThread {
 			a.selectedRow = i
 			return
 		}
@@ -400,7 +411,7 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 		return
 	}
 	for i := range a.threads {
-		if a.threads[i].ID == a.selectedThread {
+		if a.summaryKey(a.threads[i]) == a.selectedThread {
 			return
 		}
 	}
@@ -408,48 +419,74 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 }
 
 func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
+	if !a.compositeThreads {
+		for i := range threads {
+			if threads[i].AccountEmail == "" {
+				threads[i].AccountEmail = a.storeAccount
+			}
+		}
+	}
 	a.threads = threads
 	a.syncThreadSelection(clearMissing)
 	if !a.startupSelectionDone && a.selectedThread == "" {
 		if visible := a.visibleThreads(); len(visible) > 0 {
-			a.selectThread(visible[0].ID)
+			a.selectThread(a.summaryKey(visible[0]))
 		}
 	}
 }
 
+func (a *App) historyThreadKey(id string) string {
+	if a.compositeThreads {
+		return threadRefForAccount(a.storeAccount, id).key()
+	}
+	return id
+}
+
 func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string) {
+	if a.compositeThreads {
+		for i := range changed {
+			changed[i].AccountEmail = normalizedEmail(changed[i].AccountEmail)
+			if changed[i].AccountEmail == "" {
+				changed[i].AccountEmail = a.storeAccount
+			}
+		}
+	}
 	changes := make(map[string]mail.ThreadSummary, len(changed))
 	for _, summary := range changed {
-		changes[summary.ID] = summary
+		changes[a.summaryKey(summary)] = summary
 	}
 	removed := make(map[string]bool, len(deleted))
 	for _, id := range deleted {
-		removed[id] = true
+		removed[a.historyThreadKey(id)] = true
 	}
 	query := a.currentQuery()
 	updated := make([]mail.ThreadSummary, 0, len(a.threads)+len(changes))
 	for _, existing := range a.threads {
-		if removed[existing.ID] {
+		key := a.summaryKey(existing)
+		if removed[key] {
 			continue
 		}
-		if replacement, ok := changes[existing.ID]; ok {
+		if replacement, ok := changes[key]; ok {
 			existing = replacement
-			delete(changes, existing.ID)
+			delete(changes, key)
 		}
 		if historyListContains(query, existing) {
 			updated = append(updated, existing)
 		}
 	}
-	for _, summary := range changes {
-		if !removed[summary.ID] && historyListContains(query, summary) {
+	for key, summary := range changes {
+		if !removed[key] && historyListContains(query, summary) {
 			updated = append(updated, summary)
 		}
 	}
 	sort.SliceStable(updated, func(i, j int) bool {
+		if a.compositeThreads && updated[i].Updated.Equal(updated[j].Updated) {
+			return a.summaryKey(updated[i]) < a.summaryKey(updated[j])
+		}
 		return updated[i].Updated.After(updated[j].Updated)
 	})
 	a.applyThreadList(updated, true)
-	if a.accountVerified {
+	if a.accountVerified || a.compositeThreads {
 		a.persistList(query, updated)
 	}
 }
@@ -514,16 +551,48 @@ func (a *App) loadThread(id string) {
 		a.showThread(id, thread)
 		return
 	}
+	ref := parseThreadRef(id)
+	service, generation := a.ownerService(ref.AccountEmail)
+	if service == nil && ref.AccountEmail != "" {
+		a.threadLoading = true
+		a.ensureAccountClient(ref.AccountEmail, func(err error) {
+			if err != nil {
+				if call == a.threadCall {
+					a.threadLoading = false
+					a.threadErr = err.Error()
+				}
+				return
+			}
+			if call != a.threadCall {
+				return
+			}
+			a.selectedThread = ""
+			a.loadThread(id)
+		})
+		return
+	}
+	if service == nil {
+		a.threadLoading = false
+		a.threadErr = "mail: account is unavailable"
+		return
+	}
+	owner := ref.AccountEmail
+	if owner == "" {
+		owner = a.storeAccount
+	}
 	a.thread = mail.Thread{}
 	a.threadLoading = true
-	service, version := a.service, a.serviceVersion
-	store, email := a.store, a.storeAccount
+	store, email := a.store, ref.AccountEmail
+	if email == "" {
+		email = a.storeAccount
+	}
 	a.schedule(func() {
 		if store != nil && email != "" {
-			cached, found, cacheErr := store.Thread(context.Background(), email, id)
+			cached, found, cacheErr := store.Thread(context.Background(), email, ref.ID)
 			logCacheError(cacheErr)
+			cached = withThreadOwner(cached, owner)
 			a.publish(func() {
-				if version != a.serviceVersion || call != a.threadCall || email != a.storeAccount || a.threadFreshCall >= call {
+				if generation != a.generationForThreadKey(id) || call != a.threadCall || a.threadFreshCall >= call || ref.AccountEmail == "" && email != a.storeAccount {
 					return
 				}
 				if cacheErr == nil && found {
@@ -531,14 +600,15 @@ func (a *App) loadThread(id string) {
 				}
 			})
 		}
-		thread, err := service.Thread(context.Background(), id)
+		thread, err := service.Thread(context.Background(), ref.ID)
+		thread = withThreadOwner(thread, owner)
 		a.publish(func() {
-			if version != a.serviceVersion || call != a.threadCall {
+			if generation != a.generationForThreadKey(id) || call != a.threadCall {
 				return
 			}
 			a.threadLoading = false
 			if err != nil {
-				if a.thread.ID != id {
+				if a.thread.ID != ref.ID {
 					a.threadErr = err.Error()
 				}
 				return
@@ -548,7 +618,7 @@ func (a *App) loadThread(id string) {
 			}
 			a.threadFreshCall = call
 			a.threadCache[id] = thread
-			if a.accountVerified {
+			if a.ownerVerified(ref.AccountEmail) {
 				a.persistThread(thread)
 			}
 			a.showThread(id, thread)
@@ -557,7 +627,7 @@ func (a *App) loadThread(id string) {
 }
 
 func (a *App) showThread(id string, thread mail.Thread) {
-	sameThread := a.thread.ID == id
+	sameThread := a.threadKey(thread) == id
 	if sameThread {
 		a.retainEmailViews(thread)
 	} else {
@@ -573,7 +643,7 @@ func (a *App) showThread(id string, thread mail.Thread) {
 	}
 	if a.selectedLabel != mail.Draft {
 		for i := range a.threads {
-			if a.threads[i].ID == id && a.threads[i].Unread {
+			if a.summaryKey(a.threads[i]) == id && a.threads[i].Unread {
 				a.threads[i].Unread = false
 				a.markRead(id)
 				break
@@ -585,7 +655,7 @@ func (a *App) showThread(id string, thread mail.Thread) {
 
 func (a *App) selectedSummary() *mail.ThreadSummary {
 	for i := range a.threads {
-		if a.threads[i].ID == a.selectedThread {
+		if a.summaryKey(a.threads[i]) == a.selectedThread {
 			return &a.threads[i]
 		}
 	}
@@ -598,7 +668,7 @@ func (a *App) markRead(id string) {
 	}
 	a.updateThreadLabels(id, nil, []string{mail.Unread})
 	a.enqueueMutation(mutationJob{
-		service:    a.service,
+		service:    a.serviceForThreadKey(id),
 		id:         id,
 		remove:     []string{mail.Unread},
 		readStatus: true,
@@ -643,8 +713,8 @@ func (a *App) toggleStar() {
 	}
 	if len(targets) == 1 {
 		summary := targets[0]
-		a.recordUndo(summary.ID, remove, add)
-		a.mutate(summary.ID, add, remove, false, func() string {
+		a.recordUndo(a.summaryKey(summary), remove, add)
+		a.mutate(a.summaryKey(summary), add, remove, false, func() string {
 			if starred {
 				return locales.StarAdded()
 			}
@@ -677,7 +747,7 @@ func (a *App) actionSummaries() []mail.ThreadSummary {
 	threads := a.visibleThreads()
 	summaries := make([]mail.ThreadSummary, 0, a.threadSelection.Len())
 	for _, thread := range threads {
-		if a.threadSelection.Has(thread.ID) {
+		if a.threadSelection.Has(a.summaryKey(thread)) {
 			summaries = append(summaries, thread)
 		}
 	}
@@ -697,8 +767,8 @@ func (a *App) archive() {
 	}
 	if len(summaries) == 1 {
 		summary := summaries[0]
-		a.recordUndo(summary.ID, []string{mail.Inbox}, nil)
-		a.mutate(summary.ID, nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
+		a.recordUndo(a.summaryKey(summary), []string{mail.Inbox}, nil)
+		a.mutate(a.summaryKey(summary), nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
 		return
 	}
 	a.archiveThreads(summaries)
@@ -734,9 +804,9 @@ func (a *App) mutateThreads(summaries []mail.ThreadSummary, mutation batchMutati
 	ids := make([]string, 0, len(summaries))
 	for _, summary := range summaries {
 		action.items = append(action.items, undoItem{
-			id: summary.ID, kind: mutation.inverseKind, add: mutation.inverseAdd, remove: mutation.inverseRemove,
+			id: a.summaryKey(summary), kind: mutation.inverseKind, add: mutation.inverseAdd, remove: mutation.inverseRemove,
 		})
-		ids = append(ids, summary.ID)
+		ids = append(ids, a.summaryKey(summary))
 	}
 	for _, id := range ids {
 		a.updateThreadLabels(id, mutation.add, mutation.remove)
@@ -759,7 +829,7 @@ func (a *App) mutateThreads(summaries []mail.ThreadSummary, mutation batchMutati
 		for _, summary := range summaries {
 			summary.LabelIDs = modifyLabelIDs(summary.LabelIDs, mutation.add, mutation.remove)
 			if !historyListContains(query, summary) {
-				removeIDs = append(removeIDs, summary.ID)
+				removeIDs = append(removeIDs, a.summaryKey(summary))
 			}
 		}
 	}
@@ -773,7 +843,7 @@ func (a *App) mutateThreads(summaries []mail.ThreadSummary, mutation batchMutati
 	}
 	for _, id := range ids {
 		a.enqueueMutation(mutationJob{
-			service: a.service,
+			service: a.serviceForThreadKey(id),
 			id:      id,
 			kind:    mutation.kind,
 			add:     mutation.add,
@@ -816,14 +886,14 @@ func (a *App) trash() {
 	}
 	if len(targets) == 1 {
 		summary := targets[0]
-		id := summary.ID
+		id := a.summaryKey(summary)
 		a.recordUndoKind(id, mutationUntrash, nil, []string{mail.Trash})
 		a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
 		a.captureUndoSummary(id)
 		a.removeThread(id)
 		a.notice = locales.Trashed()
 		a.enqueueMutation(mutationJob{
-			service: a.service,
+			service: a.serviceForThreadKey(id),
 			id:      id,
 			kind:    mutationTrash,
 			undo:    a.undo,
@@ -851,14 +921,14 @@ func (a *App) untrash() {
 	}
 	if len(targets) == 1 {
 		summary := targets[0]
-		id := summary.ID
+		id := a.summaryKey(summary)
 		a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
 		a.updateThreadLabels(id, nil, []string{mail.Trash})
 		a.captureUndoSummary(id)
 		a.removeThreadIfHidden(id)
 		a.notice = locales.Untrashed()
 		a.enqueueMutation(mutationJob{
-			service: a.service,
+			service: a.serviceForThreadKey(id),
 			id:      id,
 			kind:    mutationUntrash,
 			undo:    a.undo,
@@ -881,7 +951,7 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 	}
 	a.notice = message()
 	a.enqueueMutation(mutationJob{
-		service: a.service,
+		service: a.serviceForThreadKey(id),
 		id:      id,
 		add:     add,
 		remove:  remove,
@@ -894,7 +964,7 @@ func (a *App) removeThreadIfHidden(id string) {
 	query := a.currentQuery()
 	if query.Search == "" {
 		for _, summary := range a.threads {
-			if summary.ID == id && historyListContains(query, summary) {
+			if a.summaryKey(summary) == id && historyListContains(query, summary) {
 				return
 			}
 		}
@@ -914,17 +984,17 @@ func (a *App) removeThreads(ids []string) {
 	if readerRemoved {
 		threads := a.visibleThreads()
 		for i, thread := range threads {
-			if thread.ID != a.selectedThread {
+			if a.summaryKey(thread) != a.selectedThread {
 				continue
 			}
 			for j := i + 1; j < len(threads) && nextReader == ""; j++ {
-				if !removed[threads[j].ID] {
-					nextReader = threads[j].ID
+				if !removed[a.summaryKey(threads[j])] {
+					nextReader = a.summaryKey(threads[j])
 				}
 			}
 			for j := i - 1; j >= 0 && nextReader == ""; j-- {
-				if !removed[threads[j].ID] {
-					nextReader = threads[j].ID
+				if !removed[a.summaryKey(threads[j])] {
+					nextReader = a.summaryKey(threads[j])
 				}
 			}
 			break
@@ -932,12 +1002,12 @@ func (a *App) removeThreads(ids []string) {
 	}
 	remaining := make([]mail.ThreadSummary, 0, len(a.threads))
 	for _, thread := range a.threads {
-		if !removed[thread.ID] {
+		if !removed[a.summaryKey(thread)] {
 			remaining = append(remaining, thread)
 		}
 	}
 	a.threads = remaining
-	if a.accountVerified {
+	if a.accountVerified || a.compositeThreads {
 		a.persistList(a.currentQuery(), a.threads)
 	}
 	if !readerRemoved {
@@ -956,7 +1026,7 @@ func (a *App) removeThread(id string) {
 	delete(a.threadCache, id)
 	removed := -1
 	for i := range a.threads {
-		if a.threads[i].ID == id {
+		if a.summaryKey(a.threads[i]) == id {
 			removed = i
 			a.threads = append(a.threads[:i], a.threads[i+1:]...)
 			break
@@ -965,7 +1035,7 @@ func (a *App) removeThread(id string) {
 	if removed < 0 {
 		return
 	}
-	if a.accountVerified {
+	if a.accountVerified || a.compositeThreads {
 		a.persistList(a.currentQuery(), a.threads)
 	}
 	if a.selectedThread == id {
@@ -977,7 +1047,7 @@ func (a *App) removeThread(id string) {
 		}
 		row := max(a.selectedRow, 0)
 		a.selectedRow = min(row, len(threads)-1)
-		a.selectThread(threads[a.selectedRow].ID)
+		a.selectThread(a.summaryKey(threads[a.selectedRow]))
 		return
 	}
 	a.syncThreadSelection(false)
@@ -985,7 +1055,7 @@ func (a *App) removeThread(id string) {
 
 func (a *App) updateThreadLabels(id string, add, remove []string) {
 	for i := range a.threads {
-		if a.threads[i].ID == id {
+		if a.summaryKey(a.threads[i]) == id {
 			a.threads[i].LabelIDs = modifyLabelIDs(a.threads[i].LabelIDs, add, remove)
 			a.threads[i].Unread = containsLabel(a.threads[i].LabelIDs, mail.Unread)
 			a.threads[i].Starred = containsLabel(a.threads[i].LabelIDs, mail.Starred)
@@ -999,20 +1069,20 @@ func (a *App) updateThreadLabels(id string, add, remove []string) {
 		}
 		a.threadCache[id] = thread
 	}
-	if a.thread.ID == id {
+	if a.threadKey(a.thread) == id {
 		a.thread.LabelIDs = modifyLabelIDs(a.thread.LabelIDs, add, remove)
 		for i := range a.thread.Messages {
 			a.thread.Messages[i].LabelIDs = modifyLabelIDs(a.thread.Messages[i].LabelIDs, add, remove)
 		}
 	}
 	a.syncThreadSelection(false)
-	if !a.accountVerified {
+	if !a.ownerVerified(parseThreadRef(id).AccountEmail) && !a.compositeThreads {
 		return
 	}
 	a.persistList(a.currentQuery(), a.threads)
 	if thread, ok := a.threadCache[id]; ok {
 		a.persistThread(thread)
-	} else if a.thread.ID == id {
+	} else if a.threadKey(a.thread) == id {
 		a.persistThread(a.thread)
 	}
 }

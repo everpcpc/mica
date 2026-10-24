@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strings"
+	"sync"
 
 	mailmodel "mica/internal/mail"
 	"mica/locales"
@@ -15,6 +16,48 @@ type draftStore interface {
 	DraftSnapshot(context.Context, string) (mailmodel.DraftSnapshot, bool, error)
 	SaveDraftSnapshot(context.Context, string, mailmodel.DraftSnapshot) error
 	DeleteDraftSnapshot(context.Context, string) error
+}
+
+type draftSnapshotWriteKey struct {
+	app   *App
+	email string
+}
+
+var draftSnapshotWrites = struct {
+	sync.Mutex
+	latest  map[draftSnapshotWriteKey]uint64
+	pending map[*App]int
+}{
+	latest:  make(map[draftSnapshotWriteKey]uint64),
+	pending: make(map[*App]int),
+}
+
+func trackDraftSnapshotWrite(a *App, email string, write uint64) {
+	draftSnapshotWrites.Lock()
+	defer draftSnapshotWrites.Unlock()
+	draftSnapshotWrites.latest[draftSnapshotWriteKey{app: a, email: email}] = write
+	draftSnapshotWrites.pending[a]++
+}
+
+func draftSnapshotWriteCurrent(a *App, email string, write uint64) bool {
+	draftSnapshotWrites.Lock()
+	defer draftSnapshotWrites.Unlock()
+	return draftSnapshotWrites.latest[draftSnapshotWriteKey{app: a, email: email}] == write
+}
+
+func untrackDraftSnapshotWrite(a *App) {
+	draftSnapshotWrites.Lock()
+	defer draftSnapshotWrites.Unlock()
+	draftSnapshotWrites.pending[a]--
+	if draftSnapshotWrites.pending[a] > 0 {
+		return
+	}
+	delete(draftSnapshotWrites.pending, a)
+	for key := range draftSnapshotWrites.latest {
+		if key.app == a {
+			delete(draftSnapshotWrites.latest, key)
+		}
+	}
 }
 
 func (a *App) restoreDraftSnapshot() {
@@ -38,11 +81,11 @@ func (a *App) restoreDraftSnapshot() {
 }
 
 func (a *App) draftSnapshotAccount(m *composer) (string, bool) {
-	email := a.storeAccount
+	email := a.composerOwner(m)
 	if email == "" {
 		return "", false
 	}
-	if m != nil && m.recoveryAccount != "" && (!strings.EqualFold(m.recoveryAccount, a.account.Email) || !strings.EqualFold(m.recoveryAccount, email)) {
+	if m != nil && m.recoveryAccount != "" && !strings.EqualFold(m.recoveryAccount, email) {
 		return "", false
 	}
 	return email, true
@@ -72,20 +115,25 @@ func (a *App) clearDraftSnapshot(m *composer) {
 
 func (a *App) writeDraftSnapshot(email string, snapshot *mailmodel.DraftSnapshot) {
 	store, ok := a.store.(draftStore)
+	email = normalizedEmail(email)
 	if !ok || email == "" || a.accountTransition != nil {
 		return
 	}
 	version := a.serviceVersion
+	_, generation := a.ownerService(email)
+	ownerClient := a.accountClients[email]
 	a.cacheState.mu.Lock()
 	a.cacheState.draftWrite++
 	write := a.cacheState.draftWrite
+	trackDraftSnapshotWrite(a, email, write)
 	a.cacheState.mu.Unlock()
 	a.cacheState.writes.Add(1)
 	a.schedule(func() {
 		defer a.cacheState.writes.Done()
+		defer untrackDraftSnapshotWrite(a)
 		a.cacheState.mu.Lock()
 		defer a.cacheState.mu.Unlock()
-		if version != a.cacheState.version || write != a.cacheState.draftWrite {
+		if version != a.cacheState.version || !draftSnapshotWriteCurrent(a, email, write) || ownerClient != nil && ownerClient.generation.Load() != generation {
 			return
 		}
 		var err error
@@ -104,12 +152,21 @@ func (a *App) openDraftMessage(draftID string, message mailmodel.Message) {
 	if a.compose != nil || a.accountTransition != nil {
 		return
 	}
+	ref := parseThreadRef(draftID)
+	owner := normalizedEmail(ref.AccountEmail)
+	if owner == "" {
+		owner = a.storedMessageOwner(message)
+	}
+	if owner == "" {
+		owner = a.activeComposeOwner()
+	}
+	message.AccountEmail = owner
 	compose := mailmodel.Compose{
 		To: message.To, Cc: message.Cc, Bcc: message.Bcc, Subject: message.Subject, Text: message.Text, HTML: message.HTML,
 		ThreadID: message.ThreadID, InReplyTo: message.InReplyTo, References: message.References, ThreadingResolved: message.ThreadID != "",
 	}
-	m := newDraftComposer(compose)
-	m.draftID = draftID
+	m := newDraftComposer(compose, owner)
+	m.draftID = ref.ID
 	a.compose = m
 	a.addMessageAttachments(message)
 }
@@ -118,7 +175,8 @@ func (a *App) openRecoveredDraft(snapshot mailmodel.DraftSnapshot, email string)
 	if a.compose != nil || a.accountTransition != nil {
 		return
 	}
-	m := newDraftComposer(snapshot.Compose)
+	email = normalizedEmail(email)
+	m := newDraftComposer(snapshot.Compose, email)
 	m.draftID = snapshot.DraftID
 	m.recoveryAccount = email
 	m.revision = 1
@@ -135,14 +193,14 @@ func (a *App) openRecoveredDraft(snapshot mailmodel.DraftSnapshot, email string)
 	a.scheduleDraftSave(m)
 }
 
-func newDraftComposer(compose mailmodel.Compose) *composer {
+func newDraftComposer(compose mailmodel.Compose, owner string) *composer {
 	compose = mailmodel.CloneCompose(compose)
 	doc := richtext.NewDocument(richtext.NewText(compose.Text))
 	if compose.HTML != "" {
 		doc = richtext.NewDocument(richtext.ParseHTML(compose.HTML))
 	}
 	m := &composer{
-		open: true, generation: 1, saveState: draftSaveSaved,
+		open: true, accountEmail: normalizedEmail(owner), generation: 1, saveState: draftSaveSaved,
 		to: compose.To, cc: compose.Cc, bcc: compose.Bcc, subject: compose.Subject, doc: doc,
 		showCc: compose.Cc != "", showBcc: compose.Bcc != "",
 		threadID: compose.ThreadID, inReplyTo: compose.InReplyTo, references: compose.References,
@@ -155,24 +213,30 @@ func newDraftComposer(compose mailmodel.Compose) *composer {
 }
 
 func (a *App) selectDraft(id string, call int) {
+	ref := parseThreadRef(id)
+	owner := normalizedEmail(ref.AccountEmail)
+	if owner == "" {
+		owner = normalizedEmail(a.storeAccount)
+	}
 	a.thread = mailmodel.Thread{}
 	a.threadLoading = true
-	manager, ok := a.service.(mailmodel.DraftManager)
-	version := a.serviceVersion
+	service, generation := a.ownerService(owner)
+	manager, ok := service.(mailmodel.DraftManager)
 	if !ok {
 		a.threadLoading = false
 		a.threadErr = "drafts are unavailable"
 		return
 	}
 	a.schedule(func() {
-		draft, err := manager.Draft(context.Background(), id)
+		draft, err := manager.Draft(context.Background(), ref.ID)
+		draft.Message.AccountEmail = owner
 		a.publish(func() {
-			if version != a.serviceVersion || call != a.threadCall {
+			if !a.ownerOperationCurrent(owner, generation) || call != a.threadCall {
 				return
 			}
 			a.threadLoading = false
 			if err != nil {
-				if a.thread.ID != id {
+				if a.thread.ID != ref.ID {
 					a.threadErr = err.Error()
 				}
 				return
@@ -214,7 +278,7 @@ func draftSummary(draft mailmodel.DraftRecord) mailmodel.ThreadSummary {
 		labels = append(labels, mailmodel.Draft)
 	}
 	return mailmodel.ThreadSummary{
-		ID: draft.ID, Subject: subject, Snippet: snippet, Senders: addressName(message.From), Updated: message.Date,
+		ID: draft.ID, AccountEmail: message.AccountEmail, Subject: subject, Snippet: snippet, Senders: addressName(message.From), Updated: message.Date,
 		MessageCount: 1, LabelIDs: labels, Unread: containsLabel(labels, mailmodel.Unread),
 	}
 }
@@ -225,5 +289,5 @@ func draftThread(draft mailmodel.DraftRecord) mailmodel.Thread {
 	if !containsLabel(message.LabelIDs, mailmodel.Draft) {
 		message.LabelIDs = append(append([]string(nil), message.LabelIDs...), mailmodel.Draft)
 	}
-	return mailmodel.Thread{ID: draft.ID, Subject: summary.Subject, LabelIDs: message.LabelIDs, Messages: []mailmodel.Message{message}}
+	return mailmodel.Thread{ID: draft.ID, AccountEmail: message.AccountEmail, Subject: summary.Subject, LabelIDs: message.LabelIDs, Messages: []mailmodel.Message{message}}
 }

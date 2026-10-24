@@ -207,7 +207,7 @@ func (a *App) removeLabelDefinition(id string) {
 	}
 	for _, thread := range a.threads {
 		if containsLabel(thread.LabelIDs, id) {
-			a.updateThreadLabels(thread.ID, nil, []string{id})
+			a.updateThreadLabels(a.summaryKey(thread), nil, []string{id})
 		}
 	}
 	if a.selectedLabel == id {

@@ -49,6 +49,15 @@ func (a *App) SetMailStore(store mailStore) {
 	a.cacheState.version = a.serviceVersion
 }
 
+func (a *App) currentCacheVersion() int {
+	a.cacheState.mu.Lock()
+	defer a.cacheState.mu.Unlock()
+	if generation, ok := a.accountGenerations[a.activeGenerationKey()]; ok {
+		return int(generation)
+	}
+	return a.serviceVersion
+}
+
 func (a *App) persistAccount(account mail.Account) {
 	if account.Demo || account.Email == "" {
 		return
@@ -64,28 +73,64 @@ func (a *App) persistAccount(account mail.Account) {
 }
 
 func (a *App) persistLabels(labels []mail.Label) {
+	a.persistLabelsForAccount(a.storeAccount, labels)
+}
+
+func (a *App) persistLabelsForAccount(accountEmail string, labels []mail.Label) {
 	labels = slices.Clone(labels)
-	a.persist(func(store mailStore, email string) error {
+	a.persistForAccount(accountEmail, func(store mailStore, email string) error {
 		return store.SaveLabels(context.Background(), email, labels)
 	})
 }
 
 func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 	threads = cloneThreadSummaries(threads)
-	a.persist(func(store mailStore, email string) error {
-		return store.SaveThreadList(context.Background(), email, query, threads)
-	})
+	groups := make(map[string][]mail.ThreadSummary)
+	for _, thread := range threads {
+		email := normalizedEmail(thread.AccountEmail)
+		if email == "" {
+			email = a.storeAccount
+		}
+		groups[email] = append(groups[email], thread)
+	}
+	owners := []string{a.storeAccount}
+	if a.compositeThreads {
+		for email := range a.accountClients {
+			owners = append(owners, email)
+		}
+	}
+	slices.Sort(owners)
+	seen := make(map[string]bool, len(owners))
+	for _, email := range owners {
+		if email == "" || seen[email] {
+			continue
+		}
+		seen[email] = true
+		a.persistForAccount(email, func(store mailStore, email string) error {
+			return store.SaveThreadList(context.Background(), email, query, groups[email])
+		})
+	}
 }
 
 func (a *App) persistThread(thread mail.Thread) {
 	thread = cloneMailThread(thread)
-	a.persist(func(store mailStore, email string) error {
+	a.persistForAccount(thread.AccountEmail, func(store mailStore, email string) error {
 		return store.SaveThread(context.Background(), email, thread)
 	})
 }
 
 func (a *App) persist(write func(mailStore, string) error) {
-	store, email, version := a.store, a.storeAccount, a.serviceVersion
+	a.persistForAccount(a.storeAccount, write)
+}
+
+func (a *App) persistForAccount(accountEmail string, write func(mailStore, string) error) {
+	email := normalizedEmail(accountEmail)
+	if email == "" {
+		email = a.storeAccount
+	}
+	store, version := a.store, a.serviceVersion
+	_, ownerGeneration := a.ownerService(email)
+	ownerClient := a.accountClients[email]
 	if store == nil || email == "" || a.accountTransition != nil {
 		return
 	}
@@ -95,6 +140,9 @@ func (a *App) persist(write func(mailStore, string) error) {
 		a.cacheState.mu.Lock()
 		defer a.cacheState.mu.Unlock()
 		if version != a.cacheState.version {
+			return
+		}
+		if ownerClient != nil && ownerClient.generation.Load() != ownerGeneration {
 			return
 		}
 		if err := write(store, email); err != nil {

@@ -203,7 +203,7 @@ func (a *App) threadList(c *ui.Context) {
 			}
 			return
 		}
-		a.list.Key = func(i int) any { return threads[i].ID }
+		a.list.Key = func(i int) any { return a.summaryKey(threads[i]) }
 		a.list.Label = func(i int) string {
 			thread := threads[i]
 			return thread.Senders + ", " + thread.Subject + ", " + thread.Snippet
@@ -213,7 +213,7 @@ func (a *App) threadList(c *ui.Context) {
 			a.threadRow(row, &threads[row.Index])
 		})
 		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {
-			a.openThreadFromList(threads[a.selectedRow].ID)
+			a.openThreadFromList(a.summaryKey(threads[a.selectedRow]))
 		}
 		if a.list.AtEnd() {
 			a.loadMoreThreads()

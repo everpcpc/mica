@@ -13,6 +13,7 @@ import (
 
 type composer struct {
 	open              bool
+	accountEmail      string
 	forward           bool
 	showCc            bool
 	showBcc           bool
@@ -41,12 +42,55 @@ type composer struct {
 	err               string
 }
 
+func (a *App) activeComposeOwner() string {
+	if email := normalizedEmail(a.storeAccount); email != "" {
+		return email
+	}
+	return normalizedEmail(a.account.Email)
+}
+
+func (a *App) storedMessageOwner(message mailmodel.Message) string {
+	if email := normalizedEmail(message.AccountEmail); email != "" {
+		return email
+	}
+	return normalizedEmail(a.storeAccount)
+}
+
+func (a *App) composerOwner(m *composer) string {
+	if m != nil {
+		if email := normalizedEmail(m.accountEmail); email != "" {
+			return email
+		}
+	}
+	return normalizedEmail(a.storeAccount)
+}
+
+func (a *App) composeOwnerVerified(email string) bool {
+	if normalizedEmail(email) == "" {
+		return a.accountVerified
+	}
+	return a.ownerVerified(email)
+}
+
+func (a *App) composeOwnerIsActive(email string) bool {
+	email = normalizedEmail(email)
+	return email == "" || email == normalizedEmail(a.storeAccount) || email == normalizedEmail(a.account.Email)
+}
+
+func (a *App) ownerOperationCurrent(email string, generation uint64) bool {
+	service, current := a.ownerService(email)
+	return service != nil && current == generation
+}
+
 func (a *App) openCompose(reply *mailmodel.Message) {
 	if a.accountTransition != nil {
 		return
 	}
-	m := &composer{open: true, generation: 1, doc: richtext.NewDocument(richtext.NewText(""))}
+	m := &composer{open: true, accountEmail: a.activeComposeOwner(), generation: 1, doc: richtext.NewDocument(richtext.NewText(""))}
 	if reply != nil {
+		if owner := a.storedMessageOwner(*reply); owner != "" {
+			m.accountEmail = owner
+		}
 		m.to = replyAddress(*reply)
 		m.subject = replySubject(reply.Subject)
 		m.quote = reply
@@ -73,6 +117,10 @@ func (a *App) composeView(c *ui.Context) {
 	t := c.Theme()
 	attachmentsLoading, attachmentsFailed := m.composeAttachmentsState()
 	busy := m.sending || m.pendingAction != composerActionNone
+	owner := m.accountEmail
+	if owner == "" {
+		owner = a.activeComposeOwner()
+	}
 	dismissed := ui.Modal(c, &m.open, func() {
 		a.composeShortcuts(c)
 		content := ui.Column(c).Width(640).Gap(12)
@@ -86,7 +134,7 @@ func (a *App) composeView(c *ui.Context) {
 					title = locales.ReplyThread()
 				}
 				ui.Text(c, title).FontSize(18).Bold().Grow(1)
-				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, owner).FontSize(11).TextColor(t.TextMuted)
 			})
 			sectionPanel(c).Children(func() {
 				a.composeField(c, m, "to", locales.To(), &m.to, "name@example.com")

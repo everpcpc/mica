@@ -19,15 +19,19 @@ type attachmentDownload struct {
 	err     string
 }
 
-func attachmentKey(messageID, attachmentID string, index int) string {
+func attachmentKey(ref messageRef, attachmentID string, index int) string {
 	if attachmentID == "" {
-		return fmt.Sprintf("%s\x00inline-%d", messageID, index)
+		return fmt.Sprintf("%s\x00inline-%d", ref.key(), index)
 	}
-	return messageID + "\x00" + attachmentID
+	return ref.key() + "\x00" + attachmentID
+}
+
+func (a *App) attachmentRef(message mail.Message) messageRef {
+	return messageRefForAccount(a.storedMessageOwner(message), message.ThreadID, message.ID)
 }
 
 func (a *App) attachmentView(c *ui.Context, message mail.Message, attachment mail.Attachment, index int) {
-	state := a.attachmentDownloads[attachmentKey(message.ID, attachment.ID, index)]
+	state := a.attachmentDownloads[attachmentKey(a.attachmentRef(message), attachment.ID, index)]
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconLabel).Size(14, 14).TextColor(c.Theme().TextMuted)
@@ -61,7 +65,9 @@ func formatAttachmentSize(size int64) string {
 }
 
 func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachment, save bool, index int) {
-	key := attachmentKey(message.ID, attachment.ID, index)
+	owner := a.storedMessageOwner(message)
+	ref := messageRefForAccount(owner, message.ThreadID, message.ID)
+	key := attachmentKey(ref, attachment.ID, index)
 	state := a.attachmentDownloads[key]
 	if state.loading {
 		return
@@ -69,7 +75,8 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 	if a.attachmentDownloads == nil {
 		a.attachmentDownloads = make(map[string]attachmentDownload)
 	}
-	fetcher, ok := a.service.(mail.AttachmentFetcher)
+	service, generation := a.ownerService(owner)
+	fetcher, ok := service.(mail.AttachmentFetcher)
 	if attachment.Data == nil && !ok {
 		state.err = locales.AttachmentUnavailable()
 		a.attachmentDownloads[key] = state
@@ -78,12 +85,11 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 	state.loading = true
 	state.err = ""
 	a.attachmentDownloads[key] = state
-	version := a.serviceVersion
 	a.schedule(func() {
 		data := attachment.Data
 		var err error
 		if data == nil {
-			data, err = fetcher.Attachment(context.Background(), message.ID, attachment.ID)
+			data, err = fetcher.Attachment(context.Background(), ref.MessageID, attachment.ID)
 		}
 		if err == nil {
 			if save {
@@ -93,7 +99,7 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 			}
 		}
 		a.publish(func() {
-			if version != a.serviceVersion {
+			if !a.ownerOperationCurrent(owner, generation) {
 				return
 			}
 			state := a.attachmentDownloads[key]
