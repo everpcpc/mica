@@ -99,6 +99,14 @@
 - When replacing wall-clock revisions with a database counter, seed the counter above the largest existing revision during migration. Starting at one would make every legacy snapshot win over new writes.
 - Eviction and insertion belong to one immediate SQLite transaction. A failing insert must roll back evicted bytes, while concurrent writers still respect the per-account quota. Accept both BLOB and TEXT JSON snapshots and match legacy account keys case-insensitively.
 
+## Keep local schedules ordered with remote mutations
+
+- A local wake time is not a Gmail field. Persist it before the remote archive, keep the virtual SNOOZED label out of API mutations, and use only idempotent INBOX changes for waking. Failed persistence must not reach the remote mutation, and failures must restore the previous schedule or inbox state.
+- Reuse the account-loading job for startup restoration. A later profile callback can request a deduplicated follow-up, but it must not overwrite a newer local action. Account generation, restore-load identity, and per-thread local versions are separate guards.
+- Single-account views use raw thread selection IDs, while owner-routed views use composite IDs. A wake path must derive its selection from the stored summary rather than always constructing a composite key.
+- Supersede timer callbacks with per-thread tokens and verify the exact wake time before changing Gmail. Retry overdue failures with a delay, and close new cache work on quit while admitted operations finish.
+- Not every MyGo application getter is safe off the main thread. Formatting in a background workflow must use the current i18n locale rather than `App.Region`, which deadlocked a direct Snooze action. Verify menu behavior and real rendered English output after adding a toolbar action.
+
 ## Serialize draft saves and preserve identity
 
 - Persist send intent before any network request, and link the Outbox record and draft snapshot in one transaction. A separate snapshot and Outbox entry can otherwise become two independent send paths after a crash.
