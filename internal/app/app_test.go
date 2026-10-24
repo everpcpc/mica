@@ -456,6 +456,22 @@ func TestRecoveryKeepsThreadInMatchingView(t *testing.T) {
 	}
 }
 
+func TestReportSpamFromAllRemovesThread(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	a.selectedLabel = mail.All
+	a.selectLabel()
+	a.selectThread("thread-1")
+	a.reportSpam()
+	if len(a.threads) != 1 || a.threads[0].ID != "thread-2" || a.selectedThread != "thread-2" {
+		t.Fatalf("All Mail report spam did not remove and advance: threads=%+v selected=%q", a.threads, a.selectedThread)
+	}
+}
+
 type pagingService struct {
 	*fakeService
 	pages   []mail.ThreadPage

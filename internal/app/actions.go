@@ -221,8 +221,20 @@ func (a *App) notSpam() {
 	if summary == nil || !containsLabel(summary.LabelIDs, mail.Spam) {
 		return
 	}
-	a.recordUndo(summary.ID, []string{mail.Spam}, []string{mail.Inbox})
-	a.mutate(summary.ID, []string{mail.Inbox}, []string{mail.Spam}, true, locales.NotSpamMarked)
+	id := summary.ID
+	a.recordUndo(id, []string{mail.Spam}, []string{mail.Inbox})
+	a.updateThreadLabels(id, []string{mail.Inbox}, []string{mail.Spam})
+	a.captureUndoSummary(id)
+	a.removeThreadIfHidden(id)
+	a.notice = locales.NotSpamMarked()
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		id:      id,
+		add:     []string{mail.Inbox},
+		remove:  []string{mail.Spam},
+		undo:    a.undo,
+		failure: locales.ActionFailed,
+	})
 }
 
 func (a *App) toggleThreadLabel(label mail.Label) {

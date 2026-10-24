@@ -693,7 +693,7 @@ func (a *App) mutate(id string, add, remove []string, removeFromList bool, messa
 	a.updateThreadLabels(id, add, remove)
 	a.captureUndoSummary(id)
 	if removeFromList {
-		a.removeThreadIfHidden(id)
+		a.removeThread(id)
 	}
 	a.notice = message()
 	a.enqueueMutation(mutationJob{
