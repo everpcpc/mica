@@ -91,6 +91,9 @@
 ## Serialize draft saves and preserve identity
 
 - Persist send intent before any network request, and link the Outbox record and draft snapshot in one transaction. A separate snapshot and Outbox entry can otherwise become two independent send paths after a crash.
+- Complete an Outbox row and its linked snapshot atomically. A missing row can follow a successful send, a cleanup crash, or manual deletion, so a linked snapshot must never treat it as a first send.
+- Scope Sent reconciliation to SENT and validate returned labels. An empty result is not proof that a response was never received; require an additional explicit confirmation before another send.
+- Editing after a failed attempt needs a fresh identity while preserving the original entry. Send and discard also invalidate older snapshot writes, and remote deletion failure must restore the local entry instead of leaving an unusable draft ID.
 - Non-idempotent send endpoints must not use the generic transient retry loop. Keep a stable Message-ID and reconcile with Sent before an explicit retry; a timeout or recovered `sending` state is uncertain, not proof that resending is safe.
 - Outbox updates and deletes need attempt fencing, not only owner checks. A stale callback can otherwise overwrite or remove a newer attempt after the current operation finishes.
 - Sending an existing draft must wait for the current create or update to finish. A generation check can discard a stale UI callback, but it cannot cancel the older server write or prevent a deleted draft from reappearing.
