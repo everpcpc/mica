@@ -1018,4 +1018,12 @@ func TestUnifiedReadFailureAfterModeChangePreservesCache(t *testing.T) {
 	if len(got) != 1 || got[0].ID != "cached-a" {
 		t.Fatalf("read failure overwrote the ordinary cache during transition: %+v", got)
 	}
+	ownerList := h.store.lists[cacheListKey{email: "b@example.com", query: h.query}]
+	if len(ownerList) != 1 || !ownerList[0].Unread || !containsLabel(ownerList[0].LabelIDs, mail.Unread) {
+		t.Fatalf("read failure did not restore the owner list's unread state: %+v", ownerList)
+	}
+	ownerThread := h.store.threads[cacheThreadKey{email: "b@example.com", id: "shared"}]
+	if !containsLabel(ownerThread.LabelIDs, mail.Unread) || len(ownerThread.Messages) != 1 || !containsLabel(ownerThread.Messages[0].LabelIDs, mail.Unread) {
+		t.Fatalf("read failure did not restore the owner detail's unread state: %+v", ownerThread)
+	}
 }

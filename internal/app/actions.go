@@ -37,6 +37,7 @@ type mutationJob struct {
 	deleteLabel     bool
 	labelColor      *mail.LabelColor
 	readStatus      bool
+	readQuery       mail.Query
 	undo            *undoAction
 	failure         func(string) string
 	done            func(error)
@@ -243,6 +244,7 @@ func (a *App) pumpMutations() {
 				}
 				if job.readStatus {
 					a.updateThreadLabels(job.id, []string{mail.Unread}, nil)
+					a.restoreUnread(job.id, job.readQuery)
 				} else {
 					a.mutationRefresh = true
 				}

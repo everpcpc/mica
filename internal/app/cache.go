@@ -148,6 +148,52 @@ func (a *App) persistThread(thread mail.Thread) {
 	})
 }
 
+func (a *App) restoreUnread(id string, query mail.Query) {
+	ref := parseThreadRef(id)
+	owner := normalizedEmail(ref.AccountEmail)
+	if owner == "" {
+		owner = a.storeAccount
+	}
+	version, revision := a.nextListCacheVersion(owner, query)
+	a.persistForAccount(owner, func(store mailStore, email string) error {
+		if version.Load() == revision {
+			threads, found, err := store.ThreadList(context.Background(), email, query)
+			if err != nil {
+				return err
+			}
+			if found {
+				changed := false
+				for i := range threads {
+					if threads[i].ID != ref.ID {
+						continue
+					}
+					threads[i].AccountEmail = email
+					threads[i].LabelIDs = modifyLabelIDs(threads[i].LabelIDs, []string{mail.Unread}, nil)
+					threads[i].Unread = true
+					changed = true
+					break
+				}
+				if changed {
+					if err := store.SaveThreadList(context.Background(), email, query, threads); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		thread, found, err := store.Thread(context.Background(), email, ref.ID)
+		if err != nil || !found {
+			return err
+		}
+		thread.AccountEmail = email
+		thread.LabelIDs = modifyLabelIDs(thread.LabelIDs, []string{mail.Unread}, nil)
+		for i := range thread.Messages {
+			thread.Messages[i].AccountEmail = email
+			thread.Messages[i].LabelIDs = modifyLabelIDs(thread.Messages[i].LabelIDs, []string{mail.Unread}, nil)
+		}
+		return store.SaveThread(context.Background(), email, thread)
+	})
+}
+
 func (a *App) persist(write func(mailStore, string) error) {
 	a.persistForAccount(a.storeAccount, write)
 }

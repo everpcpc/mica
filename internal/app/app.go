@@ -711,6 +711,7 @@ func (a *App) markRead(id string) {
 		id:         id,
 		remove:     []string{mail.Unread},
 		readStatus: true,
+		readQuery:  a.currentQuery(),
 		failure:    locales.ReadStatusFailed,
 	})
 }
