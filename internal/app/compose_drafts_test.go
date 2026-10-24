@@ -569,6 +569,66 @@ func TestOfflineRecoveredDraftDoesNotSaveOrSendUntilVerified(t *testing.T) {
 	})
 }
 
+func TestOfflineComposeCloseKeepsUnsavedDraft(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		existing bool
+	}{
+		{name: "new draft"},
+		{name: "existing draft", existing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newDraftHarness(t)
+			if tc.existing {
+				draft, err := h.service.CreateDraft(context.Background(), mailmodel.Compose{To: "to@example.com", Text: "saved"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				h.app.openDraftMessage(draft.ID, draft.Message)
+			} else {
+				h.app.openCompose(nil)
+			}
+			h.app.accountVerified = false
+			m := h.app.compose
+			m.to = "to@example.com"
+			h.edit("offline edits")
+			createCalls := h.service.createCalls
+			h.app.closeCompose()
+			if h.app.compose != m || m.pendingAction != composerActionNone || m.saveState != draftSaveFailed || m.err == "" {
+				t.Fatalf("offline close discarded or blocked the composer: %+v", h.app.compose)
+			}
+			if got := m.doc.Text().PlainText(); got != "offline edits" {
+				t.Fatalf("offline close changed the body: %q", got)
+			}
+			if len(h.jobs) != 0 || h.service.createCalls != createCalls || h.service.updateCalls != 0 {
+				t.Fatalf("offline close attempted a remote save: jobs=%d calls=%d/%d", len(h.jobs), h.service.createCalls, h.service.updateCalls)
+			}
+		})
+	}
+}
+
+func TestUnverifiedExistingDraftDoesNotFallBackToMessageSend(t *testing.T) {
+	h := newDraftHarness(t)
+	draft, err := h.service.CreateDraft(context.Background(), mailmodel.Compose{To: "to@example.com", Text: "saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.app.openDraftMessage(draft.ID, draft.Message)
+	h.app.accountVerified = false
+	m := h.app.compose
+	h.edit("latest")
+	h.app.sendCompose()
+	for len(h.jobs) > 0 {
+		h.finishJob()
+	}
+	if h.service.sendDraftCalls != 0 || h.service.sendCalls != 0 {
+		t.Fatalf("unverified existing draft sent remotely: calls=%d/%d", h.service.sendDraftCalls, h.service.sendCalls)
+	}
+	if h.app.compose != m || m.sending || m.pendingAction != composerActionNone || m.err == "" {
+		t.Fatalf("blocked existing draft send did not preserve an actionable composer: %+v", h.app.compose)
+	}
+}
+
 func TestRecoveredDraftDoesNotSendToDifferentAccount(t *testing.T) {
 	h := newDraftHarness(t)
 	h.app.accountVerified = true

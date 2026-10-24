@@ -222,7 +222,7 @@ func (a *App) closeCompose() {
 	if m == nil || m.sending || m.pendingAction != composerActionNone {
 		return
 	}
-	if _, ok := a.draftManager(m); !ok && m.recoveryAccount == "" {
+	if _, ok := a.service.(mailmodel.DraftManager); !ok && m.recoveryAccount == "" {
 		a.clearDraftSnapshot(m)
 		a.compose = nil
 		return
@@ -350,6 +350,12 @@ func (a *App) beginSendCompose(m *composer) {
 		return
 	}
 	manager, hasDrafts := a.draftManager(m)
+	if m.draftID != "" && !hasDrafts {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.DraftSaveFailedReason("drafts are unavailable")
+		return
+	}
 	draftID := m.draftID
 	m.generation++
 	m.pendingAction = composerActionSend
