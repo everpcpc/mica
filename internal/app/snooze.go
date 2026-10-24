@@ -266,7 +266,7 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 	record.Summary.ID = record.ThreadID
 	record.Summary.AccountEmail = email
 	key := snoozeKey(email, record.ThreadID)
-	id, visible := a.snoozeSelection(record)
+	id, _ := a.snoozeSelection(record)
 	service, _ := a.ownerService(email)
 	cache := a.snoozeCache(email)
 	if service == nil || cache == nil {
@@ -335,7 +335,7 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 			if err != nil && !restored {
 				a.retrySnooze(record)
 			}
-			if applied && visible {
+			if _, visible := a.snoozeSelection(record); applied && visible {
 				a.notice = locales.SnoozeRestored()
 			}
 		},

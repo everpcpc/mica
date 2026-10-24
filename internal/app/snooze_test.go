@@ -612,3 +612,146 @@ func TestSnoozeRestoringResume(t *testing.T) {
 		t.Fatalf("restart restored Snoozed instead of Inbox: %+v", restarted.threads)
 	}
 }
+
+func TestSnoozeRefreshUsesLatestLocalMetadata(t *testing.T) {
+	store := newFakeMailStore()
+	service := &snoozeService{fakeService: newFakeService()}
+	a := newSnoozeApp(service, store)
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	a.selectedLabel = mail.Snoozed
+	a.refreshList()
+	key := snoozeKey("demo@example.com", "thread-1")
+	stale := store.snoozes[key]
+	stale.Summary.Unread = true
+	stale.Summary.LabelIDs = append(stale.Summary.LabelIDs, mail.Unread)
+	store.snoozes[key] = stale
+	store.lists = make(map[cacheListKey][]mail.ThreadSummary)
+	service.threads = nil
+	for i := range a.threads {
+		a.threads[i].Unread = true
+		a.threads[i].LabelIDs = append(a.threads[i].LabelIDs, mail.Unread)
+	}
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.refreshList()
+	a.updateThreadLabels("thread-1", nil, []string{mail.Unread})
+	if len(jobs) == 0 {
+		t.Fatal("refresh was not scheduled")
+	}
+	jobs[0]()
+	if len(updates) == 0 {
+		t.Fatal("refresh produced no publication")
+	}
+	updates[len(updates)-1]()
+	if len(a.threads) != 1 || a.threads[0].Unread {
+		t.Fatalf("refresh overwrote the later read mutation: %+v", a.threads)
+	}
+}
+
+func TestSnoozeUnifiedLateResetKeepsRestoredSummary(t *testing.T) {
+	h := newUnifiedHarness()
+	summary := unifiedSummary("shared", "b@example.com", time.Now().Unix())
+	summary.LabelIDs = []string{mail.Inbox}
+	h.setPages("a@example.com", mail.ThreadPage{})
+	h.setPages("b@example.com", mail.ThreadPage{Threads: []mail.ThreadSummary{summary}})
+	h.app.refreshUnified()
+	h.app.snoozeUntil([]mail.ThreadSummary{summary}, time.Now().Add(time.Hour))
+	record := h.store.snoozes[snoozeKey("b@example.com", "shared")]
+	request := h.app.request
+	_, generation := h.app.ownerService("b@example.com")
+	h.app.unified.pending = 1
+	h.app.loading = true
+	h.app.wakeSnooze(record)
+	_, stream, _, ok := h.app.unifiedStreamForKey(summaryKey(summary))
+	if !ok {
+		t.Fatal("Unified stream is missing after wake")
+	}
+	h.app.finishUnifiedAccount(h.app.unified, request, "b@example.com", generation, mail.ThreadPage{}, nil)
+	if h.app.loading {
+		t.Fatal("Unified refresh did not finish after Snooze restoration")
+	}
+	if len(stream.threads) != 1 || !containsLabel(stream.threads[0].LabelIDs, mail.Inbox) {
+		t.Fatalf("late reset discarded restored summary: %+v", stream.threads)
+	}
+}
+
+func TestSnoozeRestoreInvalidatesOlderList(t *testing.T) {
+	store := newFakeMailStore()
+	wakeAt := time.Now().Add(-time.Hour)
+	if err := store.SaveSnooze(context.Background(), "demo@example.com", mail.SnoozeRecord{
+		ThreadID: "thread-1", WakeAt: wakeAt, Restoring: true,
+		Summary: mail.ThreadSummary{ID: "thread-1", Subject: "Restore", LabelIDs: []string{mail.Snoozed}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := &snoozeService{fakeService: newFakeService()}
+	a := New(service)
+	a.restoreAttempted = true
+	a.notificationsStarted = true
+	a.storeAccount = "demo@example.com"
+	a.account = mail.Account{Email: "demo@example.com", Demo: true}
+	a.SetMailStore(store)
+	a.draftRestoreAccount = a.storeAccount
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.Start()
+	if len(jobs) < 2 {
+		t.Fatalf("startup jobs = %d, want list and account work", len(jobs))
+	}
+	jobs[1]()
+	if len(updates) != 3 {
+		t.Fatalf("account publications = %d, want restore and account metadata", len(updates))
+	}
+	updates[0]()
+	if len(jobs) != 3 {
+		t.Fatalf("jobs after restore = %d, want wake mutation", len(jobs))
+	}
+	jobs[2]()
+	if len(updates) != 4 {
+		t.Fatalf("publications after wake = %d, want completion", len(updates))
+	}
+	updates[3]()
+	for _, update := range updates[1:3] {
+		update()
+	}
+	nextUpdate := len(updates)
+	jobs[0]()
+	for _, update := range updates[nextUpdate:] {
+		update()
+	}
+	if len(a.threads) != 1 || !containsLabel(a.threads[0].LabelIDs, mail.Inbox) || a.threads[0].Subject != "Restore" || a.loading {
+		t.Fatalf("older startup list broke restoration: loading=%v threads=%+v", a.loading, a.threads)
+	}
+}
+
+func TestSnoozeNoticeVisibilityChanges(t *testing.T) {
+	store := newFakeMailStore()
+	serviceA := &snoozeService{fakeService: newFakeService()}
+	serviceB := &snoozeService{fakeService: newFakeService()}
+	a := newOwnerResourceApp(serviceA)
+	a.schedule = func(fn func()) { fn() }
+	a.SetMailStore(store)
+	a.registerAccountClient(serviceB, mail.Account{Email: "b@example.com"}, nil, true)
+	a.compositeThreads = true
+	a.threads = []mail.ThreadSummary{{ID: "shared", AccountEmail: "b@example.com", LabelIDs: []string{mail.Inbox}}}
+	a.snoozeUntil(a.threads, time.Now().Add(time.Hour))
+	record := store.snoozes[snoozeKey("b@example.com", "shared")]
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.notice = ""
+	a.wakeSnooze(record)
+	a.compositeThreads = false
+	if len(jobs) != 1 {
+		t.Fatalf("wake jobs = %d, want one", len(jobs))
+	}
+	jobs[0]()
+	for _, update := range updates {
+		update()
+	}
+	if a.notice != "" {
+		t.Fatalf("wake used stale visibility for its notice: %q", a.notice)
+	}
+}

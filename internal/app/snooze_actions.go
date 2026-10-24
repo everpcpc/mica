@@ -89,6 +89,11 @@ func (a *App) applySnoozeStateForRecord(record mail.SnoozeRecord, add, remove []
 }
 
 func (a *App) applySnoozeState(id string, add, remove []string, wakeAt time.Time) {
+	if !a.compositeThreads {
+		a.request++
+		a.loading = false
+		a.loadingMore = false
+	}
 	for i := range a.threads {
 		if a.summaryKey(a.threads[i]) == id {
 			a.threads[i].SnoozeAt = wakeAt
@@ -385,7 +390,7 @@ func (a *App) unsnoozeOne(summary mail.ThreadSummary, record mail.SnoozeRecord) 
 func (a *App) snoozeFailureNotice(record mail.SnoozeRecord) func(string) string {
 	return func(message string) string {
 		if _, visible := a.snoozeSelection(record); !visible {
-			return ""
+			return a.notice
 		}
 		return locales.ActionFailed(message)
 	}

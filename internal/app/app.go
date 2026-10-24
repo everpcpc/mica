@@ -381,10 +381,8 @@ func (a *App) refreshList() {
 	query := a.currentQuery()
 	snoozed := a.selectedLabel == mail.Snoozed
 	var snoozeCache snoozeCacheOperation
-	var snoozedSummaries []mail.ThreadSummary
 	if snoozed {
 		snoozeCache = a.snoozeCache(email)
-		snoozedSummaries = a.currentSnoozedSummaries()
 	}
 	a.schedule(func() {
 		if store != nil && email != "" {
@@ -407,36 +405,37 @@ func (a *App) refreshList() {
 				cached, cacheErr = searchStore.SearchThreads(context.Background(), email, query)
 			}
 		}
-		if snoozed {
-			var records []mail.SnoozeRecord
-			recordsLoaded := false
-			if snoozeCache != nil {
-				if err := snoozeCache(func(store snoozeStore) error {
-					var err error
-					records, err = store.SnoozeRecords(context.Background(), email)
-					return err
-				}); err != nil {
-					logCacheError(err)
-				} else {
-					recordsLoaded = true
-				}
-			}
-			if err == nil {
-				summaries := make([]mail.ThreadSummary, 0, len(page.Threads)+len(snoozedSummaries)+len(cached))
-				summaries = append(summaries, page.Threads...)
-				summaries = append(summaries, snoozedSummaries...)
-				summaries = append(summaries, cached...)
-				page.Threads = mergeSnoozedSummaries(summaries, records, recordsLoaded)
+		var records []mail.SnoozeRecord
+		recordsLoaded := false
+		if snoozed && snoozeCache != nil {
+			if err := snoozeCache(func(store snoozeStore) error {
+				var err error
+				records, err = store.SnoozeRecords(context.Background(), email)
+				return err
+			}); err != nil {
+				logCacheError(err)
 			} else {
-				cached = mergeSnoozedSummaries(append(snoozedSummaries, cached...), records, recordsLoaded)
-				if len(cached) > 0 {
-					cacheErr = nil
-				}
+				recordsLoaded = true
 			}
 		}
 		a.publish(func() {
 			if version != a.serviceVersion || request != a.request {
 				return
+			}
+			if snoozed {
+				local := a.currentSnoozedSummaries()
+				if err == nil {
+					summaries := make([]mail.ThreadSummary, 0, len(page.Threads)+len(local)+len(cached))
+					summaries = append(summaries, page.Threads...)
+					summaries = append(summaries, local...)
+					summaries = append(summaries, cached...)
+					page.Threads = mergeSnoozedSummaries(summaries, records, recordsLoaded)
+				} else {
+					cached = mergeSnoozedSummaries(append(local, cached...), records, recordsLoaded)
+					if len(cached) > 0 {
+						cacheErr = nil
+					}
+				}
 			}
 			a.loading = false
 			if err != nil {
