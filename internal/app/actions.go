@@ -204,25 +204,25 @@ func (a *App) closeReader() {
 
 func (a *App) recoveryActionLabels() (string, string) {
 	trashLabel, spamLabel := locales.MoveToTrash(), locales.ReportSpam()
-	summary := a.selectedSummary()
-	if summary == nil {
+	summaries := a.actionSummaries()
+	if len(summaries) == 0 {
 		return trashLabel, spamLabel
 	}
-	if containsLabel(summary.LabelIDs, mail.Trash) {
+	if containsLabel(summaries[0].LabelIDs, mail.Trash) {
 		trashLabel = locales.Untrash()
 	}
-	if containsLabel(summary.LabelIDs, mail.Spam) {
+	if containsLabel(summaries[0].LabelIDs, mail.Spam) {
 		spamLabel = locales.NotSpam()
 	}
 	return trashLabel, spamLabel
 }
 
 func (a *App) toggleSpam() {
-	summary := a.selectedSummary()
-	if summary == nil {
+	summaries := a.actionSummaries()
+	if len(summaries) == 0 {
 		return
 	}
-	if containsLabel(summary.LabelIDs, mail.Spam) {
+	if containsLabel(summaries[0].LabelIDs, mail.Spam) {
 		a.notSpam()
 		return
 	}
@@ -230,32 +230,60 @@ func (a *App) toggleSpam() {
 }
 
 func (a *App) reportSpam() {
-	summary := a.selectedSummary()
-	if summary == nil || containsLabel(summary.LabelIDs, mail.Spam) {
+	summaries := a.actionSummaries()
+	targets := make([]mail.ThreadSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if !containsLabel(summary.LabelIDs, mail.Spam) {
+			targets = append(targets, summary)
+		}
+	}
+	if len(targets) == 0 {
 		return
 	}
-	a.recordUndo(summary.ID, []string{mail.Inbox}, []string{mail.Spam})
-	a.mutate(summary.ID, []string{mail.Spam}, []string{mail.Inbox}, true, locales.SpamReported)
+	if len(targets) == 1 {
+		summary := targets[0]
+		a.recordUndo(summary.ID, []string{mail.Inbox}, []string{mail.Spam})
+		a.mutate(summary.ID, []string{mail.Spam}, []string{mail.Inbox}, true, locales.SpamReported)
+		return
+	}
+	a.mutateThreads(targets, batchMutation{
+		add: []string{mail.Spam}, remove: []string{mail.Inbox}, inverseAdd: []string{mail.Inbox}, inverseRemove: []string{mail.Spam}, removal: batchRemoveAll,
+		message: locales.ConversationsSpamReported, failure: locales.ActionFailed,
+	})
 }
 
 func (a *App) notSpam() {
-	summary := a.selectedSummary()
-	if summary == nil || !containsLabel(summary.LabelIDs, mail.Spam) {
+	summaries := a.actionSummaries()
+	targets := make([]mail.ThreadSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if containsLabel(summary.LabelIDs, mail.Spam) {
+			targets = append(targets, summary)
+		}
+	}
+	if len(targets) == 0 {
 		return
 	}
-	id := summary.ID
-	a.recordUndo(id, []string{mail.Spam}, []string{mail.Inbox})
-	a.updateThreadLabels(id, []string{mail.Inbox}, []string{mail.Spam})
-	a.captureUndoSummary(id)
-	a.removeThreadIfHidden(id)
-	a.notice = locales.NotSpamMarked()
-	a.enqueueMutation(mutationJob{
-		service: a.service,
-		id:      id,
-		add:     []string{mail.Inbox},
-		remove:  []string{mail.Spam},
-		undo:    a.undo,
-		failure: locales.ActionFailed,
+	if len(targets) == 1 {
+		summary := targets[0]
+		id := summary.ID
+		a.recordUndo(id, []string{mail.Spam}, []string{mail.Inbox})
+		a.updateThreadLabels(id, []string{mail.Inbox}, []string{mail.Spam})
+		a.captureUndoSummary(id)
+		a.removeThreadIfHidden(id)
+		a.notice = locales.NotSpamMarked()
+		a.enqueueMutation(mutationJob{
+			service: a.service,
+			id:      id,
+			add:     []string{mail.Inbox},
+			remove:  []string{mail.Spam},
+			undo:    a.undo,
+			failure: locales.ActionFailed,
+		})
+		return
+	}
+	a.mutateThreads(targets, batchMutation{
+		add: []string{mail.Inbox}, remove: []string{mail.Spam}, inverseAdd: []string{mail.Spam}, inverseRemove: []string{mail.Inbox}, removal: batchRemoveHidden,
+		message: locales.ConversationsNotSpamMarked, failure: locales.ActionFailed,
 	})
 }
 
@@ -279,9 +307,37 @@ func (a *App) toggleThreadLabel(label mail.Label) {
 }
 
 func (a *App) setUnread(unread bool) {
-	summary := a.selectedSummary()
-	if summary == nil || summary.Unread == unread {
+	summaries := a.actionSummaries()
+	targets := make([]mail.ThreadSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.Unread != unread {
+			targets = append(targets, summary)
+		}
+	}
+	if len(targets) == 0 {
 		return
 	}
-	a.toggleUnread()
+	add, remove := []string{mail.Unread}, []string(nil)
+	if !unread {
+		add, remove = remove, add
+	}
+	if len(targets) == 1 {
+		summary := targets[0]
+		a.recordUndo(summary.ID, remove, add)
+		a.mutate(summary.ID, add, remove, false, func() string {
+			if unread {
+				return locales.MarkedUnread()
+			}
+			return locales.MarkedRead()
+		})
+		return
+	}
+	message := locales.ConversationsRead
+	if unread {
+		message = locales.ConversationsUnread
+	}
+	a.mutateThreads(targets, batchMutation{
+		add: add, remove: remove, inverseAdd: remove, inverseRemove: add,
+		message: message, failure: locales.ActionFailed,
+	})
 }

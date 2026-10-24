@@ -616,6 +616,90 @@ func (msgs Messages) ConversationsArchived(count int) string {
 	return Catalog.Format(msgs.locale, "conversationsArchived", map[string]any{"count": count})
 }
 
+// ConversationsTrashed says "Moved {count} conversations to Trash"
+// in the language the app shows.
+func ConversationsTrashed(count int) string { return In(i18n.Locale()).ConversationsTrashed(count) }
+
+// ConversationsTrashed says "Moved {count} conversations to Trash"
+// in the language of msgs.
+func (msgs Messages) ConversationsTrashed(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsTrashed", map[string]any{"count": count})
+}
+
+// ConversationsUntrashed says "Moved {count} conversations out of Trash"
+// in the language the app shows.
+func ConversationsUntrashed(count int) string { return In(i18n.Locale()).ConversationsUntrashed(count) }
+
+// ConversationsUntrashed says "Moved {count} conversations out of Trash"
+// in the language of msgs.
+func (msgs Messages) ConversationsUntrashed(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsUntrashed", map[string]any{"count": count})
+}
+
+// ConversationsSpamReported says "Reported {count} conversations as spam"
+// in the language the app shows.
+func ConversationsSpamReported(count int) string {
+	return In(i18n.Locale()).ConversationsSpamReported(count)
+}
+
+// ConversationsSpamReported says "Reported {count} conversations as spam"
+// in the language of msgs.
+func (msgs Messages) ConversationsSpamReported(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsSpamReported", map[string]any{"count": count})
+}
+
+// ConversationsNotSpamMarked says "Marked {count} conversations as not spam"
+// in the language the app shows.
+func ConversationsNotSpamMarked(count int) string {
+	return In(i18n.Locale()).ConversationsNotSpamMarked(count)
+}
+
+// ConversationsNotSpamMarked says "Marked {count} conversations as not spam"
+// in the language of msgs.
+func (msgs Messages) ConversationsNotSpamMarked(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsNotSpamMarked", map[string]any{"count": count})
+}
+
+// ConversationsStarred says "Starred {count} conversations"
+// in the language the app shows.
+func ConversationsStarred(count int) string { return In(i18n.Locale()).ConversationsStarred(count) }
+
+// ConversationsStarred says "Starred {count} conversations"
+// in the language of msgs.
+func (msgs Messages) ConversationsStarred(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsStarred", map[string]any{"count": count})
+}
+
+// ConversationsUnstarred says "Removed stars from {count} conversations"
+// in the language the app shows.
+func ConversationsUnstarred(count int) string { return In(i18n.Locale()).ConversationsUnstarred(count) }
+
+// ConversationsUnstarred says "Removed stars from {count} conversations"
+// in the language of msgs.
+func (msgs Messages) ConversationsUnstarred(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsUnstarred", map[string]any{"count": count})
+}
+
+// ConversationsRead says "Marked {count} conversations as read"
+// in the language the app shows.
+func ConversationsRead(count int) string { return In(i18n.Locale()).ConversationsRead(count) }
+
+// ConversationsRead says "Marked {count} conversations as read"
+// in the language of msgs.
+func (msgs Messages) ConversationsRead(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsRead", map[string]any{"count": count})
+}
+
+// ConversationsUnread says "Marked {count} conversations as unread"
+// in the language the app shows.
+func ConversationsUnread(count int) string { return In(i18n.Locale()).ConversationsUnread(count) }
+
+// ConversationsUnread says "Marked {count} conversations as unread"
+// in the language of msgs.
+func (msgs Messages) ConversationsUnread(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsUnread", map[string]any{"count": count})
+}
+
 // MoveToTrash says "Move to Trash"
 // in the language the app shows.
 func MoveToTrash() string { return In(i18n.Locale()).MoveToTrash() }
