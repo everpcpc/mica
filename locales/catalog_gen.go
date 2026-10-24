@@ -1170,6 +1170,146 @@ func (msgs Messages) SendFailed(error string) string {
 	return Catalog.Format(msgs.locale, "sendFailed", map[string]any{"error": error})
 }
 
+// ScheduleSend says "Schedule send"
+// in the language the app shows.
+func ScheduleSend() string { return In(i18n.Locale()).ScheduleSend() }
+
+// ScheduleSend says "Schedule send"
+// in the language of msgs.
+func (msgs Messages) ScheduleSend() string {
+	return Catalog.Format(msgs.locale, "scheduleSend", nil)
+}
+
+// ScheduleConfirm says "Schedule"
+// in the language the app shows.
+func ScheduleConfirm() string { return In(i18n.Locale()).ScheduleConfirm() }
+
+// ScheduleConfirm says "Schedule"
+// in the language of msgs.
+func (msgs Messages) ScheduleConfirm() string {
+	return Catalog.Format(msgs.locale, "scheduleConfirm", nil)
+}
+
+// ScheduleCustom says "Pick date and time…"
+// in the language the app shows.
+func ScheduleCustom() string { return In(i18n.Locale()).ScheduleCustom() }
+
+// ScheduleCustom says "Pick date and time…"
+// in the language of msgs.
+func (msgs Messages) ScheduleCustom() string {
+	return Catalog.Format(msgs.locale, "scheduleCustom", nil)
+}
+
+// ScheduleDate says "Send date"
+// in the language the app shows.
+func ScheduleDate() string { return In(i18n.Locale()).ScheduleDate() }
+
+// ScheduleDate says "Send date"
+// in the language of msgs.
+func (msgs Messages) ScheduleDate() string {
+	return Catalog.Format(msgs.locale, "scheduleDate", nil)
+}
+
+// ScheduleTime says "Send time"
+// in the language the app shows.
+func ScheduleTime() string { return In(i18n.Locale()).ScheduleTime() }
+
+// ScheduleTime says "Send time"
+// in the language of msgs.
+func (msgs Messages) ScheduleTime() string {
+	return Catalog.Format(msgs.locale, "scheduleTime", nil)
+}
+
+// ScheduleSendUntil says "Scheduled for {time}"
+// in the language the app shows.
+func ScheduleSendUntil(time_ string) string { return In(i18n.Locale()).ScheduleSendUntil(time_) }
+
+// ScheduleSendUntil says "Scheduled for {time}"
+// in the language of msgs.
+func (msgs Messages) ScheduleSendUntil(time_ string) string {
+	return Catalog.Format(msgs.locale, "scheduleSendUntil", map[string]any{"time": time_})
+}
+
+// ScheduleSendFailed says "Schedule send failed: {error}"
+// in the language the app shows.
+func ScheduleSendFailed(error string) string { return In(i18n.Locale()).ScheduleSendFailed(error) }
+
+// ScheduleSendFailed says "Schedule send failed: {error}"
+// in the language of msgs.
+func (msgs Messages) ScheduleSendFailed(error string) string {
+	return Catalog.Format(msgs.locale, "scheduleSendFailed", map[string]any{"error": error})
+}
+
+// ScheduleReviewRequired says "Review the failed send or edit the message before scheduling."
+// in the language the app shows.
+func ScheduleReviewRequired() string { return In(i18n.Locale()).ScheduleReviewRequired() }
+
+// ScheduleReviewRequired says "Review the failed send or edit the message before scheduling."
+// in the language of msgs.
+func (msgs Messages) ScheduleReviewRequired() string {
+	return Catalog.Format(msgs.locale, "scheduleReviewRequired", nil)
+}
+
+// ScheduleTimeInvalid says "Choose a future time."
+// in the language the app shows.
+func ScheduleTimeInvalid() string { return In(i18n.Locale()).ScheduleTimeInvalid() }
+
+// ScheduleTimeInvalid says "Choose a future time."
+// in the language of msgs.
+func (msgs Messages) ScheduleTimeInvalid() string {
+	return Catalog.Format(msgs.locale, "scheduleTimeInvalid", nil)
+}
+
+// OutboxScheduledFor says "Scheduled for {time}"
+// in the language the app shows.
+func OutboxScheduledFor(time_ string) string { return In(i18n.Locale()).OutboxScheduledFor(time_) }
+
+// OutboxScheduledFor says "Scheduled for {time}"
+// in the language of msgs.
+func (msgs Messages) OutboxScheduledFor(time_ string) string {
+	return Catalog.Format(msgs.locale, "outboxScheduledFor", map[string]any{"time": time_})
+}
+
+// SendNow says "Send now"
+// in the language the app shows.
+func SendNow() string { return In(i18n.Locale()).SendNow() }
+
+// SendNow says "Send now"
+// in the language of msgs.
+func (msgs Messages) SendNow() string {
+	return Catalog.Format(msgs.locale, "sendNow", nil)
+}
+
+// CancelSchedule says "Cancel schedule"
+// in the language the app shows.
+func CancelSchedule() string { return In(i18n.Locale()).CancelSchedule() }
+
+// CancelSchedule says "Cancel schedule"
+// in the language of msgs.
+func (msgs Messages) CancelSchedule() string {
+	return Catalog.Format(msgs.locale, "cancelSchedule", nil)
+}
+
+// ScheduleCanceled says "Schedule canceled; draft restored"
+// in the language the app shows.
+func ScheduleCanceled() string { return In(i18n.Locale()).ScheduleCanceled() }
+
+// ScheduleCanceled says "Schedule canceled; draft restored"
+// in the language of msgs.
+func (msgs Messages) ScheduleCanceled() string {
+	return Catalog.Format(msgs.locale, "scheduleCanceled", nil)
+}
+
+// ScheduleCancelFailed says "Couldn't cancel schedule: {error}"
+// in the language the app shows.
+func ScheduleCancelFailed(error string) string { return In(i18n.Locale()).ScheduleCancelFailed(error) }
+
+// ScheduleCancelFailed says "Couldn't cancel schedule: {error}"
+// in the language of msgs.
+func (msgs Messages) ScheduleCancelFailed(error string) string {
+	return Catalog.Format(msgs.locale, "scheduleCancelFailed", map[string]any{"error": error})
+}
+
 // OutboxCleanupFailed says "Sent, but Outbox cleanup failed: {error}"
 // in the language the app shows.
 func OutboxCleanupFailed(error string) string { return In(i18n.Locale()).OutboxCleanupFailed(error) }

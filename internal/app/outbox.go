@@ -20,6 +20,10 @@ type outboxStore interface {
 	SaveOutboxMessage(context.Context, string, mail.OutboxMessage) error
 	OutboxMessage(context.Context, string, string) (mail.OutboxMessage, bool, error)
 	OutboxMessages(context.Context, string) ([]mail.OutboxMessage, error)
+	ScheduledOutboxMessages(context.Context) ([]mail.OutboxMessage, error)
+	ClaimScheduledOutbox(context.Context, string, mail.OutboxMessage, time.Time, bool) (mail.OutboxMessage, bool, error)
+	CancelScheduledOutbox(context.Context, string, mail.OutboxMessage) error
+	RecoverScheduledOutbox(context.Context, string, mail.OutboxMessage) (bool, error)
 	CompleteOutbox(context.Context, string, string, uint64) error
 }
 

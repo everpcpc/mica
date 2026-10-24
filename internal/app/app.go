@@ -23,6 +23,7 @@ type App struct {
 	outbox                   outboxStore
 	snooze                   snoozeStore
 	snoozeRuntime            snoozeRuntime
+	scheduledRuntime         scheduledRuntime
 	outboxRecords            map[string]mail.OutboxMessage
 	outboxBusy               string
 	outboxDeleteID           string
@@ -131,6 +132,7 @@ type App struct {
 	update               func(func())
 	schedule             func(func())
 	after                func(time.Duration, func())
+	now                  func() time.Time
 	setBadge             func(int)
 	notify               func(string, string, string)
 	notificationsStarted bool
@@ -177,6 +179,7 @@ func New(service mail.Service) *App {
 		messageScroll:        -1,
 		schedule:             func(fn func()) { go fn() },
 		after:                func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
+		now:                  time.Now,
 		loadCheckpoint:       loadHistoryCheckpoint,
 		saveCheckpoint:       saveHistoryCheckpoint,
 	}
@@ -196,12 +199,17 @@ func (a *App) SetUpdate(update func(func())) {
 
 func (a *App) Start() {
 	a.resetSnoozeRuntime()
+	a.resetScheduledOutbox()
 	a.startupPending = true
 	a.refresh()
 	service, version := a.service, a.serviceVersion
 	store, email := a.store, a.storeAccount
 	restore, restoreOK := a.prepareSnoozeRestore(email)
+	scheduledRestore, scheduledOK := a.prepareScheduledOutboxRestore()
 	a.schedule(func() {
+		if scheduledOK {
+			a.runScheduledOutboxRestore(scheduledRestore)
+		}
 		if restoreOK {
 			a.runSnoozeRestore(restore)
 		}

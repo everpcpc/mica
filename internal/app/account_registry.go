@@ -98,6 +98,7 @@ func (a *App) removeAccountClient(email string) {
 	a.cancelAccountClientLoads(email)
 	generation := a.nextAccountGeneration(email)
 	a.removeSnoozesForAccount(email)
+	a.removeScheduledOutboxForAccount(email)
 	client := a.accountClients[email]
 	if client == nil {
 		return

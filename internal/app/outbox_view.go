@@ -25,6 +25,9 @@ func outboxMessage(record mail.OutboxMessage) mail.Message {
 		Date: record.Updated, Text: record.Compose.Text, HTML: record.Compose.HTML,
 		LabelIDs: []string{mail.Outbox},
 	}
+	if record.State == mail.OutboxScheduled {
+		message.Date = record.SendAt.Local()
+	}
 	for i, attachment := range record.Compose.Attachments {
 		message.Attachments = append(message.Attachments, mail.Attachment{
 			ID: fmt.Sprintf("%s-attachment-%d", id, i+1), Name: attachment.Name, MIMEType: attachment.MIMEType,
@@ -38,14 +41,16 @@ func outboxRecordSummary(record mail.OutboxMessage) mail.ThreadSummary {
 	message := outboxMessage(record)
 	summary := draftSummary(mail.DraftRecord{ID: message.ID, Message: message})
 	summary.Senders = record.Compose.To
-	if state := outboxStateLabel(record.State); state != "" {
+	if state := outboxStateLabel(record); state != "" {
 		summary.Snippet = strings.TrimSpace(state + " · " + summary.Snippet)
 	}
 	return summary
 }
 
-func outboxStateLabel(state mail.OutboxState) string {
-	switch state {
+func outboxStateLabel(record mail.OutboxMessage) string {
+	switch record.State {
+	case mail.OutboxScheduled:
+		return locales.OutboxScheduledFor(snoozeTime(record.SendAt))
 	case mail.OutboxSending:
 		return locales.OutboxSending()
 	case mail.OutboxUncertain:
@@ -84,7 +89,7 @@ func (a *App) refreshOutbox() {
 	a.schedule(func() {
 		records, err := store.OutboxMessages(context.Background(), owner)
 		for i := range records {
-			if records[i].State == mail.OutboxSending && records[i].ID != busy {
+			if records[i].State == mail.OutboxSending && records[i].ID != busy && records[i].SendAt.IsZero() {
 				records[i].State = mail.OutboxUncertain
 				if saveErr := store.SaveOutboxMessage(context.Background(), owner, records[i]); saveErr != nil {
 					logCacheError(saveErr)

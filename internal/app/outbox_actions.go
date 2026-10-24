@@ -34,6 +34,10 @@ func (a *App) retryOutbox() {
 	if store == nil || service == nil {
 		return
 	}
+	if record.State == mail.OutboxScheduled {
+		a.runScheduledOutbox(record, true, 0)
+		return
+	}
 	manager, hasDrafts := service.(mail.DraftManager)
 	drafts, _ := a.store.(draftStore)
 	allowUncertain := a.outboxReviewOpen && a.outboxReviewID == id && a.outboxReviewed[id]
@@ -144,7 +148,8 @@ func (a *App) requestDeleteOutbox() {
 		return
 	}
 	id := outboxRecordKey(a.selectedThread)
-	if _, found := a.outboxRecords[id]; !found {
+	record, found := a.outboxRecords[id]
+	if !found || record.State == mail.OutboxScheduled {
 		return
 	}
 	a.outboxDeleteID = id
@@ -157,6 +162,11 @@ func (a *App) deleteOutbox() {
 	}
 	id := a.outboxDeleteID
 	record, found := a.outboxRecords[id]
+	if found && record.State == mail.OutboxScheduled {
+		a.outboxDeleteOpen = false
+		a.outboxDeleteID = ""
+		return
+	}
 	if !found {
 		a.outboxDeleteOpen = false
 		return

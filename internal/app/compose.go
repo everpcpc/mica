@@ -3,6 +3,7 @@ package app
 import (
 	"net/mail"
 	"strings"
+	"time"
 
 	mailmodel "mica/internal/mail"
 	"mica/locales"
@@ -43,6 +44,9 @@ type composer struct {
 	generation        uint64
 	recoveryAccount   string
 	sending           bool
+	scheduleOpen      bool
+	scheduleAt        time.Time
+	scheduledAt       time.Time
 	err               string
 }
 
@@ -184,6 +188,20 @@ func (a *App) composeView(c *ui.Context) {
 					})
 				}
 			})
+			if m.scheduleOpen {
+				sectionPanel(c).Children(func() {
+					ui.Column(c).Gap(10).Children(func() {
+						ui.Row(c).Gap(10).Children(func() {
+							ui.DateInput(c.Key("schedule-date"), &m.scheduleAt).Label(locales.ScheduleDate()).Disabled(busy)
+							ui.TimeInput(c.Key("schedule-time"), &m.scheduleAt).Label(locales.ScheduleTime()).Disabled(busy)
+						})
+						ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
+							ui.Button(c, locales.Cancel()).Disabled(busy).OnClick(func() { m.scheduleOpen = false })
+							primaryAction(c, locales.ScheduleConfirm()).Disabled(busy || attachmentsLoading || attachmentsFailed).OnClick(func() { a.scheduleCompose(m.scheduleAt) })
+						})
+					})
+				})
+			}
 			if m.err != "" {
 				ui.Text(c, m.err).FontSize(12).TextColor(t.Danger)
 			}
@@ -198,6 +216,19 @@ func (a *App) composeView(c *ui.Context) {
 				ui.Text(c, locales.SendShortcut()).FontSize(11).TextColor(t.TextMuted).Grow(1)
 				ui.Button(c, locales.Cancel()).Disabled(busy).OnClick(a.closeCompose)
 				ui.Button(c, locales.DiscardDraft()).Disabled(busy).OnClick(a.discardCompose)
+				ui.MenuButton(c, locales.ScheduleSend(), func(menu *ui.Menu) {
+					for _, preset := range snoozePresets(a.currentTime()) {
+						preset := preset
+						if menu.Item(preset.name()).Chosen() {
+							a.scheduleCompose(preset.wakeAt)
+						}
+					}
+					menu.Separator()
+					if menu.Item(locales.ScheduleCustom()).Chosen() {
+						m.scheduleAt = nextMorning(a.currentTime(), 1)
+						m.scheduleOpen = true
+					}
+				}).Disabled(busy || attachmentsLoading || attachmentsFailed)
 				primaryAction(c, locales.Send()).Disabled(busy || attachmentsLoading || attachmentsFailed).OnClick(a.sendCompose)
 			})
 		})
