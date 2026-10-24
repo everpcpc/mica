@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 - 2026-10-24
+
+- Added Gmail multi-account management in Settings, including adding, switching, reauthorizing, and removing accounts with English and Simplified Chinese interfaces.
+- Isolated OAuth credentials, local caches, drafts, mutations, and notifications by account, with ordered activation, safe worker shutdown, and account-aware notification clicks.
+- Protected local unsent drafts and legacy-token ownership during account transitions and removal, including Demo fallback and cleanup-failure handling.
+- Refined icon-only toolbar buttons with circular hover feedback.
+
 ## 0.11.0 - 2026-10-24
 
 - Added Move out of Trash and Not spam with label-aware toolbar and native-menu actions, dedicated Gmail endpoints, and operation-aware Undo.
