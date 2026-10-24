@@ -174,6 +174,7 @@ func TestMessageRemoteImageDetection(t *testing.T) {
 		{name: "inline image", html: `<img src="data:image/png;base64,AAAA">`},
 		{name: "hidden remote image", html: `<div style="display:none"><img src="https://images.example/hidden.png"></div>`},
 		{name: "tracking pixel", html: `<img width="1" height="1" src="https://images.example/pixel.png">`},
+		{name: "small background", html: `<div width="1" height="1" style="background:url(https://cdn.example/bg.png)">Text</div>`, want: true},
 		{name: "plain text", html: `<p>Hello</p>`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

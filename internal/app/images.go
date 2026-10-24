@@ -139,6 +139,9 @@ func normalizeImageNode(node *xhtml.Node) {
 }
 
 func trackingImageNode(node *xhtml.Node) bool {
+	if node.Type != xhtml.ElementNode || node.DataAtom != atom.Img {
+		return false
+	}
 	style := imageStyle(node)
 	width, hasWidth := imageNodeDimension(node, "width", style)
 	height, hasHeight := imageNodeDimension(node, "height", style)
