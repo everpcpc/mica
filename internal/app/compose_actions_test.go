@@ -11,6 +11,7 @@ import (
 	mailmodel "mica/internal/mail"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/richtext"
 )
 
 type individualAttachmentService struct {
@@ -30,7 +31,7 @@ func (s *individualAttachmentService) Attachment(_ context.Context, messageID, a
 }
 
 func TestOpenReplyMessageUsesSelectedMessage(t *testing.T) {
-	a, _ := newIndividualMessageFixture()
+	a, service := newIndividualMessageFixture()
 	clickIndividualMessageAction(t, a, 0, "Reply")
 	m := a.compose
 	if m == nil {
@@ -44,6 +45,11 @@ func TestOpenReplyMessageUsesSelectedMessage(t *testing.T) {
 	}
 	if m.quote == nil || m.quote.ID != "message-first" || !strings.Contains(replyQuoteText(*m.quote), "First body") || strings.Contains(replyQuoteText(*m.quote), "Third body") {
 		t.Fatalf("reply quote = %+v", m.quote)
+	}
+	m.doc.SetText(richtext.NewText("Body"))
+	a.sendCompose()
+	if !service.sent.ThreadingResolved {
+		t.Fatal("selected reply did not preserve its resolved threading headers")
 	}
 }
 

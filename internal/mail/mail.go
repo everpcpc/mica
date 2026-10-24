@@ -115,16 +115,17 @@ type ThreadPage struct {
 }
 
 type Compose struct {
-	To          string
-	Cc          string
-	Bcc         string
-	Subject     string
-	Text        string
-	HTML        string
-	ThreadID    string
-	InReplyTo   string
-	References  string
-	Attachments []OutgoingAttachment
+	To                string
+	Cc                string
+	Bcc               string
+	Subject           string
+	Text              string
+	HTML              string
+	ThreadID          string
+	InReplyTo         string
+	References        string
+	ThreadingResolved bool
+	Attachments       []OutgoingAttachment
 }
 
 type Service interface {

@@ -174,8 +174,8 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		} else {
 			ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
 		}
-		for _, attachment := range message.Attachments {
-			a.attachmentView(c, message, attachment)
+		for i, attachment := range message.Attachments {
+			a.attachmentView(c, message, attachment, i)
 		}
 		a.expandedMessageActions(c, message)
 	})

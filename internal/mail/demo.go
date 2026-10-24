@@ -439,7 +439,7 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 		if message.Subject == "" {
 			message.Subject = thread.Subject
 		}
-		if len(thread.Messages) > 0 && message.References == "" {
+		if len(thread.Messages) > 0 && !compose.ThreadingResolved && message.References == "" {
 			last := thread.Messages[len(thread.Messages)-1]
 			message.References = appendReference(last.References, last.MessageID)
 		}

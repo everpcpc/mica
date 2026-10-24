@@ -575,6 +575,41 @@ func TestSendReplyRawAlternative(t *testing.T) {
 	}
 }
 
+func TestSendResolvedReplyDoesNotBorrowLatestHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/me/messages/send" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			Raw string `json:"raw"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(body.Raw)
+		if err != nil {
+			t.Error(err)
+		}
+		message, err := stdmail.ReadMessage(bufio.NewReader(bytes.NewReader(raw)))
+		if err != nil {
+			t.Error(err)
+		}
+		if got := message.Header.Get("In-Reply-To"); got != "" {
+			t.Errorf("In-Reply-To borrowed another message: %q", got)
+		}
+		if got := message.Header.Get("References"); got != "" {
+			t.Errorf("References borrowed another message: %q", got)
+		}
+		writeTestJSON(t, w, map[string]string{"id": "sent-reply", "threadId": "thread-reply"})
+	}))
+	defer server.Close()
+	service := testService(server)
+	if err := service.Send(context.Background(), mail.Compose{To: "maya@example.com", ThreadID: "thread-reply", ThreadingResolved: true, Text: "Plain reply"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAPIErrorDoesNotExposeAuthorization(t *testing.T) {
 	const token = "test-access-token-not-for-production"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

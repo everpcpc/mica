@@ -303,6 +303,21 @@ func TestDemoModifyTrashAndSend(t *testing.T) {
 	}
 }
 
+func TestDemoResolvedReplyDoesNotBorrowLatestHeaders(t *testing.T) {
+	service := NewDemo()
+	if err := service.Send(context.Background(), Compose{To: "maya@mica.example", ThreadID: "t-launch", ThreadingResolved: true, Text: "No source message ID"}); err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.Thread(context.Background(), "t-launch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := thread.Messages[len(thread.Messages)-1]
+	if reply.References != "" {
+		t.Fatalf("reply borrowed references from the latest message: %q", reply.References)
+	}
+}
+
 func TestDemoMailboxSearches(t *testing.T) {
 	thread := Thread{ID: "receipt", Messages: []Message{{
 		Text: "Your receipt", LabelIDs: []string{CategoryPurchases, Snoozed},

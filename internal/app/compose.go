@@ -178,16 +178,17 @@ func (a *App) sendCompose() {
 		htmlContent += replyQuoteHTML(*m.quote)
 	}
 	out := mailmodel.Compose{
-		To:          m.to,
-		Cc:          m.cc,
-		Bcc:         m.bcc,
-		Subject:     m.subject,
-		Text:        text,
-		HTML:        htmlContent,
-		ThreadID:    m.threadID,
-		InReplyTo:   m.inReplyTo,
-		References:  m.references,
-		Attachments: m.outgoingAttachments(),
+		To:                m.to,
+		Cc:                m.cc,
+		Bcc:               m.bcc,
+		Subject:           m.subject,
+		Text:              text,
+		HTML:              htmlContent,
+		ThreadID:          m.threadID,
+		InReplyTo:         m.inReplyTo,
+		References:        m.references,
+		ThreadingResolved: m.threadID != "",
+		Attachments:       m.outgoingAttachments(),
 	}
 	service, version := a.service, a.serviceVersion
 	a.schedule(func() {
