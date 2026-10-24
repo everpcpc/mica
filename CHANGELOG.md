@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0 - 2026-10-25
+
+- Added offline fallback search across loaded summaries and bodies, with bounded account-scoped attachment caching for downloads, forwards, and inline images.
+- Added persistent Snooze with a merged Snoozed view, presets, rescheduling, Unsnooze, and restart-safe restoration across accounts.
+- Added scheduled sending with native date/time controls, durable Outbox storage, Send now, and cancellation back to a complete draft.
+- Strengthened cache ordering, account ownership, loading completion, and send recovery to prevent stale overwrites and duplicate delivery.
+
 ## 0.15.0 - 2026-10-25
 
 - Added a persistent, account-scoped Outbox with complete message and attachment storage, a local preview, and explicit retry and deletion.
