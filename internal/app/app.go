@@ -138,6 +138,7 @@ type App struct {
 	isURLSchemeRegistered func(string) bool
 	defaultMailApp        bool
 	loadActiveAccount     func() (string, error)
+	loginGmail            gmailLoginFunc
 }
 
 func New(service mail.Service) *App {
@@ -169,6 +170,7 @@ func New(service mail.Service) *App {
 	a.registerURLScheme = mygo.App.RegisterURLScheme
 	a.isURLSchemeRegistered = mygo.App.IsURLSchemeRegistered
 	a.loadActiveAccount = gmail.NewActiveAccountStore().Load
+	a.loginGmail = loginGmailService
 	a.list.Selected = &a.selectedRow
 	a.list.Selection = &a.threadSelection
 	return a

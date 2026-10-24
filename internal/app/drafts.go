@@ -63,7 +63,7 @@ func untrackDraftSnapshotWrite(a *App) {
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
-	if a.accountTransition != nil || !ok || email == "" || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
+	if a.accountTransition != nil || !ok || email == "" || a.draftRestorePending || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
 		return
 	}
 	a.draftRestoreAccount = email

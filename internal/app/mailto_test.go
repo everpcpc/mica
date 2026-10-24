@@ -236,8 +236,83 @@ func TestOpenMailtoAfterInactiveRemoval(t *testing.T) {
 	h.app.removeAccount(h.target.account.Email)
 	h.runJob(t)
 	h.runUpdate(t)
+	for steps := 0; len(h.jobs) > 0 || len(h.updates) > 0; steps++ {
+		if steps > 20 {
+			t.Fatal("inactive removal recovery did not settle")
+		}
+		if len(h.updates) > 0 {
+			h.runUpdate(t)
+		} else {
+			h.runJob(t)
+		}
+	}
 	if h.app.compose == nil || h.app.pendingMailto != "" {
 		t.Fatalf("inactive removal left mailto blocked: compose=%p pending=%q", h.app.compose, h.app.pendingMailto)
+	}
+}
+
+func TestCloseSettingsDuringAuthOpensPending(t *testing.T) {
+	a := New(newFakeService())
+	a.restoreAttempted = true
+	a.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	cancel := func() {}
+	a.authCancel = cancel
+	a.settings = &settingsState{open: true, cancel: cancel}
+	a.closeSettings()
+	if a.authCancel != nil {
+		t.Fatal("closing Settings retained the authentication cancel state")
+	}
+	if a.compose == nil || a.pendingMailto != "" {
+		t.Fatalf("closing during authentication left mailto blocked: compose=%p pending=%q", a.compose, a.pendingMailto)
+	}
+}
+
+func TestConnectGmailFailureReleasesPending(t *testing.T) {
+	a := New(newFakeService())
+	a.schedule = func(fn func()) { fn() }
+	a.after = func(time.Duration, func()) {}
+	a.restoreAttempted = true
+	a.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	a.loginGmail = func(context.Context, mailStore, string, string, string, string) (mail.Service, string, error) {
+		return nil, "", errOffline
+	}
+	a.settings = &settingsState{open: true, clientID: "id", clientSecret: "secret", projectID: "project"}
+	a.connectGmailWith("id", "secret", "project", false)
+	if a.compose == nil || a.pendingMailto != "" || a.authCancel != nil {
+		t.Fatalf("manual Connect failure left mailto blocked: compose=%p pending=%q cancel=%v", a.compose, a.pendingMailto, a.authCancel != nil)
+	}
+}
+
+func TestFailTransitionRestoresDraftBeforeMailto(t *testing.T) {
+	a := New(newFakeService())
+	a.restoreAttempted = true
+	a.storeAccount = "demo@example.com"
+	a.account = mail.Account{Email: "demo@example.com"}
+	store := newFakeMailStore()
+	store.drafts["demo@example.com"] = mail.DraftSnapshot{Compose: mail.Compose{To: "keep@example.com", Text: "Existing draft"}}
+	a.store = store
+	a.pendingMailto = "mailto:other@example.com?subject=Other"
+	a.draftRestoreAccount = "demo@example.com"
+	a.notificationsStarted = true
+	transition := &accountTransition{email: "b@example.com"}
+	a.accountTransition = transition
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.failAccountTransition(transition, errOffline)
+	if a.compose != nil || !a.draftRestorePending || a.pendingMailto == "" {
+		t.Fatalf("failure opened mailto before restoring the draft: compose=%p draftPending=%v pending=%q", a.compose, a.draftRestorePending, a.pendingMailto)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("draft restore jobs = %d, want 1", len(jobs))
+	}
+	jobs[0]()
+	if len(updates) != 1 {
+		t.Fatalf("draft restore updates = %d, want 1", len(updates))
+	}
+	updates[0]()
+	if a.compose == nil || a.compose.to != "keep@example.com" || a.pendingMailto != "" {
+		t.Fatalf("mail to overwrote the recovered draft: compose=%+v pending=%q", a.compose, a.pendingMailto)
 	}
 }
 

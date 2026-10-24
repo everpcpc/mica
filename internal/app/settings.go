@@ -167,6 +167,7 @@ func settingsField(c *ui.Context, label string, value *string, placeholder strin
 func (a *App) closeSettings() {
 	if a.settings != nil && a.settings.cancel != nil {
 		a.settings.cancel()
+		a.cancelPendingAuthentication()
 	}
 	a.settings = nil
 	a.openPendingMailto()
@@ -183,6 +184,8 @@ func (a *App) connectCustomGmail() {
 	}
 	a.connectGmailWith(strings.TrimSpace(a.settings.clientID), strings.TrimSpace(a.settings.clientSecret), strings.TrimSpace(a.settings.projectID), true)
 }
+
+type gmailLoginFunc func(context.Context, mailStore, string, string, string, string) (mail.Service, string, error)
 
 type pendingTokenStore struct {
 	token *oauth2.Token
@@ -280,6 +283,7 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 		defer a.publish(func() {
 			if a.authID == auth {
 				a.authCancel = nil
+				a.openPendingMailto()
 			}
 		})
 		if custom {
@@ -294,7 +298,11 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 				return
 			}
 		}
-		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, "")
+		login := a.loginGmail
+		if login == nil {
+			login = loginGmailService
+		}
+		service, email, err := login(ctx, a.store, clientID, clientSecret, projectID, "")
 		a.publish(func() {
 			if a.settings != s || a.authID != auth || version != a.serviceVersion {
 				return
@@ -550,6 +558,9 @@ func (a *App) accountAuthenticationFailed(s *settingsState, expectedEmail string
 		s.err = locales.GmailConnectFailed(err.Error())
 	} else {
 		a.notice = locales.GmailConnectFailed(err.Error())
+	}
+	if a.authCancel != nil {
+		a.cancelPendingAuthentication()
 	}
 	a.openPendingMailto()
 }

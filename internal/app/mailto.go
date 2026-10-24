@@ -105,6 +105,12 @@ func (a *App) OpenMailto(raw string) error {
 	return nil
 }
 
+func (a *App) resumePendingMailto() {
+	a.draftRestoreAccount = ""
+	a.restoreDraftSnapshot()
+	a.openPendingMailto()
+}
+
 func (a *App) openPendingMailto() {
 	if a.pendingMailto == "" || !a.restoreAttempted || a.authCancel != nil || a.accountTransition != nil || a.startupPending || a.draftRestorePending {
 		return

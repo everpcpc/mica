@@ -179,5 +179,5 @@ func (a *App) failAccountTransition(transition *accountTransition, err error) {
 		a.notice = message
 	}
 	a.startNotifications()
-	a.openPendingMailto()
+	a.resumePendingMailto()
 }
