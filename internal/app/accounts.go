@@ -48,7 +48,7 @@ func (a *App) switchAccount(email string) {
 		return
 	}
 	transition := &accountTransition{sourceVersion: a.serviceVersion, email: email, selectedLabel: a.accountInboxPending}
-	a.accountTransition = transition
+	a.setAccountTransition(transition)
 	a.cancelPendingAuthentication()
 	store := a.store
 	a.schedule(func() {
@@ -78,7 +78,7 @@ func (a *App) switchAccount(email string) {
 				}
 				if err != nil {
 					if errors.Is(err, gmail.ErrNoSession) {
-						a.accountTransition = nil
+						a.setAccountTransition(nil)
 						a.authenticateAccount(email)
 						return
 					}
@@ -100,7 +100,7 @@ func (a *App) transitionToService(service mail.Service, email string, closeSetti
 		sourceVersion: a.serviceVersion, email: normalizedEmail(email), service: service,
 		closeSettings: closeSettings, notice: notice, selectedLabel: a.accountInboxPending,
 	}
-	a.accountTransition = transition
+	a.setAccountTransition(transition)
 	a.cancelPendingAuthentication()
 	a.drainAccountTransition(transition)
 }
@@ -136,6 +136,7 @@ func (a *App) drainAccountTransition(transition *accountTransition) {
 						}
 						a.useService(transition.service, transition.email)
 						a.removeAccountClient(transition.removeEmail)
+						a.allowAttachmentCacheWrites()
 						message := transition.notice
 						if err != nil {
 							message = locales.AccountSwitchFailed(err.Error())
@@ -163,11 +164,24 @@ func (a *App) drainAccountTransition(transition *accountTransition) {
 	})
 }
 
+func (a *App) setAccountTransition(transition *accountTransition) {
+	a.cacheState.mu.Lock()
+	a.accountTransition = transition
+	a.cacheState.attachmentWritesBlocked = transition != nil
+	a.cacheState.mu.Unlock()
+}
+
+func (a *App) allowAttachmentCacheWrites() {
+	a.cacheState.mu.Lock()
+	a.cacheState.attachmentWritesBlocked = false
+	a.cacheState.mu.Unlock()
+}
+
 func (a *App) failAccountTransition(transition *accountTransition, err error) {
 	if a.accountTransition != transition {
 		return
 	}
-	a.accountTransition = nil
+	a.setAccountTransition(nil)
 	a.draftRestoreAccount = ""
 	if a.pendingThread.email == transition.email {
 		a.pendingThread = notificationTarget{}

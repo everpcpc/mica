@@ -69,7 +69,8 @@ type cacheState struct {
 	widthSave  int
 	draftWrite uint64
 
-	remoteImagesSave uint64
+	remoteImagesSave        uint64
+	attachmentWritesBlocked bool
 }
 
 type mailStore interface {
@@ -90,19 +91,75 @@ type mailStore interface {
 	SavePreference(context.Context, string, string) error
 }
 
+type offlineSearchStore interface {
+	SearchThreads(context.Context, string, mail.Query) ([]mail.ThreadSummary, error)
+}
+
+type attachmentStore interface {
+	SaveAttachment(context.Context, string, string, string, string, []byte) error
+	Attachment(context.Context, string, string, string, string) ([]byte, bool, error)
+}
+
+type attachmentCacheWriter func(threadID, messageID, attachmentID string, data []byte, tracked ...bool)
+type attachmentCacheBegin func() func()
+
+func (a *App) attachmentCacheBegin(owner string, generation uint64) attachmentCacheBegin {
+	owner = normalizedEmail(owner)
+	if _, ok := a.store.(attachmentStore); !ok || owner == "" {
+		return nil
+	}
+	client := a.accountClients[owner]
+	version := a.serviceVersion
+	return func() func() {
+		a.cacheState.mu.Lock()
+		defer a.cacheState.mu.Unlock()
+		if a.cacheState.attachmentWritesBlocked || version != a.cacheState.version || client != nil && client.generation.Load() != generation {
+			return nil
+		}
+		a.cacheState.writes.Add(1)
+		return a.cacheState.writes.Done
+	}
+}
+
+func (a *App) attachmentCacheWriter(owner string, generation uint64) attachmentCacheWriter {
+	owner = normalizedEmail(owner)
+	store, ok := a.store.(attachmentStore)
+	if !ok || owner == "" {
+		return nil
+	}
+	client := a.accountClients[owner]
+	version := a.serviceVersion
+	return func(threadID, messageID, attachmentID string, data []byte, tracked ...bool) {
+		a.cacheState.mu.Lock()
+		defer a.cacheState.mu.Unlock()
+		trackedOperation := len(tracked) > 0 && tracked[0]
+		if !trackedOperation && a.cacheState.attachmentWritesBlocked || version != a.cacheState.version || client != nil && client.generation.Load() != generation {
+			return
+		}
+		if !trackedOperation {
+			a.cacheState.writes.Add(1)
+			defer a.cacheState.writes.Done()
+		}
+		if err := store.SaveAttachment(context.Background(), owner, threadID, messageID, attachmentID, data); err != nil {
+			logCacheError(err)
+		}
+	}
+}
+
 func normalizedEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func (a *App) SetMailStore(store mailStore) {
 	a.cacheState.mu.Lock()
-	defer a.cacheState.mu.Unlock()
 	a.store = store
 	a.outbox = nil
 	if outbox, ok := store.(outboxStore); ok {
 		a.outbox = outbox
 	}
 	a.cacheState.version = a.serviceVersion
+	a.cacheState.mu.Unlock()
+	a.resetMessageViews()
 }
 
 func (a *App) currentCacheVersion() int {
@@ -115,6 +172,7 @@ func (a *App) currentCacheVersion() int {
 }
 
 func (a *App) persistAccount(account mail.Account) {
+	a.configureMessageCache()
 	if account.Demo || account.Email == "" {
 		return
 	}
@@ -177,6 +235,9 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 }
 
 func (a *App) WaitForCacheWrites() {
+	a.cacheState.mu.Lock()
+	a.cacheState.attachmentWritesBlocked = true
+	a.cacheState.mu.Unlock()
 	a.cacheState.writes.Wait()
 }
 

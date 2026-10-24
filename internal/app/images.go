@@ -41,12 +41,21 @@ var (
 
 type messageImages struct {
 	service mail.Service
+	store   attachmentStore
+	save    attachmentCacheWriter
+	begin   attachmentCacheBegin
+	owner   string
 	client  *http.Client
 }
 
-func newMessageImageLoader(service mail.Service) *messageImages {
+func newMessageImageLoader(service mail.Service, stores ...attachmentStore) *messageImages {
+	var store attachmentStore
+	if len(stores) > 0 {
+		store = stores[0]
+	}
 	return &messageImages{
 		service: service,
+		store:   store,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
@@ -72,18 +81,33 @@ func (a *App) resetMessageViews() {
 	a.attachmentDownloads = nil
 	a.documents = nil
 	a.expandedMessages = nil
+	a.configureMessageCache()
+	a.syncRemoteImagePolicy()
+}
+
+func (a *App) configureMessageCache() {
+	store, _ := a.store.(attachmentStore)
 	if a.emailResources == nil {
-		a.emailResources = newEmailResourceStore(a.service)
+		a.emailResources = newEmailResourceStore(a.service, store)
 	}
+	owner := a.activeComposeOwner()
+	_, generation := a.ownerService(owner)
+	loader := newMessageImageLoader(a.service, store)
+	loader.save = a.attachmentCacheWriter(owner, generation)
+	loader.begin = a.attachmentCacheBegin(owner, generation)
+	loader.owner = owner
 	a.emailResources.mu.Lock()
-	a.emailResources.loader = newMessageImageLoader(a.service)
+	a.emailResources.loader = loader
+	a.emailResources.store = store
+	a.emailResources.attachmentWriter = a.attachmentCacheWriter
+	a.emailResources.attachmentBegin = a.attachmentCacheBegin
+	a.emailResources.defaultOwner = a.activeComposeOwner
 	a.emailResources.ownerService = a.ownerService
 	a.emailResources.ownerClient = func(email string) *accountClient {
 		return a.accountClients[normalizedEmail(email)]
 	}
 	a.emailResources.activeVersion = a.currentCacheVersion
 	a.emailResources.mu.Unlock()
-	a.syncRemoteImagePolicy()
 }
 
 func prepareMessageHTML(message mail.Message) string {
@@ -202,11 +226,11 @@ func messageImageURL(message mail.Message, source string) string {
 	if contentID == "" {
 		return source
 	}
-	for _, attachment := range message.Attachments {
+	for i, attachment := range message.Attachments {
 		if !strings.EqualFold(attachment.ContentID, contentID) && attachment.ID != contentID {
 			continue
 		}
-		query := url.Values{"message": {message.ID}, "attachment": {attachment.ID}}
+		query := url.Values{"message": {message.ID}, "attachment": {attachment.ID}, "owner": {message.AccountEmail}, "thread": {message.ThreadID}, "position": {strconv.Itoa(i)}}
 		return (&url.URL{Scheme: "mica-attachment", RawQuery: query.Encode()}).String()
 	}
 	return source
@@ -272,7 +296,34 @@ func (l *messageImages) load(source string) (ui.ImageSource, error) {
 	return decodeImage(data)
 }
 
-func (l *messageImages) loadData(source string) ([]byte, error) {
+func inlineAttachmentData(message mail.Message, source string) []byte {
+	parsed, err := url.Parse(messageImageURL(message, source))
+	if err != nil || !strings.EqualFold(parsed.Scheme, "mica-attachment") {
+		return nil
+	}
+	position, err := strconv.Atoi(parsed.Query().Get("position"))
+	if err != nil || position < 0 || position >= len(message.Attachments) {
+		return nil
+	}
+	attachment := message.Attachments[position]
+	if attachment.ID != parsed.Query().Get("attachment") {
+		return nil
+	}
+	return attachment.Data
+}
+
+func messageImageOwner(source, owner string) string {
+	parsed, err := url.Parse(source)
+	if err != nil || owner == "" || !strings.EqualFold(parsed.Scheme, "mica-attachment") || parsed.Query().Get("owner") != "" {
+		return source
+	}
+	query := parsed.Query()
+	query.Set("owner", owner)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func (l *messageImages) loadData(source string, inline ...[]byte) ([]byte, error) {
 	parsed, err := url.Parse(strings.TrimSpace(source))
 	if err != nil {
 		return nil, errImageUnavailable
@@ -285,13 +336,57 @@ func (l *messageImages) loadData(source string) ([]byte, error) {
 		}
 		return decodeDataImage(payload)
 	case "mica-attachment":
-		fetcher, ok := l.service.(mail.AttachmentFetcher)
-		if !ok {
-			return nil, errImageUnavailable
+		fetcher, hasFetcher := l.service.(mail.AttachmentFetcher)
+		owner := parsed.Query().Get("owner")
+		threadID := parsed.Query().Get("thread")
+		messageID := parsed.Query().Get("message")
+		attachmentID := parsed.Query().Get("attachment")
+		position, _ := strconv.Atoi(parsed.Query().Get("position"))
+		storageID := attachmentStorageID(mail.Attachment{ID: attachmentID}, position)
+		cacheAllowed := owner != "" && l.begin != nil && (l.owner == "" || l.owner == normalizedEmail(owner))
+		var cacheDone func()
+		if cacheAllowed && l.begin != nil {
+			cacheDone = l.begin()
+			if cacheDone == nil {
+				return nil, errImageUnavailable
+			}
+			defer cacheDone()
 		}
-		data, err := fetcher.Attachment(context.Background(), parsed.Query().Get("message"), parsed.Query().Get("attachment"))
-		if err != nil {
-			return nil, errImageUnavailable
+		store := l.store
+		if !cacheAllowed {
+			store = nil
+		}
+		var data []byte
+		hasData := len(inline) > 0
+		if hasData {
+			data = inline[0]
+		}
+		fromCache := false
+		if !hasData && store != nil {
+			cached, found, err := store.Attachment(context.Background(), owner, threadID, messageID, storageID)
+			if err != nil {
+				logCacheError(err)
+			} else if found {
+				data, fromCache, hasData = cached, true, true
+			}
+		}
+		if !hasData {
+			if attachmentID == "" || !hasFetcher {
+				return nil, errImageUnavailable
+			}
+			data, err = fetcher.Attachment(context.Background(), messageID, attachmentID)
+			if err != nil {
+				return nil, errImageUnavailable
+			}
+		}
+		if cacheAllowed && !fromCache {
+			if l.save != nil {
+				l.save(threadID, messageID, storageID, data, cacheDone != nil)
+			} else if store != nil {
+				if err := store.SaveAttachment(context.Background(), owner, threadID, messageID, storageID, data); err != nil {
+					logCacheError(err)
+				}
+			}
 		}
 		return data, nil
 	case "http", "https":

@@ -58,6 +58,7 @@
   "loadingMail": "正在同步邮件…",
   "loadMailFailed": "邮件加载失败",
   "retry": "重试",
+  "offlineResults": "离线：正在显示本机缓存",
   "emptyMailbox": "这里没有会话",
   "emptyMailboxHint": "换个标签或搜索条件看看",
   "selectMessage": "选择一封邮件",

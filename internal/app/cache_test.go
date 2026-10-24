@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +118,7 @@ type fakeMailStore struct {
 	drafts           map[string]mail.DraftSnapshot
 	outbox           map[string]mail.OutboxMessage
 	outboxErr        error
+	attachments      map[string][]byte
 	preferences      map[string]string
 	preferenceWrites int
 	saveThreadErr    error
@@ -130,6 +132,7 @@ func newFakeMailStore() *fakeMailStore {
 		threads:     make(map[cacheThreadKey]mail.Thread),
 		drafts:      make(map[string]mail.DraftSnapshot),
 		outbox:      make(map[string]mail.OutboxMessage),
+		attachments: make(map[string][]byte),
 		preferences: make(map[string]string),
 	}
 }
@@ -211,6 +214,11 @@ func (s *fakeMailStore) DeleteAccount(_ context.Context, email string) error {
 	for key, record := range s.outbox {
 		if normalizedEmail(record.AccountEmail) == email {
 			delete(s.outbox, key)
+		}
+	}
+	for key := range s.attachments {
+		if strings.HasPrefix(key, email+"\x00") {
+			delete(s.attachments, key)
 		}
 	}
 	return nil
@@ -330,6 +338,113 @@ func (s *fakeMailStore) CompleteOutbox(_ context.Context, email, id string, atte
 		delete(s.drafts, email)
 	}
 	return nil
+}
+
+func fakeAttachmentKey(email, threadID, messageID, attachmentID string) string {
+	return normalizedEmail(email) + "\x00" + threadID + "\x00" + messageID + "\x00" + attachmentID
+}
+
+func (s *fakeMailStore) SaveAttachment(_ context.Context, email, threadID, messageID, attachmentID string, data []byte) error {
+	s.attachments[fakeAttachmentKey(email, threadID, messageID, attachmentID)] = append([]byte(nil), data...)
+	return nil
+}
+
+func (s *fakeMailStore) Attachment(_ context.Context, email, threadID, messageID, attachmentID string) ([]byte, bool, error) {
+	data, found := s.attachments[fakeAttachmentKey(email, threadID, messageID, attachmentID)]
+	return append([]byte(nil), data...), found, nil
+}
+
+func (s *fakeMailStore) SearchThreads(_ context.Context, email string, query mail.Query) ([]mail.ThreadSummary, error) {
+	email = normalizedEmail(email)
+	labelID, search := query.LabelID, strings.ToLower(strings.TrimSpace(query.Search))
+	switch search {
+	case "in:snoozed":
+		labelID, search = mail.Snoozed, ""
+	case "category:purchases":
+		labelID, search = mail.CategoryPurchases, ""
+	case "category:reservations":
+		labelID, search = mail.CategoryReservations, ""
+	}
+	unreadOnly := search == "is:unread"
+	if unreadOnly {
+		search = ""
+	}
+	candidates := make(map[string]mail.ThreadSummary)
+	matches := func(summary mail.ThreadSummary, thread mail.Thread) bool {
+		if unreadOnly && !summary.Unread {
+			return false
+		}
+		if labelID != "" && !containsLabel(summary.LabelIDs, labelID) && !containsLabel(thread.LabelIDs, labelID) {
+			return false
+		}
+		if search == "" {
+			return true
+		}
+		if strings.Contains(strings.ToLower(summary.Subject+" "+summary.Senders+" "+summary.Snippet), search) {
+			return true
+		}
+		for _, message := range thread.Messages {
+			if strings.Contains(strings.ToLower(message.From+" "+message.To+" "+message.Subject+" "+message.Text+" "+message.HTML), search) {
+				return true
+			}
+		}
+		return false
+	}
+	add := func(summary mail.ThreadSummary, thread mail.Thread) {
+		if !matches(summary, thread) {
+			return
+		}
+		if summary.AccountEmail == "" {
+			summary.AccountEmail = email
+		}
+		if current, found := candidates[summary.ID]; !found || current.Updated.Before(summary.Updated) {
+			candidates[summary.ID] = summary
+		}
+	}
+	for _, summaries := range s.lists {
+		for _, summary := range summaries {
+			add(summary, s.threads[cacheThreadKey{email: email, id: summary.ID}])
+		}
+	}
+	for _, thread := range s.threads {
+		summary := mail.ThreadSummary{ID: thread.ID, AccountEmail: thread.AccountEmail, Subject: thread.Subject, LabelIDs: thread.LabelIDs, MessageCount: len(thread.Messages)}
+		for _, message := range thread.Messages {
+			summary.Senders = message.From
+			summary.Snippet = message.Text
+			if message.Date.After(summary.Updated) {
+				summary.Updated = message.Date
+			}
+		}
+		summary.Unread = containsLabel(summary.LabelIDs, mail.Unread)
+		summary.Starred = containsLabel(summary.LabelIDs, mail.Starred)
+		add(summary, thread)
+	}
+	result := make([]mail.ThreadSummary, 0, len(candidates))
+	for _, summary := range candidates {
+		result = append(result, summary)
+	}
+	slices.SortFunc(result, func(a, b mail.ThreadSummary) int {
+		if a.Updated.Equal(b.Updated) {
+			if a.ID < b.ID {
+				return -1
+			}
+			if a.ID > b.ID {
+				return 1
+			}
+			return 0
+		}
+		if a.Updated.After(b.Updated) {
+			return -1
+		}
+		return 1
+	})
+	if query.Limit <= 0 {
+		query.Limit = 25
+	}
+	if len(result) > query.Limit {
+		result = result[:query.Limit]
+	}
+	return result, nil
 }
 
 func (s *fakeMailStore) Labels(_ context.Context, email string) ([]mail.Label, bool, error) {

@@ -215,6 +215,7 @@ func (a *App) Start() {
 				}
 				if accountCacheErr == nil && accountFound && normalizedEmail(cachedAccount.Email) == normalizedEmail(email) && !a.accountVerified {
 					a.account = cachedAccount
+					a.configureMessageCache()
 					a.loadAccountPhoto(cachedAccount)
 					a.restoreDraftSnapshot()
 				}
@@ -367,6 +368,9 @@ func (a *App) refreshList() {
 	a.err = ""
 	service, version := a.service, a.serviceVersion
 	store, email := a.store, a.storeAccount
+	if email == "" {
+		email = normalizedEmail(a.account.Email)
+	}
 	query := a.currentQuery()
 	a.schedule(func() {
 		if store != nil && email != "" {
@@ -382,13 +386,26 @@ func (a *App) refreshList() {
 			})
 		}
 		page, err := listThreadPage(context.Background(), service, query)
+		var cached []mail.ThreadSummary
+		var cacheErr error
+		if err != nil {
+			if searchStore, ok := store.(offlineSearchStore); ok && email != "" {
+				cached, cacheErr = searchStore.SearchThreads(context.Background(), email, query)
+			}
+		}
 		a.publish(func() {
 			if version != a.serviceVersion || request != a.request {
 				return
 			}
 			a.loading = false
 			if err != nil {
-				a.err = err.Error()
+				if cacheErr == nil && len(cached) > 0 {
+					a.applyThreadList(cached, true)
+					a.startupSelectionDone = true
+					a.err = locales.OfflineResults()
+				} else {
+					a.err = err.Error()
+				}
 				return
 			}
 			a.listFreshRequest = request

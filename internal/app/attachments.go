@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,13 @@ import (
 type attachmentDownload struct {
 	loading bool
 	err     string
+}
+
+func attachmentStorageID(attachment mail.Attachment, index int) string {
+	if attachment.ID != "" {
+		return attachment.ID
+	}
+	return fmt.Sprintf("inline-%d", index)
 }
 
 func attachmentKey(ref messageRef, attachmentID string, index int) string {
@@ -76,20 +84,43 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 		a.attachmentDownloads = make(map[string]attachmentDownload)
 	}
 	service, generation := a.ownerService(owner)
-	fetcher, ok := service.(mail.AttachmentFetcher)
-	if attachment.Data == nil && !ok {
-		state.err = locales.AttachmentUnavailable()
-		a.attachmentDownloads[key] = state
-		return
+	fetcher, hasFetcher := service.(mail.AttachmentFetcher)
+	store, _ := a.store.(attachmentStore)
+	cacheAttachment := a.attachmentCacheWriter(owner, generation)
+	var cacheDone func()
+	if begin := a.attachmentCacheBegin(owner, generation); begin != nil {
+		cacheDone = begin()
+	}
+	if cacheDone == nil {
+		store = nil
 	}
 	state.loading = true
 	state.err = ""
 	a.attachmentDownloads[key] = state
 	a.schedule(func() {
+		if cacheDone != nil {
+			defer cacheDone()
+		}
 		data := attachment.Data
+		fromCache := false
+		if data == nil && store != nil {
+			cached, found, err := store.Attachment(context.Background(), owner, ref.ThreadID, ref.MessageID, attachmentStorageID(attachment, index))
+			if err != nil {
+				logCacheError(err)
+			} else if found {
+				data, fromCache = cached, true
+			}
+		}
 		var err error
-		if data == nil {
-			data, err = fetcher.Attachment(context.Background(), ref.MessageID, attachment.ID)
+		if data == nil && !fromCache {
+			if !hasFetcher {
+				err = errors.New(locales.AttachmentUnavailable())
+			} else {
+				data, err = fetcher.Attachment(context.Background(), ref.MessageID, attachment.ID)
+			}
+		}
+		if err == nil && !fromCache && cacheAttachment != nil {
+			cacheAttachment(ref.ThreadID, ref.MessageID, attachmentStorageID(attachment, index), data, cacheDone != nil)
 		}
 		if err == nil {
 			if save {

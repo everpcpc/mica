@@ -132,7 +132,7 @@ func (f *fakeService) SentMessageExists(_ context.Context, messageID string) (bo
 	return false, nil
 }
 
-func newTestApp(service *fakeService) *App {
+func newTestApp(service mail.Service) *App {
 	a := New(service)
 	a.outbox = newFakeMailStore()
 	a.schedule = func(fn func()) { fn() }

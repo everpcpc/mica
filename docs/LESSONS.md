@@ -88,6 +88,17 @@
 - Do not fill missing reply headers from the thread's latest message when the caller selected a different message. An explicit resolved-threading marker distinguishes intentional empty headers from unresolved legacy calls.
 - ID-less inline attachments need a stable per-message position key; message ID alone would make their loading and error states collide.
 
+## Bind offline caches to their owner and lifetime
+
+- An empty `storeAccount` is not a storage owner. Use the active account's normalized email as the Demo fallback instead of silently skipping cache reads or attachment writes.
+- Downloads, forwards, and WebView inline images must share one attachment cache boundary. Carry owner, thread, message, and position keys through the real protocol loader, and bind writes to the captured owner generation and the cache drain. Testing only a standalone loader misses a production WebView binding that omits the store; a stale-owner regression and a blocked write must prove deletion fencing and waiting.
+- Bound binary caches by both item size and per-account total size. Evict by the complete primary key, and verify binary bytes after reopening the database, quota eviction, and account cleanup.
+- Perform fallback cache scans before publishing a failed network result. Searching every cached body on the UI callback can stall rendering; a deferred-publish test proves where the work runs.
+- A message timestamp is not a cache revision, and wall time is not a write sequence. Allocate revisions inside the SQLite write transaction, choose one current summary before filtering, and never union labels from different list and detail snapshots. Read the candidates in one SQL statement so a concurrent write cannot split the read into different cache states. Revision-zero legacy data has no recoverable write order: prefer detail and make list fallback deterministic without calling it the newest state.
+- A cache drain must include cache reads and attachment fetches, not only the final write. Admit the operation before starting asynchronous work, close new cache work on quit, and let admitted operations finish their saves. Account metadata can arrive after store initialization: refresh the loader at that boundary, and never fall back to an unregistered raw store when the lifecycle is unavailable. WebView inline images must use message-provided bytes before fetching, especially when the attachment has no Gmail ID. An ownerless Demo URL needs an active-account cache owner without changing the legacy resource's service-binding behavior.
+- When replacing wall-clock revisions with a database counter, seed the counter above the largest existing revision during migration. Starting at one would make every legacy snapshot win over new writes.
+- Eviction and insertion belong to one immediate SQLite transaction. A failing insert must roll back evicted bytes, while concurrent writers still respect the per-account quota. Accept both BLOB and TEXT JSON snapshots and match legacy account keys case-insensitively.
+
 ## Serialize draft saves and preserve identity
 
 - Persist send intent before any network request, and link the Outbox record and draft snapshot in one transaction. A separate snapshot and Outbox entry can otherwise become two independent send paths after a crash.
