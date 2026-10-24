@@ -107,15 +107,15 @@ func (a *App) composeView(c *ui.Context) {
 			})
 			sectionPanel(c).Children(func() {
 				ui.Row(c).Gap(4).Padding(2).Radius(8).Background(t.Surface).Children(func() {
-					formatButton(c, "B", locales.BoldTooltip(), func() { m.doc.ToggleBold(); a.markComposerEdited(m) }).Bold()
-					formatButton(c, "I", locales.ItalicTooltip(), func() { m.doc.ToggleItalic(); a.markComposerEdited(m) }).Italic()
-					formatButton(c, "U", locales.UnderlineTooltip(), func() { m.doc.ToggleUnderline(); a.markComposerEdited(m) }).Underline()
-					formatButton(c, "•", locales.BulletsTooltip(), func() { m.doc.ToggleList(richtext.Bullets); a.markComposerEdited(m) })
+					formatButton(c, "B", locales.BoldTooltip(), func() { m.doc.ToggleBold(); a.markComposerEdited(m) }, busy).Bold()
+					formatButton(c, "I", locales.ItalicTooltip(), func() { m.doc.ToggleItalic(); a.markComposerEdited(m) }, busy).Italic()
+					formatButton(c, "U", locales.UnderlineTooltip(), func() { m.doc.ToggleUnderline(); a.markComposerEdited(m) }, busy).Underline()
+					formatButton(c, "•", locales.BulletsTooltip(), func() { m.doc.ToggleList(richtext.Bullets); a.markComposerEdited(m) }, busy)
 				})
 				editor := richtext.Editor(c.Key("compose-body"), m.doc, richtext.EditorOptions{
 					Label:       locales.Body(),
 					Placeholder: locales.BodyPlaceholder(),
-				}).Height(250)
+				}).Height(250).Disabled(busy)
 				if editor.Changed() {
 					a.markComposerEdited(m)
 				}
@@ -156,15 +156,16 @@ func (a *App) composeView(c *ui.Context) {
 func (a *App) composeField(c *ui.Context, m *composer, key, label string, value *string, placeholder string) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, label).Width(52).Shrink(0)
-		field := ui.TextInput(c.Key(key), value).Label(label).Placeholder(placeholder).Grow(1)
+		field := ui.TextInput(c.Key(key), value).Label(label).Placeholder(placeholder).Grow(1).Disabled(m.sending || m.pendingAction != composerActionNone)
 		if field.Changed() {
 			a.markComposerEdited(m)
 		}
 	})
 }
 
-func formatButton(c *ui.Context, label, tip string, action func()) ui.Element {
-	return ui.Button(c, label).KeepFocus().Tooltip(tip).MinWidth(30).OnClick(action)
+func formatButton(c *ui.Context, label, tip string, action func(), disabled ...bool) ui.Element {
+	inactive := len(disabled) > 0 && disabled[0]
+	return ui.Button(c, label).KeepFocus().Tooltip(tip).MinWidth(30).Disabled(inactive).OnClick(action)
 }
 
 func (a *App) sendCompose() {

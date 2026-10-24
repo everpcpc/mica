@@ -260,7 +260,7 @@ func outgoingMIMEType(path string, data []byte) string {
 func (a *App) composeAttachmentsView(c *ui.Context, m *composer) {
 	ui.Column(c).Gap(6).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Button(c, locales.AddAttachments()).Disabled(m.sending).OnClick(a.chooseComposeAttachments)
+			ui.Button(c, locales.AddAttachments()).Disabled(m.sending || m.pendingAction != composerActionNone).OnClick(a.chooseComposeAttachments)
 			ui.Text(c, locales.AttachmentDropHint()).FontSize(11).TextColor(c.Theme().TextMuted)
 		})
 		for _, item := range m.attachments {
@@ -275,7 +275,7 @@ func (a *App) composeAttachmentsView(c *ui.Context, m *composer) {
 					case item.err == "":
 						ui.Text(c, formatAttachmentSize(int64(len(item.attachment.Data)))).FontSize(11).TextColor(c.Theme().TextMuted)
 					}
-					ui.Button(c, locales.RemoveAttachment()).Label(locales.RemoveAttachmentNamed(item.attachment.Name)).Disabled(m.sending).OnClick(func() {
+					ui.Button(c, locales.RemoveAttachment()).Label(locales.RemoveAttachmentNamed(item.attachment.Name)).Disabled(m.sending || m.pendingAction != composerActionNone).OnClick(func() {
 						a.removeComposeAttachment(id)
 					})
 				})

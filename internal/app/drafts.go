@@ -20,7 +20,7 @@ type draftStore interface {
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
-	if !ok || !a.accountVerified || email == "" || a.draftRestoreAccount == email {
+	if !ok || email == "" || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
 		return
 	}
 	a.draftRestoreAccount = email
@@ -29,7 +29,7 @@ func (a *App) restoreDraftSnapshot() {
 		snapshot, found, err := store.DraftSnapshot(context.Background(), email)
 		logCacheError(err)
 		a.publish(func() {
-			if version != a.serviceVersion || !a.accountVerified || email != a.storeAccount || a.compose != nil || err != nil || !found {
+			if version != a.serviceVersion || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found {
 				return
 			}
 			a.openRecoveredDraft(snapshot, email)

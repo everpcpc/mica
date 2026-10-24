@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -139,6 +140,43 @@ func TestSQLiteDraftSnapshotRestoresComposer(t *testing.T) {
 	}
 }
 
+type offlineAccountService struct{ *mail.Demo }
+
+func (s *offlineAccountService) Account(context.Context) (mail.Account, error) {
+	return mail.Account{}, errors.New("offline")
+}
+
+func TestOfflineDraftSnapshotRestoresWithoutProfile(t *testing.T) {
+	ctx := context.Background()
+	db, err := mailstore.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	service := &offlineAccountService{Demo: mail.NewDemo()}
+	account, _ := service.Demo.Account(ctx)
+	if err := db.SaveAccount(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := mail.DraftSnapshot{DraftID: "draft-offline", Compose: mail.Compose{To: "to@example.com", Text: "offline body"}}
+	if err := db.SaveDraftSnapshot(ctx, account.Email, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	a := New(service)
+	a.storeAccount = account.Email
+	a.SetMailStore(db)
+	a.schedule = func(fn func()) { fn() }
+	a.after = func(time.Duration, func()) {}
+	a.restoreAttempted = true
+	a.Start()
+	if a.accountVerified {
+		t.Fatal("offline profile unexpectedly verified")
+	}
+	if a.compose == nil || a.compose.doc.Text().PlainText() != "offline body" {
+		t.Fatalf("offline snapshot was not restored: %+v", a.compose)
+	}
+}
+
 func TestSQLiteDraftSnapshotPreservesUnreadAttachmentState(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "mail.db")
@@ -219,6 +257,7 @@ func TestDraftSnapshotRequiresVerifiedAccount(t *testing.T) {
 		t.Fatal("snapshot restored before account verification")
 	}
 	a.accountVerified = true
+	a.account.Email = "account@example.com"
 	a.restoreDraftSnapshot()
 	if a.compose == nil || a.compose.doc.Text().PlainText() != "Recovered" {
 		t.Fatalf("snapshot did not restore after verification: %+v", a.compose)

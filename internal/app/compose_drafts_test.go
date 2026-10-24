@@ -509,6 +509,30 @@ func TestComposerCloseIncludesEditsDuringSave(t *testing.T) {
 	}
 }
 
+func TestComposerInputDisabledWhileBusy(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		busy func(*composer)
+	}{
+		{name: "send", busy: func(m *composer) { m.sending = true }},
+		{name: "discard", busy: func(m *composer) { m.pendingAction = composerActionDiscard }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newDraftHarness(t)
+			h.app.openCompose(nil)
+			m := h.app.compose
+			m.doc.SetText(richtext.NewText("before"))
+			tc.busy(m)
+			tt := ui.NewTester(h.app.View, 1280, 900)
+			_ = tt.Click("Body")
+			tt.Type(" after")
+			if got := m.doc.Text().PlainText(); got != "before" {
+				t.Fatalf("busy composer accepted input: %q", got)
+			}
+		})
+	}
+}
+
 func TestComposerDraftStatusFollowsRealEditing(t *testing.T) {
 	h := newDraftHarness(t)
 	h.app.openCompose(nil)

@@ -117,7 +117,7 @@ func (a *App) openForwardMessage(message mailmodel.Message) {
 
 func (a *App) composeShortcuts(c *ui.Context) {
 	m := a.compose
-	if m == nil {
+	if m == nil || m.sending || m.pendingAction != composerActionNone {
 		return
 	}
 	switch {
