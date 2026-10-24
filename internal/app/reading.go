@@ -55,7 +55,7 @@ func (a *App) reader(c *ui.Context) {
 			}
 			ui.Spacer(c)
 			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0).OnClick(a.openReply)
-		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background.Alpha(0.82)}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
+		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
 	})
 }
 
