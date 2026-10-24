@@ -213,23 +213,16 @@ func loginGmailService(ctx context.Context, store mailStore, clientID, clientSec
 	if pending.token == nil {
 		return nil, "", gmail.ErrNoSession
 	}
-	if store == nil {
-		legacy := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
-		if err := legacy.SaveToken(pending.token); err != nil {
+	if store != nil {
+		if err := store.SaveAccount(ctx, account); err != nil {
 			return nil, "", err
 		}
-		client, err = legacy.Restore(ctx)
-		if err != nil {
-			return nil, "", err
-		}
-		service, err = legacy.Service(client)
-		return service, account.Email, err
-	}
-	if err := store.SaveAccount(ctx, account); err != nil {
-		return nil, "", err
 	}
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(pending.token); err != nil {
+		return nil, "", err
+	}
+	if err := gmail.NewActiveAccountStore().Save(account.Email); err != nil {
 		return nil, "", err
 	}
 	client, err = formal.Restore(ctx)
@@ -238,6 +231,9 @@ func loginGmailService(ctx context.Context, store mailStore, clientID, clientSec
 	}
 	service, err = formal.Service(client)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := gmail.NewOAuthWithProject(clientID, clientSecret, projectID).Logout(ctx); err != nil {
 		return nil, "", err
 	}
 	return service, account.Email, nil
@@ -303,8 +299,16 @@ func (a *App) restoreGmail() {
 		if err != nil {
 			return
 		}
-		cachedEmail := ""
-		if store != nil {
+		cachedEmail, err := gmail.NewActiveAccountStore().Load()
+		if err != nil {
+			a.publish(func() {
+				if version == a.serviceVersion {
+					a.notice = locales.OauthRestoreFailed(err.Error())
+				}
+			})
+			return
+		}
+		if cachedEmail == "" && store != nil {
 			account, found, cacheErr := store.LastAccount(context.Background())
 			logCacheError(cacheErr)
 			if cacheErr == nil && found {
@@ -362,11 +366,10 @@ func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSe
 	if err != nil {
 		return nil, "", err
 	}
-	if store == nil {
-		return service, account.Email, nil
-	}
-	if err := store.SaveAccount(ctx, account); err != nil {
-		return nil, "", err
+	if store != nil {
+		if err := store.SaveAccount(ctx, account); err != nil {
+			return nil, "", err
+		}
 	}
 	source, err := legacy.TokenSource(ctx)
 	if err != nil {
@@ -381,6 +384,9 @@ func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSe
 	}
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(token); err != nil {
+		return nil, "", err
+	}
+	if err := gmail.NewActiveAccountStore().Save(account.Email); err != nil {
 		return nil, "", err
 	}
 	client, err = formal.Restore(ctx)
@@ -449,6 +455,9 @@ func (a *App) logoutGmail() {
 		err := gmail.NewOAuthForAccount("", "", "", email).Logout(context.Background())
 		if err == nil {
 			err = gmail.NewOAuthWithProject("", "", "").Logout(context.Background())
+		}
+		if err == nil {
+			err = gmail.NewActiveAccountStore().Delete()
 		}
 		a.publish(func() {
 			if version != a.serviceVersion {

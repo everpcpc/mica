@@ -316,6 +316,28 @@ func TestAccountTokenStoresAreIndependent(t *testing.T) {
 	}
 }
 
+func TestActiveAccountStore(t *testing.T) {
+	store := &activeAccountStore{secrets: newMemorySecrets()}
+	if got, err := store.Load(); err != nil || got != "" {
+		t.Fatalf("empty active account = %q, %v", got, err)
+	}
+	if err := store.Save(" "); err == nil {
+		t.Fatal("empty active account was accepted")
+	}
+	if err := store.Save("user@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Load(); err != nil || got != "user@example.com" {
+		t.Fatalf("active account = %q, %v", got, err)
+	}
+	if err := store.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.Load(); err != nil || got != "" {
+		t.Fatalf("deleted active account = %q, %v", got, err)
+	}
+}
+
 type memoryTokenStore struct {
 	mu    sync.Mutex
 	token *oauth2.Token

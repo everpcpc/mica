@@ -23,6 +23,7 @@ const (
 	googleAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
 	googleTokenURL = "https://oauth2.googleapis.com/token"
 	oauthTokenKey  = "gmail-oauth2-token"
+	activeEmailKey = "gmail-active-account"
 	oauthCallback  = "/oauth/callback"
 )
 
@@ -136,6 +137,43 @@ func (s *keychainTokenStore) Save(token *oauth2.Token) error {
 func (s *keychainTokenStore) Delete() error {
 	if err := s.secrets.Delete(s.tokenKey()); err != nil {
 		return fmt.Errorf("gmail: delete OAuth token: %w", err)
+	}
+	return nil
+}
+
+type activeAccountStore struct {
+	secrets secretStore
+}
+
+func NewActiveAccountStore() *activeAccountStore {
+	return &activeAccountStore{secrets: mygo.Secrets}
+}
+
+func (s *activeAccountStore) Load() (string, error) {
+	value, err := s.secrets.Get(activeEmailKey)
+	if errors.Is(err, mygo.ErrSecretNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("gmail: read active account: %w", err)
+	}
+	return string(value), nil
+}
+
+func (s *activeAccountStore) Save(email string) error {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return errors.New("gmail: empty account email")
+	}
+	if err := s.secrets.Set(activeEmailKey, []byte(email)); err != nil {
+		return fmt.Errorf("gmail: save active account: %w", err)
+	}
+	return nil
+}
+
+func (s *activeAccountStore) Delete() error {
+	if err := s.secrets.Delete(activeEmailKey); err != nil {
+		return fmt.Errorf("gmail: delete active account: %w", err)
 	}
 	return nil
 }
