@@ -10,6 +10,8 @@ import (
 	"mica/internal/mail"
 )
 
+func fakeAttachmentCacheBegin() func() { return func() {} }
+
 type offlineSearchService struct{ *fakeService }
 
 func (offlineSearchService) ListThreads(context.Context, mail.Query) ([]mail.ThreadSummary, error) {
@@ -91,7 +93,7 @@ func TestOfflineEmptyAttachmentUsesCache(t *testing.T) {
 		}
 	})
 	t.Run("forward", func(t *testing.T) {
-		source := messageComposeAttachmentSource{fetcher: service, store: store, message: messageRefForAccount("demo@example.com", "t1", "m1"), attachment: attachment}
+		source := messageComposeAttachmentSource{fetcher: service, store: store, begin: fakeAttachmentCacheBegin, message: messageRefForAccount("demo@example.com", "t1", "m1"), attachment: attachment}
 		outgoing, err := source.read(context.Background(), 0)
 		if err != nil || len(outgoing.Data) != 0 || service.calls != 0 {
 			t.Fatalf("empty forward attachment = %+v fetch calls=%d err=%v", outgoing, service.calls, err)
@@ -105,7 +107,7 @@ func TestOfflineForwardAndInlineImageUseCache(t *testing.T) {
 	store := newFakeMailStore()
 	a.SetMailStore(store)
 	ref := messageRefForAccount("demo@example.com", "t1", "m1")
-	source := messageComposeAttachmentSource{fetcher: service, store: store, message: ref, attachment: mail.Attachment{ID: "doc", Name: "doc.bin"}}
+	source := messageComposeAttachmentSource{fetcher: service, store: store, begin: fakeAttachmentCacheBegin, message: ref, attachment: mail.Attachment{ID: "doc", Name: "doc.bin"}}
 	if _, err := source.read(context.Background(), 100); err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +118,7 @@ func TestOfflineForwardAndInlineImageUseCache(t *testing.T) {
 	}
 	image := mail.Message{ID: "m1", ThreadID: "t1", AccountEmail: "demo@example.com", Attachments: []mail.Attachment{{ID: "img", ContentID: "cid1"}}}
 	loader := newMessageImageLoader(service, store)
+	loader.begin = fakeAttachmentCacheBegin
 	sourceURL := messageImageURL(image, "cid:cid1")
 	service.err = nil
 	if _, err := loader.loadData(sourceURL); err != nil {
@@ -294,8 +297,12 @@ func TestInlineWebViewUsesMessageBytesAndCache(t *testing.T) {
 
 func TestDemoWebViewCacheUsesActiveAccount(t *testing.T) {
 	service := &fakeAttachmentService{fakeService: newFakeService(), data: testPNG(t)}
-	a := newTestApp(service)
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.notificationsStarted = true
 	a.SetMailStore(newFakeMailStore())
+	a.Start()
 	message := mail.Message{ID: "m1", ThreadID: "t1", HTML: `<img src="cid:logo">`, Attachments: []mail.Attachment{{ID: "img", ContentID: "logo"}}}
 	tokens := ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
 	if len(tokens) != 1 {
@@ -307,6 +314,18 @@ func TestDemoWebViewCacheUsesActiveAccount(t *testing.T) {
 	service.err = errOffline
 	if response := serveOwnerResource(a.emailResources, tokens[0]); response.Code != http.StatusOK || service.calls != 1 {
 		t.Fatalf("offline Demo image = %d fetch calls=%d", response.Code, service.calls)
+	}
+}
+
+func TestForwardBeforeProfileDoesNotUseStore(t *testing.T) {
+	service := &fakeAttachmentService{fakeService: newFakeService(), data: []byte("data")}
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	store := newFakeMailStore()
+	a.SetMailStore(store)
+	a.openForwardMessage(mail.Message{ID: "m1", ThreadID: "t1", Attachments: []mail.Attachment{{ID: "a1", Name: "file.txt"}}})
+	if len(store.attachments) != 0 {
+		t.Fatalf("forward used the cache before the account was known: %v", store.attachments)
 	}
 }
 
@@ -330,9 +349,15 @@ func (s *blockingFetchAttachmentService) Attachment(ctx context.Context, message
 }
 
 func TestAttachmentCacheDrainIncludesFetch(t *testing.T) {
+	webViewStart := func(t *testing.T, a *App, message mail.Message, finished chan int) {
+		tokens := ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
+		go func() { finished <- serveOwnerResource(a.emailResources, tokens[0]).Code }()
+	}
 	for _, tc := range []struct {
-		name  string
-		start func(*testing.T, *App, mail.Message, chan int)
+		name    string
+		web     bool
+		startup bool
+		start   func(*testing.T, *App, mail.Message, chan int)
 	}{
 		{name: "download", start: func(_ *testing.T, a *App, message mail.Message, _ chan int) {
 			a.downloadAttachment(message, message.Attachments[0], false, 0)
@@ -340,20 +365,29 @@ func TestAttachmentCacheDrainIncludesFetch(t *testing.T) {
 		{name: "forward", start: func(_ *testing.T, a *App, message mail.Message, _ chan int) {
 			a.openForwardMessage(message)
 		}},
-		{name: "WebView", start: func(t *testing.T, a *App, message mail.Message, finished chan int) {
-			tokens := ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
-			go func() { finished <- serveOwnerResource(a.emailResources, tokens[0]).Code }()
-		}},
+		{name: "WebView", web: true, start: webViewStart},
+		{name: "startup WebView", web: true, startup: true, start: webViewStart},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := &blockingFetchAttachmentService{
 				fakeAttachmentService: &fakeAttachmentService{fakeService: newFakeService(), data: testPNG(t)},
 				started:               make(chan struct{}, 1), release: make(chan struct{}),
 			}
-			a := newTestApp(service)
-			a.schedule = func(fn func()) { go fn() }
+			var a *App
+			if tc.startup {
+				a = New(service)
+				a.schedule = func(fn func()) { fn() }
+				a.restoreAttempted = true
+				a.notificationsStarted = true
+			} else {
+				a = newTestApp(service)
+			}
 			store := newFakeMailStore()
 			a.SetMailStore(store)
+			if tc.startup {
+				a.Start()
+			}
+			a.schedule = func(fn func()) { go fn() }
 			a.openPath = func(path string) error { return os.Remove(path) }
 			defer func() {
 				select {
@@ -392,7 +426,7 @@ func TestAttachmentCacheDrainIncludesFetch(t *testing.T) {
 			if len(store.attachments) != 1 {
 				t.Fatalf("cached attachments = %v, want one", store.attachments)
 			}
-			if tc.name == "WebView" {
+			if tc.web {
 				select {
 				case code := <-finished:
 					if code != http.StatusOK {

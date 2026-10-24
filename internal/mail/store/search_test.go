@@ -462,3 +462,41 @@ func TestSearchThreadsLegacyDetailPrecedenceAndDeterministicLists(t *testing.T) 
 		t.Fatalf("legacy detail did not take precedence = %+v, %v", got, err)
 	}
 }
+
+func TestCacheRevisionMigratesExistingMaximum(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "mail.db")
+	db, err := sqlite.Open(ctx, path, sqlite.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, migration := range migrations[:6] {
+		statements := make([]sqlite.Statement, 0, len(migration)+1)
+		for _, sql := range migration {
+			statements = append(statements, sqlite.Statement{SQL: sql})
+		}
+		statements = append(statements, sqlite.Statement{SQL: fmt.Sprintf("PRAGMA user_version = %d", i+1)})
+		if _, err := db.Transaction(ctx, statements); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const legacyRevision = int64(1_800_000_000_000_000_000)
+	if _, err := db.Execute(ctx, "INSERT INTO thread_lists(account_email, query_key, data, updated) VALUES(?, ?, ?, ?)", "a@example.com", "old", `[{"ID":"t1","Subject":"Old","LabelIDs":["INBOX"]}]`, legacyRevision-1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Execute(ctx, "INSERT INTO threads(account_email, thread_id, data, updated) VALUES(?, ?, ?, ?)", "a@example.com", "t1", `{"ID":"t1","Subject":"Old detail","LabelIDs":["INBOX"],"Messages":[]}`, legacyRevision); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s := openTestStore(t, path)
+	if err := s.SaveThreadList(ctx, "a@example.com", mail.Query{Search: "new"}, []mail.ThreadSummary{{ID: "t1", Subject: "New", LabelIDs: []string{mail.Inbox}}}); err != nil {
+		t.Fatal(err)
+	}
+	requireCacheRevision(t, s, legacyRevision+1)
+	got, err := s.SearchThreads(ctx, "a@example.com", mail.Query{})
+	if err != nil || len(got) != 1 || got[0].Subject != "New" {
+		t.Fatalf("post-migration snapshot = %+v, %v", got, err)
+	}
+}

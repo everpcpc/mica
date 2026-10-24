@@ -215,6 +215,7 @@ func (a *App) Start() {
 				}
 				if accountCacheErr == nil && accountFound && normalizedEmail(cachedAccount.Email) == normalizedEmail(email) && !a.accountVerified {
 					a.account = cachedAccount
+					a.configureMessageCache()
 					a.loadAccountPhoto(cachedAccount)
 					a.restoreDraftSnapshot()
 				}

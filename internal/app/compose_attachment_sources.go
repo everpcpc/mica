@@ -52,7 +52,9 @@ func (s messageComposeAttachmentSource) read(ctx context.Context, limit int64) (
 	}
 	store, save := s.store, s.save
 	var cacheDone func()
-	if s.begin != nil {
+	if s.begin == nil {
+		store, save = nil, nil
+	} else {
 		cacheDone = s.begin()
 		if cacheDone == nil {
 			store, save = nil, nil

@@ -84,7 +84,12 @@ var migrations = [][]string{{
 		id INTEGER PRIMARY KEY CHECK (id = 1),
 		value INTEGER NOT NULL
 	)`,
-	`INSERT INTO cache_revision(id, value) VALUES(1, 0)`,
+	`INSERT INTO cache_revision(id, value)
+	SELECT 1, COALESCE(MAX(updated), 0) FROM (
+		SELECT updated FROM thread_lists
+		UNION ALL
+		SELECT updated FROM threads
+	)`,
 }}
 
 type Store struct {

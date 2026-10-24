@@ -81,19 +81,21 @@ func (a *App) resetMessageViews() {
 	a.attachmentDownloads = nil
 	a.documents = nil
 	a.expandedMessages = nil
+	a.configureMessageCache()
+	a.syncRemoteImagePolicy()
+}
+
+func (a *App) configureMessageCache() {
 	store, _ := a.store.(attachmentStore)
 	if a.emailResources == nil {
 		a.emailResources = newEmailResourceStore(a.service, store)
 	}
-	owner := a.storeAccount
-	if owner == "" {
-		owner = a.account.Email
-	}
+	owner := a.activeComposeOwner()
 	_, generation := a.ownerService(owner)
 	loader := newMessageImageLoader(a.service, store)
 	loader.save = a.attachmentCacheWriter(owner, generation)
 	loader.begin = a.attachmentCacheBegin(owner, generation)
-	loader.owner = normalizedEmail(owner)
+	loader.owner = owner
 	a.emailResources.mu.Lock()
 	a.emailResources.loader = loader
 	a.emailResources.store = store
@@ -106,7 +108,6 @@ func (a *App) resetMessageViews() {
 	}
 	a.emailResources.activeVersion = a.currentCacheVersion
 	a.emailResources.mu.Unlock()
-	a.syncRemoteImagePolicy()
 }
 
 func prepareMessageHTML(message mail.Message) string {
@@ -342,7 +343,7 @@ func (l *messageImages) loadData(source string, inline ...[]byte) ([]byte, error
 		attachmentID := parsed.Query().Get("attachment")
 		position, _ := strconv.Atoi(parsed.Query().Get("position"))
 		storageID := attachmentStorageID(mail.Attachment{ID: attachmentID}, position)
-		cacheAllowed := owner != "" && (l.owner == "" || l.owner == normalizedEmail(owner))
+		cacheAllowed := owner != "" && l.begin != nil && (l.owner == "" || l.owner == normalizedEmail(owner))
 		var cacheDone func()
 		if cacheAllowed && l.begin != nil {
 			cacheDone = l.begin()

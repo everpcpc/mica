@@ -172,6 +172,7 @@ func (a *App) currentCacheVersion() int {
 }
 
 func (a *App) persistAccount(account mail.Account) {
+	a.configureMessageCache()
 	if account.Demo || account.Email == "" {
 		return
 	}
