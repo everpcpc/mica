@@ -86,6 +86,7 @@
 - A gradient fill does not interpolate like a solid color transition. Keep animated toggles on a solid accent and verify start, middle, and end pixels before replacing them with a gradient.
 - Small account photos use a stable first frame rather than animated frame swaps. A multi-frame GIF must keep the same rendered pixels after its frame delays and schedule no animation frames.
 - Rounded row selection needs vertical as well as horizontal insets. Measure the first row's rendered distance from the divider; horizontal padding alone lets the selection touch it.
+- Icon-only toolbar actions need full-radius hover, not the default rectangular button shape. Verify that corner pixels stay transparent while the edge center takes the hover color.
 - Shifted punctuation can bypass the native UI shortcut mapper on macOS. Native menu equivalents must be disabled while text input is active so commands do not consume ordinary `?`, `#`, or `!` input.
 
 ## Match live theme changes in native and web content
