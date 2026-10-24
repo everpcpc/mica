@@ -29,6 +29,7 @@
 - **Built for inbox processing.** Search Gmail, filter unread conversations, and use Gmail-style keyboard shortcuts.
 - **Fast local actions with undo.** Archive, star, trash, report spam, and change read state immediately while changes synchronize in the background.
 - **Compose and reply.** Write new mail, reply, reply all, forward, and open or save attachments.
+- **Email links.** Open `mailto:` links into a draft, with an explicit default email app setting in macOS.
 - **Label management.** Assign, create, recolor, and delete custom Gmail labels.
 - **Comfortable reading.** Sanitized HTML mail, inline images, collapsible messages, light and dark appearances, and reduced-motion support.
 - **Remote image privacy.** Remote images are blocked by default. Allow them for one message or enable automatic loading in Settings.

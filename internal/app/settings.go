@@ -54,10 +54,12 @@ func (a *App) openSettings() {
 		if err == nil {
 			err = projectErr
 		}
+		registered := a.isURLSchemeRegistered != nil && a.isURLSchemeRegistered("mailto")
 		a.publish(func() {
 			if a.settings != s {
 				return
 			}
+			a.defaultMailApp = registered
 			s.clientID = clientID
 			s.clientSecret = clientSecret
 			s.projectID = projectID
@@ -96,6 +98,7 @@ func (a *App) settingsView(c *ui.Context) {
 				})
 			})
 			a.remoteImageSettings(c)
+			a.mailtoSettings(c)
 			a.gmailSettings(c, s)
 			ui.Divider(c)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -134,6 +137,23 @@ func (a *App) remoteImageSettings(c *ui.Context) {
 	})
 }
 
+func (a *App) mailtoSettings(c *ui.Context) {
+	t := c.Theme()
+	sectionPanel(c).Children(func() {
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+				ui.Text(c, locales.DefaultMailApp()).Bold()
+				ui.Text(c, locales.DefaultMailAppHint()).FontSize(11).LineHeight(1.4).TextColor(t.TextMuted)
+			})
+			if a.defaultMailAppRegistered() {
+				ui.Text(c, locales.DefaultMailAppRegistered()).TextColor(t.Success)
+			} else {
+				ui.Button(c, locales.SetDefaultMailApp()).OnClick(a.setDefaultMailApp)
+			}
+		})
+	})
+}
+
 func settingsField(c *ui.Context, label string, value *string, placeholder string, password, disabled bool) {
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, label).Width(100).Shrink(0)
@@ -147,8 +167,10 @@ func settingsField(c *ui.Context, label string, value *string, placeholder strin
 func (a *App) closeSettings() {
 	if a.settings != nil && a.settings.cancel != nil {
 		a.settings.cancel()
+		a.cancelPendingAuthentication()
 	}
 	a.settings = nil
+	a.openPendingMailto()
 }
 
 func (a *App) connectGmail() {
@@ -162,6 +184,8 @@ func (a *App) connectCustomGmail() {
 	}
 	a.connectGmailWith(strings.TrimSpace(a.settings.clientID), strings.TrimSpace(a.settings.clientSecret), strings.TrimSpace(a.settings.projectID), true)
 }
+
+type gmailLoginFunc func(context.Context, mailStore, string, string, string, string) (mail.Service, string, error)
 
 type pendingTokenStore struct {
 	token *oauth2.Token
@@ -259,6 +283,7 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 		defer a.publish(func() {
 			if a.authID == auth {
 				a.authCancel = nil
+				a.openPendingMailto()
 			}
 		})
 		if custom {
@@ -273,7 +298,11 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 				return
 			}
 		}
-		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, "")
+		login := a.loginGmail
+		if login == nil {
+			login = loginGmailService
+		}
+		service, email, err := login(ctx, a.store, clientID, clientSecret, projectID, "")
 		a.publish(func() {
 			if a.settings != s || a.authID != auth || version != a.serviceVersion {
 				return
@@ -324,19 +353,21 @@ func (a *App) restoreGmail() {
 	a.schedule(func() {
 		clientID, clientSecret, err := loadOAuthCredentials()
 		if err != nil || clientID == "" || clientSecret == "" {
+			a.publish(func() { a.finishRestoreGmail(version, auth, nil, "", err) })
 			return
 		}
 		projectID, err := loadOAuthProjectID()
 		if err != nil {
+			a.publish(func() { a.finishRestoreGmail(version, auth, nil, "", err) })
 			return
 		}
-		cachedEmail, err := gmail.NewActiveAccountStore().Load()
+		loadActive := a.loadActiveAccount
+		if loadActive == nil {
+			loadActive = gmail.NewActiveAccountStore().Load
+		}
+		cachedEmail, err := loadActive()
 		if err != nil {
-			a.publish(func() {
-				if version == a.serviceVersion {
-					a.notice = locales.OauthRestoreFailed(err.Error())
-				}
-			})
+			a.publish(func() { a.finishRestoreGmail(version, auth, nil, "", err) })
 			return
 		}
 		if cachedEmail == "" && store != nil {
@@ -372,11 +403,14 @@ func (a *App) finishRestoreGmail(version int, auth uint64, service mail.Service,
 		if !errors.Is(err, gmail.ErrNoSession) {
 			a.notice = locales.OauthRestoreFailed(err.Error())
 		}
+		a.openPendingMailto()
 		return
 	}
 	if service != nil {
 		a.useService(service, email)
+		return
 	}
+	a.openPendingMailto()
 }
 
 func restoreAccountGmail(ctx context.Context, clientID, clientSecret, projectID, email string) (mail.Service, error) {
@@ -525,6 +559,10 @@ func (a *App) accountAuthenticationFailed(s *settingsState, expectedEmail string
 	} else {
 		a.notice = locales.GmailConnectFailed(err.Error())
 	}
+	if a.authCancel != nil {
+		a.cancelPendingAuthentication()
+	}
+	a.openPendingMailto()
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
@@ -587,6 +625,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 		a.compose = nil
 	}
 	a.draftRestoreAccount = ""
+	a.draftRestorePending = false
 	a.labelDialog = nil
 	a.threadCache = nil
 	a.resetMessageViews()

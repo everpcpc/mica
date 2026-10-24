@@ -1566,6 +1566,76 @@ func (msgs Messages) RemoteImagesBlocked() string {
 	return Catalog.Format(msgs.locale, "remoteImagesBlocked", nil)
 }
 
+// DefaultMailApp says "Default email app"
+// in the language the app shows.
+func DefaultMailApp() string { return In(i18n.Locale()).DefaultMailApp() }
+
+// DefaultMailApp says "Default email app"
+// in the language of msgs.
+func (msgs Messages) DefaultMailApp() string {
+	return Catalog.Format(msgs.locale, "defaultMailApp", nil)
+}
+
+// SetDefaultMailApp says "Set as default"
+// in the language the app shows.
+func SetDefaultMailApp() string { return In(i18n.Locale()).SetDefaultMailApp() }
+
+// SetDefaultMailApp says "Set as default"
+// in the language of msgs.
+func (msgs Messages) SetDefaultMailApp() string {
+	return Catalog.Format(msgs.locale, "setDefaultMailApp", nil)
+}
+
+// DefaultMailAppRegistered says "Default"
+// in the language the app shows.
+func DefaultMailAppRegistered() string { return In(i18n.Locale()).DefaultMailAppRegistered() }
+
+// DefaultMailAppRegistered says "Default"
+// in the language of msgs.
+func (msgs Messages) DefaultMailAppRegistered() string {
+	return Catalog.Format(msgs.locale, "defaultMailAppRegistered", nil)
+}
+
+// DefaultMailAppHint says "Open mailto: links in Mica. macOS may ask you to confirm the change."
+// in the language the app shows.
+func DefaultMailAppHint() string { return In(i18n.Locale()).DefaultMailAppHint() }
+
+// DefaultMailAppHint says "Open mailto: links in Mica. macOS may ask you to confirm the change."
+// in the language of msgs.
+func (msgs Messages) DefaultMailAppHint() string {
+	return Catalog.Format(msgs.locale, "defaultMailAppHint", nil)
+}
+
+// DefaultMailAppFailed says "Couldn't set default email app: {error}"
+// in the language the app shows.
+func DefaultMailAppFailed(error string) string { return In(i18n.Locale()).DefaultMailAppFailed(error) }
+
+// DefaultMailAppFailed says "Couldn't set default email app: {error}"
+// in the language of msgs.
+func (msgs Messages) DefaultMailAppFailed(error string) string {
+	return Catalog.Format(msgs.locale, "defaultMailAppFailed", map[string]any{"error": error})
+}
+
+// MailtoDraftExists says "Finish the current draft before opening another one."
+// in the language the app shows.
+func MailtoDraftExists() string { return In(i18n.Locale()).MailtoDraftExists() }
+
+// MailtoDraftExists says "Finish the current draft before opening another one."
+// in the language of msgs.
+func (msgs Messages) MailtoDraftExists() string {
+	return Catalog.Format(msgs.locale, "mailtoDraftExists", nil)
+}
+
+// MailtoInvalid says "This mailto link is invalid."
+// in the language the app shows.
+func MailtoInvalid() string { return In(i18n.Locale()).MailtoInvalid() }
+
+// MailtoInvalid says "This mailto link is invalid."
+// in the language of msgs.
+func (msgs Messages) MailtoInvalid() string {
+	return Catalog.Format(msgs.locale, "mailtoInvalid", nil)
+}
+
 // Gmail says "Gmail"
 // in the language the app shows.
 func Gmail() string { return In(i18n.Locale()).Gmail() }

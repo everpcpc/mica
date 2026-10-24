@@ -63,19 +63,26 @@ func untrackDraftSnapshotWrite(a *App) {
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
-	if a.accountTransition != nil || !ok || email == "" || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
+	if a.accountTransition != nil || !ok || email == "" || a.draftRestorePending || a.draftRestoreAccount == email || !strings.EqualFold(a.account.Email, email) {
 		return
 	}
 	a.draftRestoreAccount = email
+	a.draftRestorePending = true
 	version := a.serviceVersion
 	a.schedule(func() {
 		snapshot, found, err := store.DraftSnapshot(context.Background(), email)
 		logCacheError(err)
 		a.publish(func() {
-			if a.accountTransition != nil || version != a.serviceVersion || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found {
+			if version != a.serviceVersion {
+				return
+			}
+			a.draftRestorePending = false
+			if a.accountTransition != nil || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found {
+				a.openPendingMailto()
 				return
 			}
 			a.openRecoveredDraft(snapshot, email)
+			a.openPendingMailto()
 		})
 	})
 }

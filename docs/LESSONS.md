@@ -15,6 +15,12 @@
 - Protocol-relative URLs are remote content too: normalize them to HTTPS, skip hidden subtrees when offering permission, and wait for preference writes before closing the cache. Otherwise single-message enablement misses valid images, hidden content gets a useless button, and quitting can restore an older preference.
 - Tracking-pixel filtering applies to actual `img` elements, not arbitrary containers with small dimensions; otherwise a valid CSS background loses its permission action.
 
+## Treat system handlers and deep links as background workflows
+
+- Do not call MyGo onMain-backed system handlers from a view. A direct default-handler query deadlocked Settings; query and register in the background and render cached state.
+- Preserve literal `+` in mailto values with path unescaping, and open links only after account and draft-snapshot restoration so they cannot replace an existing draft. Decode `URL.Path` only once because Go has already decoded it.
+- Every authentication or account-transition exit must release pending deep links. A failed restore must clear `authCancel`, and service replacement must clear the old draft-restore pending state; otherwise a link can remain blocked forever. Retry the draft snapshot before opening a pending link so a skipped callback cannot make the link overwrite the older draft.
+
 ## Design optimistic updates together with request ordering
 
 - Applying changes locally first does not allow requests to run concurrently and out of order; mail mutations must synchronize in FIFO order.

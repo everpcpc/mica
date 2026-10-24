@@ -226,12 +226,14 @@ func (a *App) removeAccount(email string) {
 				}
 				if a.settings != s {
 					a.accountTransition = nil
+					a.resumePendingMailto()
 					return
 				}
 				if snapshotFound {
 					a.accountTransition = nil
 					s.busy = false
 					s.err = locales.AccountDraftRemaining(email)
+					a.resumePendingMailto()
 					return
 				}
 				if err != nil {
@@ -246,6 +248,7 @@ func (a *App) removeAccount(email string) {
 					a.notice = locales.AccountRemoved(email)
 					a.refreshAccountList()
 					a.refreshUnifiedAfterAccountRemoval(email)
+					a.resumePendingMailto()
 					return
 				}
 				if next == nil {

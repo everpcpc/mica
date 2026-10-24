@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"mica/internal/gmail"
 	"mica/internal/mail"
 	"mica/locales"
 
@@ -129,6 +130,15 @@ type App struct {
 	pendingThread        notificationTarget
 	loadCheckpoint       func(string) (uint64, bool, error)
 	saveCheckpoint       func(string, uint64) error
+
+	startupPending        bool
+	draftRestorePending   bool
+	pendingMailto         string
+	registerURLScheme     func(string) error
+	isURLSchemeRegistered func(string) bool
+	defaultMailApp        bool
+	loadActiveAccount     func() (string, error)
+	loginGmail            gmailLoginFunc
 }
 
 func New(service mail.Service) *App {
@@ -157,6 +167,10 @@ func New(service mail.Service) *App {
 		saveCheckpoint:       saveHistoryCheckpoint,
 	}
 	a.resetMessageViews()
+	a.registerURLScheme = mygo.App.RegisterURLScheme
+	a.isURLSchemeRegistered = mygo.App.IsURLSchemeRegistered
+	a.loadActiveAccount = gmail.NewActiveAccountStore().Load
+	a.loginGmail = loginGmailService
 	a.list.Selected = &a.selectedRow
 	a.list.Selection = &a.threadSelection
 	return a
@@ -167,6 +181,7 @@ func (a *App) SetUpdate(update func(func())) {
 }
 
 func (a *App) Start() {
+	a.startupPending = true
 	a.refresh()
 	service, version := a.service, a.serviceVersion
 	store, email := a.store, a.storeAccount
@@ -234,11 +249,14 @@ func (a *App) Start() {
 			} else if labelsErr != nil {
 				a.notice = labelsErr.Error()
 			}
+			a.startupPending = false
+			a.openPendingMailto()
 		})
 	})
 	a.restoreGmail()
 	a.openPendingThread()
 	a.restoreDraftSnapshot()
+	a.openPendingMailto()
 }
 
 func (a *App) loadAccountPhoto(account mail.Account) {
