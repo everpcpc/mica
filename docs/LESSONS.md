@@ -18,7 +18,8 @@
 ## Treat system handlers and deep links as background workflows
 
 - Do not call MyGo onMain-backed system handlers from a view. A direct default-handler query deadlocked Settings; query and register in the background and render cached state.
-- Preserve literal `+` in mailto values with path unescaping, and open links only after account and draft-snapshot restoration so they cannot replace an existing draft.
+- Preserve literal `+` in mailto values with path unescaping, and open links only after account and draft-snapshot restoration so they cannot replace an existing draft. Decode `URL.Path` only once because Go has already decoded it.
+- Every authentication or account-transition exit must release pending deep links. A failed restore must clear `authCancel`, and service replacement must clear the old draft-restore pending state; otherwise a link can remain blocked forever.
 
 ## Design optimistic updates together with request ordering
 
