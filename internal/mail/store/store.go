@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"mica/internal/mail"
 
@@ -80,6 +79,12 @@ var migrations = [][]string{{
 }, {
 	`ALTER TABLE thread_lists ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE threads ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
+}, {
+	`CREATE TABLE cache_revision (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		value INTEGER NOT NULL
+	)`,
+	`INSERT INTO cache_revision(id, value) VALUES(1, 0)`,
 }}
 
 type Store struct {
@@ -265,6 +270,9 @@ func (s *Store) ThreadList(ctx context.Context, email string, query mail.Query) 
 		"SELECT data FROM thread_lists WHERE account_email = ? COLLATE NOCASE AND query_key = ? ORDER BY updated DESC LIMIT 1", email, string(key))
 }
 
+const advanceCacheRevisionSQL = `INSERT INTO cache_revision(id, value) VALUES(1, 1)
+	ON CONFLICT(id) DO UPDATE SET value = value + 1`
+
 func (s *Store) SaveThreadList(ctx context.Context, email string, query mail.Query, threads []mail.ThreadSummary) error {
 	email = normalizeAccountEmail(email)
 	key, err := json.Marshal(query)
@@ -275,9 +283,15 @@ func (s *Store) SaveThreadList(ctx context.Context, email string, query mail.Que
 	if err != nil {
 		return fmt.Errorf("store: encode thread list: %w", err)
 	}
-	_, err = s.db.Execute(ctx, `INSERT INTO thread_lists(account_email, query_key, data, updated) VALUES(?, ?, ?, ?)
-		ON CONFLICT(account_email, query_key) DO UPDATE SET data = excluded.data, updated = excluded.updated`,
-		email, string(key), data, time.Now().UnixNano())
+	_, err = s.db.Transaction(ctx, []sqlite.Statement{
+		{SQL: advanceCacheRevisionSQL},
+		{
+			SQL: `INSERT INTO thread_lists(account_email, query_key, data, updated)
+				VALUES(?, ?, ?, (SELECT value FROM cache_revision WHERE id = 1))
+				ON CONFLICT(account_email, query_key) DO UPDATE SET data = excluded.data, updated = excluded.updated`,
+			Args: []any{email, string(key), data},
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("store: save thread list: %w", err)
 	}
@@ -296,9 +310,15 @@ func (s *Store) SaveThread(ctx context.Context, email string, thread mail.Thread
 	if err != nil {
 		return fmt.Errorf("store: encode thread: %w", err)
 	}
-	_, err = s.db.Execute(ctx, `INSERT INTO threads(account_email, thread_id, data, updated) VALUES(?, ?, ?, ?)
-		ON CONFLICT(account_email, thread_id) DO UPDATE SET data = excluded.data, updated = excluded.updated`,
-		email, thread.ID, data, time.Now().UnixNano())
+	_, err = s.db.Transaction(ctx, []sqlite.Statement{
+		{SQL: advanceCacheRevisionSQL},
+		{
+			SQL: `INSERT INTO threads(account_email, thread_id, data, updated)
+				VALUES(?, ?, ?, (SELECT value FROM cache_revision WHERE id = 1))
+				ON CONFLICT(account_email, thread_id) DO UPDATE SET data = excluded.data, updated = excluded.updated`,
+			Args: []any{email, thread.ID, data},
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("store: save thread: %w", err)
 	}

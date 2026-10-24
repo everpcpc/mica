@@ -297,13 +297,12 @@ func TestAttachmentCacheIsConcurrentAndBounded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	rows, err := s.db.Query(ctx, "SELECT COALESCE(SUM(length(data)), 0) FROM attachments WHERE account_email = ?", "a@example.com")
+	rows, err := s.db.Query(ctx, "SELECT COUNT(*), COALESCE(SUM(length(data)), 0) FROM attachments WHERE account_email = ?", "a@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	total, ok := rows.Values[0][0].(int64)
-	if !ok || total > 128<<20 {
-		t.Fatalf("concurrent attachment cache bytes = %v (%T), want at most 128 MiB", rows.Values[0][0], rows.Values[0][0])
+	if len(rows.Values) != 1 || len(rows.Values[0]) != 2 || rows.Values[0][0] != int64(4) || rows.Values[0][1] != int64(120<<20) {
+		t.Fatalf("concurrent attachment cache = %v, want four attachments totaling 120 MiB", rows.Values)
 	}
 }
 
@@ -383,5 +382,83 @@ func requireAttachmentBytes(t *testing.T, s *Store, email, id string, want []byt
 		rows, queryErr := s.db.Query(context.Background(), "SELECT account_email, attachment_id, length(data), updated FROM attachments ORDER BY account_email, attachment_id")
 		t.Logf("cache rows=%v query err=%v", rows.Values, queryErr)
 		t.Fatalf("attachment %s/%s: found=%v bytes match=%v err=%v", email, id, found, bytes.Equal(got, want), err)
+	}
+}
+
+func TestCacheRevisionSurvivesRestartAndConcurrentWrites(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "mail.db")
+	s := openTestStore(t, path)
+	if err := s.SaveThreadList(ctx, "a@example.com", mail.Query{}, []mail.ThreadSummary{{ID: "t1", Subject: "one"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveThread(ctx, "a@example.com", mail.Thread{ID: "t1", Subject: "two"}); err != nil {
+		t.Fatal(err)
+	}
+	requireCacheRevision(t, s, 2)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = openTestStore(t, path)
+	if err := s.SaveThread(ctx, "a@example.com", mail.Thread{ID: "t1", Subject: "three"}); err != nil {
+		t.Fatal(err)
+	}
+	requireCacheRevision(t, s, 3)
+	var writers sync.WaitGroup
+	errs := make(chan error, 4)
+	for i := range 4 {
+		writers.Go(func() {
+			errs <- s.SaveThread(ctx, "a@example.com", mail.Thread{ID: fmt.Sprintf("concurrent-%d", i)})
+		})
+	}
+	writers.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	requireCacheRevision(t, s, 7)
+	rows, err := s.db.Query(ctx, "SELECT COUNT(DISTINCT updated) FROM threads WHERE thread_id LIKE 'concurrent-%'")
+	if err != nil || len(rows.Values) != 1 || rows.Values[0][0] != int64(4) {
+		t.Fatalf("concurrent revisions = %v, %v", rows.Values, err)
+	}
+	got, err := s.SearchThreads(ctx, "a@example.com", mail.Query{Search: "three"})
+	if err != nil || len(got) != 1 || got[0].Subject != "three" {
+		t.Fatalf("latest thread after restart = %+v, %v", got, err)
+	}
+}
+
+func requireCacheRevision(t *testing.T, s *Store, want int64) {
+	t.Helper()
+	rows, err := s.db.Query(context.Background(), "SELECT value FROM cache_revision WHERE id = 1")
+	if err != nil || len(rows.Values) != 1 || rows.Values[0][0] != want {
+		t.Fatalf("cache revision = %v, want %d, err=%v", rows.Values, want, err)
+	}
+}
+
+func TestSearchThreadsLegacyDetailPrecedenceAndDeterministicLists(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "mail.db"))
+	for _, item := range []struct{ key, data string }{
+		{key: "a", data: `[{"ID":"t1","Subject":"first","LabelIDs":["INBOX"]}]`},
+		{key: "z", data: `[{"ID":"t1","Subject":"second","LabelIDs":["INBOX"]}]`},
+	} {
+		if _, err := s.db.Execute(ctx, "INSERT INTO thread_lists(account_email, query_key, data, updated) VALUES(?, ?, ?, 0)", "a@example.com", item.key, item.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Revision-zero lists have no recoverable write order; the query key only makes the fallback deterministic.
+	got, err := s.SearchThreads(ctx, "a@example.com", mail.Query{})
+	if err != nil || len(got) != 1 || got[0].Subject != "second" {
+		t.Fatalf("deterministic legacy fallback = %+v, %v", got, err)
+	}
+	detail := `{"ID":"t1","Subject":"detail","LabelIDs":["STARRED"],"Messages":[]}`
+	if _, err := s.db.Execute(ctx, "INSERT INTO threads(account_email, thread_id, data, updated) VALUES(?, ?, ?, 0)", "a@example.com", "t1", detail); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.SearchThreads(ctx, "a@example.com", mail.Query{LabelID: mail.Starred})
+	if err != nil || len(got) != 1 || got[0].Subject != "detail" {
+		t.Fatalf("legacy detail did not take precedence = %+v, %v", got, err)
 	}
 }

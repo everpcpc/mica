@@ -87,10 +87,20 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 	fetcher, hasFetcher := service.(mail.AttachmentFetcher)
 	store, _ := a.store.(attachmentStore)
 	cacheAttachment := a.attachmentCacheWriter(owner, generation)
+	var cacheDone func()
+	if begin := a.attachmentCacheBegin(owner, generation); begin != nil {
+		cacheDone = begin()
+	}
+	if cacheDone == nil {
+		store = nil
+	}
 	state.loading = true
 	state.err = ""
 	a.attachmentDownloads[key] = state
 	a.schedule(func() {
+		if cacheDone != nil {
+			defer cacheDone()
+		}
 		data := attachment.Data
 		fromCache := false
 		if data == nil && store != nil {
@@ -110,7 +120,7 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 			}
 		}
 		if err == nil && !fromCache && cacheAttachment != nil {
-			cacheAttachment(ref.ThreadID, ref.MessageID, attachmentStorageID(attachment, index), data)
+			cacheAttachment(ref.ThreadID, ref.MessageID, attachmentStorageID(attachment, index), data, cacheDone != nil)
 		}
 		if err == nil {
 			if save {

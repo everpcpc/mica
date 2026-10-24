@@ -100,7 +100,26 @@ type attachmentStore interface {
 	Attachment(context.Context, string, string, string, string) ([]byte, bool, error)
 }
 
-type attachmentCacheWriter func(threadID, messageID, attachmentID string, data []byte)
+type attachmentCacheWriter func(threadID, messageID, attachmentID string, data []byte, tracked ...bool)
+type attachmentCacheBegin func() func()
+
+func (a *App) attachmentCacheBegin(owner string, generation uint64) attachmentCacheBegin {
+	owner = normalizedEmail(owner)
+	if _, ok := a.store.(attachmentStore); !ok || owner == "" {
+		return nil
+	}
+	client := a.accountClients[owner]
+	version := a.serviceVersion
+	return func() func() {
+		a.cacheState.mu.Lock()
+		defer a.cacheState.mu.Unlock()
+		if a.cacheState.attachmentWritesBlocked || version != a.cacheState.version || client != nil && client.generation.Load() != generation {
+			return nil
+		}
+		a.cacheState.writes.Add(1)
+		return a.cacheState.writes.Done
+	}
+}
 
 func (a *App) attachmentCacheWriter(owner string, generation uint64) attachmentCacheWriter {
 	owner = normalizedEmail(owner)
@@ -110,14 +129,17 @@ func (a *App) attachmentCacheWriter(owner string, generation uint64) attachmentC
 	}
 	client := a.accountClients[owner]
 	version := a.serviceVersion
-	return func(threadID, messageID, attachmentID string, data []byte) {
+	return func(threadID, messageID, attachmentID string, data []byte, tracked ...bool) {
 		a.cacheState.mu.Lock()
 		defer a.cacheState.mu.Unlock()
-		if a.cacheState.attachmentWritesBlocked || version != a.cacheState.version || client != nil && client.generation.Load() != generation {
+		trackedOperation := len(tracked) > 0 && tracked[0]
+		if !trackedOperation && a.cacheState.attachmentWritesBlocked || version != a.cacheState.version || client != nil && client.generation.Load() != generation {
 			return
 		}
-		a.cacheState.writes.Add(1)
-		defer a.cacheState.writes.Done()
+		if !trackedOperation {
+			a.cacheState.writes.Add(1)
+			defer a.cacheState.writes.Done()
+		}
 		if err := store.SaveAttachment(context.Background(), owner, threadID, messageID, attachmentID, data); err != nil {
 			logCacheError(err)
 		}
@@ -212,6 +234,9 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 }
 
 func (a *App) WaitForCacheWrites() {
+	a.cacheState.mu.Lock()
+	a.cacheState.attachmentWritesBlocked = true
+	a.cacheState.mu.Unlock()
 	a.cacheState.writes.Wait()
 }
 

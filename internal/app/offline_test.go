@@ -261,3 +261,160 @@ func TestOfflineSearchRunsBeforePublish(t *testing.T) {
 		t.Fatalf("offline updates = %d, want cache and network results", len(updates))
 	}
 }
+
+func TestInlineWebViewUsesMessageBytesAndCache(t *testing.T) {
+	service := &fakeAttachmentService{fakeService: newFakeService(), err: errOffline}
+	a := newTestApp(service)
+	a.storeAccount = "a@example.com"
+	a.account = mail.Account{Email: a.storeAccount}
+	a.SetMailStore(newFakeMailStore())
+	message := mail.Message{
+		AccountEmail: a.storeAccount, ID: "m1", ThreadID: "t1", HTML: `<img src="cid:logo">`,
+		Attachments: []mail.Attachment{{ContentID: "logo", Data: testPNG(t)}},
+	}
+	tokens := ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
+	if len(tokens) != 1 {
+		t.Fatalf("resource tokens = %v", tokens)
+	}
+	if response := serveOwnerResource(a.emailResources, tokens[0]); response.Code != http.StatusOK || service.calls != 0 {
+		t.Fatalf("embedded inline image = %d fetch calls=%d", response.Code, service.calls)
+	}
+	message.Attachments[0].Data = nil
+	tokens = ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
+	if response := serveOwnerResource(a.emailResources, tokens[0]); response.Code != http.StatusOK || service.calls != 0 {
+		t.Fatalf("cached inline image = %d fetch calls=%d", response.Code, service.calls)
+	}
+	message.ID = "missing"
+	message.Attachments[0].Data = nil
+	tokens = ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
+	if response := serveOwnerResource(a.emailResources, tokens[0]); response.Code != http.StatusNotFound || service.calls != 0 {
+		t.Fatalf("ID-less image without bytes = %d fetch calls=%d", response.Code, service.calls)
+	}
+}
+
+func TestDemoWebViewCacheUsesActiveAccount(t *testing.T) {
+	service := &fakeAttachmentService{fakeService: newFakeService(), data: testPNG(t)}
+	a := newTestApp(service)
+	a.SetMailStore(newFakeMailStore())
+	message := mail.Message{ID: "m1", ThreadID: "t1", HTML: `<img src="cid:logo">`, Attachments: []mail.Attachment{{ID: "img", ContentID: "logo"}}}
+	tokens := ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
+	if len(tokens) != 1 {
+		t.Fatalf("resource tokens = %v", tokens)
+	}
+	if response := serveOwnerResource(a.emailResources, tokens[0]); response.Code != http.StatusOK {
+		t.Fatalf("initial Demo image = %d", response.Code)
+	}
+	service.err = errOffline
+	if response := serveOwnerResource(a.emailResources, tokens[0]); response.Code != http.StatusOK || service.calls != 1 {
+		t.Fatalf("offline Demo image = %d fetch calls=%d", response.Code, service.calls)
+	}
+}
+
+type blockingFetchAttachmentService struct {
+	*fakeAttachmentService
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingFetchAttachmentService) Attachment(ctx context.Context, messageID, attachmentID string) ([]byte, error) {
+	select {
+	case s.started <- struct{}{}:
+	default:
+	}
+	select {
+	case <-s.release:
+		return s.fakeAttachmentService.Attachment(ctx, messageID, attachmentID)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestAttachmentCacheDrainIncludesFetch(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		start func(*testing.T, *App, mail.Message, chan int)
+	}{
+		{name: "download", start: func(_ *testing.T, a *App, message mail.Message, _ chan int) {
+			a.downloadAttachment(message, message.Attachments[0], false, 0)
+		}},
+		{name: "forward", start: func(_ *testing.T, a *App, message mail.Message, _ chan int) {
+			a.openForwardMessage(message)
+		}},
+		{name: "WebView", start: func(t *testing.T, a *App, message mail.Message, finished chan int) {
+			tokens := ownerResourceTokens(t, prepareEmailHTML(a.emailResources, message))
+			go func() { finished <- serveOwnerResource(a.emailResources, tokens[0]).Code }()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := &blockingFetchAttachmentService{
+				fakeAttachmentService: &fakeAttachmentService{fakeService: newFakeService(), data: testPNG(t)},
+				started:               make(chan struct{}, 1), release: make(chan struct{}),
+			}
+			a := newTestApp(service)
+			a.schedule = func(fn func()) { go fn() }
+			store := newFakeMailStore()
+			a.SetMailStore(store)
+			a.openPath = func(path string) error { return os.Remove(path) }
+			defer func() {
+				select {
+				case <-service.release:
+				default:
+					close(service.release)
+				}
+			}()
+			finished := make(chan int, 1)
+			message := mail.Message{
+				AccountEmail: "demo@example.com", ID: "m1", ThreadID: "t1", HTML: `<img src="cid:logo">`,
+				Attachments: []mail.Attachment{{ID: "a1", ContentID: "logo", Name: "image.png"}},
+			}
+			tc.start(t, a, message, finished)
+			select {
+			case <-service.started:
+			case <-time.After(time.Second):
+				t.Fatal("attachment fetch did not start")
+			}
+			drained := make(chan struct{})
+			go func() {
+				a.WaitForCacheWrites()
+				close(drained)
+			}()
+			select {
+			case <-drained:
+				t.Fatal("cache drain returned during the attachment fetch")
+			case <-time.After(20 * time.Millisecond):
+			}
+			close(service.release)
+			select {
+			case <-drained:
+			case <-time.After(time.Second):
+				t.Fatal("cache drain did not finish after the attachment fetch")
+			}
+			if len(store.attachments) != 1 {
+				t.Fatalf("cached attachments = %v, want one", store.attachments)
+			}
+			if tc.name == "WebView" {
+				select {
+				case code := <-finished:
+					if code != http.StatusOK {
+						t.Fatalf("WebView status = %d", code)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("WebView request did not finish")
+				}
+			}
+		})
+	}
+}
+
+func TestAttachmentCacheRejectsWritesAfterQuit(t *testing.T) {
+	service := &fakeAttachmentService{fakeService: newFakeService(), data: []byte("data")}
+	a := newTestApp(service)
+	store := newFakeMailStore()
+	a.SetMailStore(store)
+	a.openPath = func(path string) error { return os.Remove(path) }
+	a.WaitForCacheWrites()
+	a.downloadAttachment(mail.Message{AccountEmail: "demo@example.com", ID: "m1", ThreadID: "t1"}, mail.Attachment{ID: "a1"}, false, 0)
+	if len(store.attachments) != 0 {
+		t.Fatalf("attachment was written after the cache drain: %v", store.attachments)
+	}
+}

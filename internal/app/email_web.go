@@ -28,6 +28,7 @@ type emailResource struct {
 	message    mail.Message
 	messageKey string
 	source     string
+	cacheOwner string
 	binding    emailResourceBinding
 }
 
@@ -35,6 +36,8 @@ type emailResourceStore struct {
 	loader           *messageImages
 	store            attachmentStore
 	attachmentWriter func(string, uint64) attachmentCacheWriter
+	attachmentBegin  func(string, uint64) attachmentCacheBegin
+	defaultOwner     func() string
 	ownerService     func(string) (mail.Service, uint64)
 	ownerClient      func(string) *accountClient
 	activeVersion    func() int
@@ -59,15 +62,19 @@ func (s *emailResourceStore) bindingFor(message mail.Message) emailResourceBindi
 	owner := normalizedEmail(message.AccountEmail)
 	s.mu.RLock()
 	fallback, resolve, ownerClient := s.loader, s.ownerService, s.ownerClient
-	store, attachmentWriter := s.store, s.attachmentWriter
+	store, attachmentWriter, attachmentBegin := s.store, s.attachmentWriter, s.attachmentBegin
 	s.mu.RUnlock()
 	if owner == "" || resolve == nil {
 		return emailResourceBinding{}
 	}
 	service, generation := resolve(owner)
 	loader := newMessageImageLoader(service, store)
+	loader.owner = owner
 	if attachmentWriter != nil {
 		loader.save = attachmentWriter(owner, generation)
+	}
+	if attachmentBegin != nil {
+		loader.begin = attachmentBegin(owner, generation)
 	}
 	if fallback != nil {
 		loader.client = fallback.client
@@ -87,9 +94,16 @@ func (s *emailResourceStore) registerWith(binding emailResourceBinding, message 
 	var random [16]byte
 	_, _ = rand.Read(random[:])
 	token := hex.EncodeToString(random[:])
+	s.mu.RLock()
+	defaultOwner := s.defaultOwner
+	s.mu.RUnlock()
+	cacheOwner := ""
+	if normalizedEmail(message.AccountEmail) == "" && defaultOwner != nil {
+		cacheOwner = defaultOwner()
+	}
 	s.mu.Lock()
 	s.resources[token] = emailResource{
-		message: message, messageKey: readerMessageKey(message), source: source, binding: binding,
+		message: message, messageKey: readerMessageKey(message), source: source, cacheOwner: cacheOwner, binding: binding,
 	}
 	s.mu.Unlock()
 	return token
@@ -154,7 +168,15 @@ func (s *emailResourceStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := loader.loadData(messageImageURL(resource.message, resource.source))
+	source := messageImageOwner(messageImageURL(resource.message, resource.source), resource.cacheOwner)
+	inline := inlineAttachmentData(resource.message, resource.source)
+	var data []byte
+	var err error
+	if inline != nil {
+		data, err = loader.loadData(source, inline)
+	} else {
+		data, err = loader.loadData(source)
+	}
 	if err != nil {
 		http.NotFound(w, r)
 		return
