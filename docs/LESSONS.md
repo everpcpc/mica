@@ -42,7 +42,7 @@
 ## Preserve attachment data through asynchronous workflows
 
 - Check attachment bytes at every boundary: file selection or drop, background reads, removal, send and retry, MIME output, and demo retrieval. A visible filename or metadata row does not prove that the content survived.
-- Serialize attachment reads per composer and recompute the remaining allowance before each read instead of reserving it from a stale snapshot. Late results for removed items must not reappear or consume allowance, and read failures must block sending rather than silently dropping the attachment.
+- Serialize attachment reads per composer and recompute the remaining allowance before each read instead of reserving it from a stale snapshot. If an in-flight read fails against a stale smaller allowance, retry after loaded items are removed; true oversize files still fail. Late results for removed items must not reappear or consume allowance, and read failures must block sending rather than silently dropping the attachment.
 
 ## Verify visuals through real rendering
 
