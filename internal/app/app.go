@@ -91,6 +91,7 @@ type App struct {
 	labelsSynced         bool
 	serviceVersion       int
 	restoreAttempted     bool
+	authCancel           context.CancelFunc
 	update               func(func())
 	schedule             func(func())
 	after                func(time.Duration, func())

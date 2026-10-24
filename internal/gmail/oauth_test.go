@@ -269,6 +269,7 @@ func TestKeychainTokenStoreEncoding(t *testing.T) {
 func TestAccountTokenStoresAreIndependent(t *testing.T) {
 	secrets := newMemorySecrets()
 	legacy := &keychainTokenStore{secrets: secrets}
+	credentialStateFor(legacy.tokenKey()).allow()
 	if err := legacy.Save(&oauth2.Token{AccessToken: "legacy"}); err != nil {
 		t.Fatal(err)
 	}
@@ -335,6 +336,45 @@ func TestActiveAccountStore(t *testing.T) {
 	}
 	if got, err := store.Load(); err != nil || got != "" {
 		t.Fatalf("deleted active account = %q, %v", got, err)
+	}
+}
+
+func TestCredentialStoresRejectLateWrites(t *testing.T) {
+	secrets := newMemorySecrets()
+	email := "late@example.com"
+	auth := NewOAuthForAccount("client", "secret", "project", email)
+	store := auth.store.(*keychainTokenStore)
+	store.secrets = secrets
+	AllowAccount(email)
+	if err := auth.SaveToken(&oauth2.Token{AccessToken: "token"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.Logout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveToken(&oauth2.Token{AccessToken: "late"}); err == nil {
+		t.Fatal("token refresh was allowed after logout")
+	}
+	active := &activeAccountStore{secrets: secrets}
+	AllowAccount(email)
+	if err := active.Save(email); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Save(email); err == nil {
+		t.Fatal("active marker was allowed after logout")
+	}
+	AllowAccount(email)
+	if err := auth.SaveToken(&oauth2.Token{AccessToken: "new login"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Save(email); err != nil {
+		t.Fatal(err)
+	}
+	if err := active.Delete(); err != nil {
+		t.Fatal(err)
 	}
 }
 

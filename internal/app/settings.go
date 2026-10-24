@@ -213,11 +213,15 @@ func loginGmailService(ctx context.Context, store mailStore, clientID, clientSec
 	if pending.token == nil {
 		return nil, "", gmail.ErrNoSession
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	if store != nil {
 		if err := store.SaveAccount(ctx, account); err != nil {
 			return nil, "", err
 		}
 	}
+	gmail.AllowAccount(account.Email)
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(pending.token); err != nil {
 		return nil, "", err
@@ -283,11 +287,21 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 	})
 }
 
+func (a *App) cancelAuthentication() {
+	if a.authCancel != nil {
+		a.authCancel()
+		a.authCancel = nil
+	}
+}
+
 func (a *App) restoreGmail() {
 	if a.restoreAttempted {
 		return
 	}
 	a.restoreAttempted = true
+	a.cancelAuthentication()
+	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
 	version := a.serviceVersion
 	store := a.store
 	a.schedule(func() {
@@ -309,7 +323,7 @@ func (a *App) restoreGmail() {
 			return
 		}
 		if cachedEmail == "" && store != nil {
-			account, found, cacheErr := store.LastAccount(context.Background())
+			account, found, cacheErr := store.LastAccount(ctx)
 			logCacheError(cacheErr)
 			if cacheErr == nil && found {
 				cachedEmail = account.Email
@@ -317,16 +331,19 @@ func (a *App) restoreGmail() {
 		}
 		var service mail.Service
 		if cachedEmail != "" {
-			service, err = restoreAccountGmail(context.Background(), clientID, clientSecret, projectID, cachedEmail)
+			service, err = restoreAccountGmail(ctx, clientID, clientSecret, projectID, cachedEmail)
 			if errors.Is(err, gmail.ErrNoSession) {
 				service, err = nil, nil
 			}
 		}
 		email := cachedEmail
 		if service == nil && err == nil {
-			service, email, err = migrateLegacyGmail(context.Background(), store, clientID, clientSecret, projectID)
+			service, email, err = migrateLegacyGmail(ctx, store, clientID, clientSecret, projectID)
 		}
 		a.publish(func() {
+			if version == a.serviceVersion {
+				a.authCancel = nil
+			}
 			if version != a.serviceVersion {
 				return
 			}
@@ -366,6 +383,9 @@ func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSe
 	if err != nil {
 		return nil, "", err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	if store != nil {
 		if err := store.SaveAccount(ctx, account); err != nil {
 			return nil, "", err
@@ -382,6 +402,7 @@ func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSe
 	if token == nil {
 		return nil, "", gmail.ErrNoSession
 	}
+	gmail.AllowAccount(account.Email)
 	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
 	if err := formal.SaveToken(token); err != nil {
 		return nil, "", err
@@ -412,11 +433,17 @@ func (a *App) reauthorizeGmail() {
 	if err != nil {
 		return
 	}
+	a.cancelAuthentication()
+	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
 	version := a.serviceVersion
 	expectedEmail := a.account.Email
 	a.schedule(func() {
-		service, email, err := loginGmailService(context.Background(), a.store, clientID, clientSecret, projectID, expectedEmail)
+		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, expectedEmail)
 		a.publish(func() {
+			if version == a.serviceVersion {
+				a.authCancel = nil
+			}
 			if version != a.serviceVersion {
 				return
 			}
@@ -450,6 +477,7 @@ func (a *App) logoutGmail() {
 		s.err = locales.LogoutFailed("account identity changed")
 		return
 	}
+	a.cancelAuthentication()
 	version := a.serviceVersion
 	a.schedule(func() {
 		err := gmail.NewOAuthForAccount("", "", "", email).Logout(context.Background())
@@ -480,6 +508,7 @@ func (a *App) logoutGmail() {
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
+	a.cancelAuthentication()
 	recovered := a.compose
 	preserveRecovered := recovered != nil && !recovered.sending && recovered.recoveryAccount != "" && len(cachedAccount) > 0 && strings.EqualFold(recovered.recoveryAccount, cachedAccount[0])
 	if preserveRecovered && (recovered.draftSaving || recovered.saveState == draftSaveSaving) {

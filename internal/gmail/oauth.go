@@ -51,6 +51,33 @@ type secretStore interface {
 	Delete(string) error
 }
 
+type credentialState struct {
+	mu     sync.RWMutex
+	closed bool
+}
+
+var credentialStates sync.Map
+
+func credentialStateFor(key string) *credentialState {
+	state, _ := credentialStates.LoadOrStore(key, &credentialState{})
+	return state.(*credentialState)
+}
+
+func accountTokenKey(email string) string {
+	return oauthTokenKey + ":" + strings.ToLower(strings.TrimSpace(email))
+}
+
+func AllowAccount(email string) {
+	credentialStateFor(accountTokenKey(email)).allow()
+	credentialStateFor(activeEmailKey).allow()
+}
+
+func (s *credentialState) allow() {
+	s.mu.Lock()
+	s.closed = false
+	s.mu.Unlock()
+}
+
 type keychainTokenStore struct {
 	secrets secretStore
 	key     string
@@ -65,8 +92,7 @@ func NewOAuthWithProject(clientID, clientSecret, projectID string) *OAuth {
 }
 
 func NewOAuthForAccount(clientID, clientSecret, projectID, email string) *OAuth {
-	key := oauthTokenKey + ":" + strings.ToLower(strings.TrimSpace(email))
-	return NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, &keychainTokenStore{secrets: mygo.Secrets, key: key})
+	return NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, &keychainTokenStore{secrets: mygo.Secrets, key: accountTokenKey(email)})
 }
 
 func NewOAuthWithProjectAndStore(clientID, clientSecret, projectID string, store TokenStore) *OAuth {
@@ -109,6 +135,12 @@ func (s *keychainTokenStore) tokenKey() string {
 }
 
 func (s *keychainTokenStore) Load() (*oauth2.Token, error) {
+	state := credentialStateFor(s.tokenKey())
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return nil, ErrNoSession
+	}
 	value, err := s.secrets.Get(s.tokenKey())
 	if errors.Is(err, mygo.ErrSecretNotFound) {
 		return nil, ErrNoSession
@@ -124,6 +156,12 @@ func (s *keychainTokenStore) Load() (*oauth2.Token, error) {
 }
 
 func (s *keychainTokenStore) Save(token *oauth2.Token) error {
+	state := credentialStateFor(s.tokenKey())
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return errors.New("gmail: account is signed out")
+	}
 	value, err := json.Marshal(token)
 	if err != nil {
 		return fmt.Errorf("gmail: encode OAuth token: %w", err)
@@ -135,6 +173,10 @@ func (s *keychainTokenStore) Save(token *oauth2.Token) error {
 }
 
 func (s *keychainTokenStore) Delete() error {
+	state := credentialStateFor(s.tokenKey())
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.closed = true
 	if err := s.secrets.Delete(s.tokenKey()); err != nil {
 		return fmt.Errorf("gmail: delete OAuth token: %w", err)
 	}
@@ -150,6 +192,12 @@ func NewActiveAccountStore() *activeAccountStore {
 }
 
 func (s *activeAccountStore) Load() (string, error) {
+	state := credentialStateFor(activeEmailKey)
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return "", nil
+	}
 	value, err := s.secrets.Get(activeEmailKey)
 	if errors.Is(err, mygo.ErrSecretNotFound) {
 		return "", nil
@@ -165,6 +213,12 @@ func (s *activeAccountStore) Save(email string) error {
 	if email == "" {
 		return errors.New("gmail: empty account email")
 	}
+	state := credentialStateFor(activeEmailKey)
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	if state.closed {
+		return errors.New("gmail: account is signed out")
+	}
 	if err := s.secrets.Set(activeEmailKey, []byte(email)); err != nil {
 		return fmt.Errorf("gmail: save active account: %w", err)
 	}
@@ -172,6 +226,10 @@ func (s *activeAccountStore) Save(email string) error {
 }
 
 func (s *activeAccountStore) Delete() error {
+	state := credentialStateFor(activeEmailKey)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.closed = true
 	if err := s.secrets.Delete(activeEmailKey); err != nil {
 		return fmt.Errorf("gmail: delete active account: %w", err)
 	}
