@@ -38,7 +38,7 @@ func TestScheduledComposerPreset(t *testing.T) {
 	if a.compose != nil || service.sendCalls != 0 {
 		t.Fatalf("preset sent instead of scheduling: compose=%p calls=%d", a.compose, service.sendCalls)
 	}
-	if record := onlyOutboxRecord(t, store); record.State != mail.OutboxScheduled || record.SendAt.Local().Hour() != 8 {
+	if record := onlyOutboxRecord(t, store); record.State != mail.OutboxScheduled || record.SendAt.In(a.currentTime().Location()).Hour() != 8 {
 		t.Fatalf("preset record = %+v", record)
 	}
 }
