@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -32,6 +33,16 @@ func TestParseMailto(t *testing.T) {
 			name: "host form and repeated cc",
 			raw:  "mailto://ada@example.com?cc=a@example.com&cc=b@example.com&body=Hello",
 			want: mail.Compose{To: "ada@example.com", Cc: "a@example.com, b@example.com", Text: "Hello"},
+		},
+		{
+			name: "path decoded once",
+			raw:  "mailto:///ada%252Btag@example.com",
+			want: mail.Compose{To: "ada%2Btag@example.com"},
+		},
+		{
+			name: "path percent literal",
+			raw:  "mailto:///ada%25tag@example.com",
+			want: mail.Compose{To: "ada%tag@example.com"},
 		},
 		{
 			name: "empty recipient draft",
@@ -166,6 +177,78 @@ func TestOpenMailtoDoesNotOverwriteComposer(t *testing.T) {
 	}
 	if a.notice == "" {
 		t.Fatal("blocked mailto did not explain why it was ignored")
+	}
+}
+
+func TestRestoreGmailLoadFailureReleasesPending(t *testing.T) {
+	a := New(newFakeService())
+	a.schedule = func(fn func()) { fn() }
+	a.after = func(time.Duration, func()) {}
+	a.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	a.loadActiveAccount = func() (string, error) { return "", errOffline }
+	a.restoreGmail()
+	if a.compose == nil || a.pendingMailto != "" || a.authCancel != nil {
+		t.Fatalf("load failure left mailto blocked: compose=%p pending=%q cancel=%v", a.compose, a.pendingMailto, a.authCancel != nil)
+	}
+}
+
+func TestOpenMailtoAfterTransitionFailure(t *testing.T) {
+	a := New(newFakeService())
+	a.restoreAttempted = true
+	a.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	transition := &accountTransition{email: "b@example.com"}
+	a.accountTransition = transition
+	a.failAccountTransition(transition, errOffline)
+	if a.compose == nil || a.pendingMailto != "" {
+		t.Fatalf("transition failure left mailto blocked: compose=%p pending=%q", a.compose, a.pendingMailto)
+	}
+}
+
+func TestOpenMailtoAfterSettingsFailure(t *testing.T) {
+	a := New(newFakeService())
+	a.restoreAttempted = true
+	a.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	a.settings = &settingsState{open: true}
+	a.accountAuthenticationFailed(a.settings, "", errOffline)
+	if a.compose == nil || a.pendingMailto != "" {
+		t.Fatalf("authentication failure left mailto blocked: compose=%p pending=%q", a.compose, a.pendingMailto)
+	}
+}
+
+func TestOpenMailtoAfterSettingsClose(t *testing.T) {
+	a := New(newFakeService())
+	a.restoreAttempted = true
+	a.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	a.settings = &settingsState{open: true}
+	a.closeSettings()
+	if a.compose == nil || a.pendingMailto != "" {
+		t.Fatalf("closing Settings left mailto blocked: compose=%p pending=%q", a.compose, a.pendingMailto)
+	}
+}
+
+func TestOpenMailtoAfterInactiveRemoval(t *testing.T) {
+	h := newAccountTransitionHarness()
+	h.app.after = func(time.Duration, func()) {}
+	h.app.pendingMailto = "mailto:ada@example.com?subject=Hello"
+	h.app.settings = &settingsState{open: true}
+	h.app.removeCredentials = func(context.Context, string) error { return nil }
+	h.app.deleteCheckpoint = func(string) error { return nil }
+	h.app.removeAccount(h.target.account.Email)
+	h.runJob(t)
+	h.runUpdate(t)
+	if h.app.compose == nil || h.app.pendingMailto != "" {
+		t.Fatalf("inactive removal left mailto blocked: compose=%p pending=%q", h.app.compose, h.app.pendingMailto)
+	}
+}
+
+func TestUseServiceClearsDraftRestorePending(t *testing.T) {
+	a := New(newFakeService())
+	a.schedule = func(fn func()) { fn() }
+	a.restoreAttempted = true
+	a.draftRestorePending = true
+	a.useService(newFakeService())
+	if a.draftRestorePending {
+		t.Fatal("service replacement retained the old draft restore pending state")
 	}
 }
 

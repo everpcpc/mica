@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"mica/internal/gmail"
 	"mica/internal/mail"
 	"mica/locales"
 
@@ -136,6 +137,7 @@ type App struct {
 	registerURLScheme     func(string) error
 	isURLSchemeRegistered func(string) bool
 	defaultMailApp        bool
+	loadActiveAccount     func() (string, error)
 }
 
 func New(service mail.Service) *App {
@@ -166,6 +168,7 @@ func New(service mail.Service) *App {
 	a.resetMessageViews()
 	a.registerURLScheme = mygo.App.RegisterURLScheme
 	a.isURLSchemeRegistered = mygo.App.IsURLSchemeRegistered
+	a.loadActiveAccount = gmail.NewActiveAccountStore().Load
 	a.list.Selected = &a.selectedRow
 	a.list.Selection = &a.threadSelection
 	return a

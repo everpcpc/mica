@@ -169,6 +169,7 @@ func (a *App) closeSettings() {
 		a.settings.cancel()
 	}
 	a.settings = nil
+	a.openPendingMailto()
 }
 
 func (a *App) connectGmail() {
@@ -352,13 +353,13 @@ func (a *App) restoreGmail() {
 			a.publish(func() { a.finishRestoreGmail(version, auth, nil, "", err) })
 			return
 		}
-		cachedEmail, err := gmail.NewActiveAccountStore().Load()
+		loadActive := a.loadActiveAccount
+		if loadActive == nil {
+			loadActive = gmail.NewActiveAccountStore().Load
+		}
+		cachedEmail, err := loadActive()
 		if err != nil {
-			a.publish(func() {
-				if version == a.serviceVersion {
-					a.notice = locales.OauthRestoreFailed(err.Error())
-				}
-			})
+			a.publish(func() { a.finishRestoreGmail(version, auth, nil, "", err) })
 			return
 		}
 		if cachedEmail == "" && store != nil {
@@ -550,6 +551,7 @@ func (a *App) accountAuthenticationFailed(s *settingsState, expectedEmail string
 	} else {
 		a.notice = locales.GmailConnectFailed(err.Error())
 	}
+	a.openPendingMailto()
 }
 
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
@@ -612,6 +614,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 		a.compose = nil
 	}
 	a.draftRestoreAccount = ""
+	a.draftRestorePending = false
 	a.labelDialog = nil
 	a.threadCache = nil
 	a.resetMessageViews()

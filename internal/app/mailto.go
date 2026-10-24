@@ -20,15 +20,21 @@ func parseMailto(raw string) (mail.Compose, error) {
 		return compose, errMailtoInvalid
 	}
 	address := u.Opaque
+	encoded := true
 	if address == "" && u.User != nil && u.Host != "" {
-		address = u.User.String() + "@" + u.Host
+		address = u.User.Username() + "@" + u.Host
+		encoded = false
 	} else if address == "" {
 		address = u.Host
+		encoded = false
 	}
 	if address == "" {
 		address = strings.TrimPrefix(u.Path, "/")
+		encoded = false
 	}
-	address, err = url.PathUnescape(address)
+	if encoded {
+		address, err = url.PathUnescape(address)
+	}
 	if err != nil || mailtoHeaderInvalid(address) {
 		return compose, errMailtoInvalid
 	}
