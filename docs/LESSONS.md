@@ -53,6 +53,8 @@
 - Sending an existing draft must wait for the current create or update to finish. A generation check can discard a stale UI callback, but it cannot cancel the older server write or prevent a deleted draft from reappearing.
 - When a create succeeds with newer unsaved edits, persist the new draft ID immediately so crash recovery cannot create a duplicate.
 - Empty-draft checks must include HTML and attachments, not only plain text.
+- Disable composer inputs while send, close, or discard is pending. Otherwise users can create edits that the current revision and close path never save.
+- Restore snapshots by cached account identity rather than network verification; an offline profile failure must not block local recovery. A mismatched account must never synchronize that snapshot.
 
 ## Verify visuals through real rendering
 
