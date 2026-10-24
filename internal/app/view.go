@@ -56,6 +56,7 @@ func (a *App) View(c *ui.Context) {
 		a.labelDialogView(c)
 	}
 	a.showNotice(c)
+	a.syncShortcutMenu()
 }
 
 func (a *App) showNotice(c *ui.Context) {
@@ -182,6 +183,7 @@ func (a *App) threadList(c *ui.Context) {
 		})
 		ui.Column(c).Padding(0, 12, 10, 12).Gap(8).Children(func() {
 			search := ui.SearchField(c.Key("search"), &a.query).Bind(&a.search).Label(locales.SearchMail()).Placeholder(locales.SearchGmail())
+			a.searchFocused = a.search.FocusWithin(c)
 			if search.Submitted() || (search.Changed() && a.query == "") {
 				a.refresh()
 			}
