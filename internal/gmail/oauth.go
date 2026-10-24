@@ -44,6 +44,7 @@ type OAuth struct {
 	random       io.Reader
 	projectID    string
 	loginMu      sync.Mutex
+	sources      sync.Map
 }
 
 type secretStore interface {
@@ -391,7 +392,10 @@ func (a *OAuth) httpContext(ctx context.Context) context.Context {
 
 func (a *OAuth) authenticatedClient(ctx context.Context, token *oauth2.Token) *http.Client {
 	ctx = context.WithoutCancel(a.httpContext(ctx))
-	return oauth2.NewClient(ctx, a.tokenSource(ctx, token))
+	source := a.tokenSource(ctx, token)
+	client := oauth2.NewClient(ctx, source)
+	a.sources.Store(client, source)
+	return client
 }
 
 func (a *OAuth) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
@@ -406,11 +410,29 @@ func (a *OAuth) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 }
 
 func (a *OAuth) Service(client *http.Client) (*Service, error) {
-	source, err := a.TokenSource(context.Background())
-	if err != nil {
-		return nil, err
+	var source oauth2.TokenSource
+	if client != nil {
+		if cached, ok := a.sources.Load(client); ok {
+			source = cached.(oauth2.TokenSource)
+		}
 	}
-	return NewWithProject(client, a.projectID, source), nil
+	if source == nil {
+		var err error
+		source, err = a.TokenSource(context.Background())
+		if err != nil {
+			return nil, err
+		}
+	}
+	service := NewWithProject(client, a.projectID, source)
+	service.deactivate = func() {
+		if deactivator, ok := source.(interface{ Deactivate() }); ok {
+			deactivator.Deactivate()
+		}
+		if client != nil {
+			a.sources.Delete(client)
+		}
+	}
+	return service, nil
 }
 
 func (a *OAuth) tokenSource(ctx context.Context, token *oauth2.Token) oauth2.TokenSource {

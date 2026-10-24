@@ -37,6 +37,7 @@ type Service struct {
 	maxParallel  int
 	projectID    string
 	tokenSource  oauth2.TokenSource
+	deactivate   func()
 	sleep        func(context.Context, time.Duration) error
 	requestGroup singleflight.Group
 }
@@ -121,6 +122,10 @@ func NewWithProject(client *http.Client, projectID string, source oauth2.TokenSo
 }
 
 func (s *Service) Deactivate() {
+	if s.deactivate != nil {
+		s.deactivate()
+		return
+	}
 	if source, ok := s.tokenSource.(interface{ Deactivate() }); ok {
 		source.Deactivate()
 	}

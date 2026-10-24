@@ -393,6 +393,30 @@ func TestCredentialStoresRejectLateWrites(t *testing.T) {
 	}
 }
 
+func TestServiceDeactivateDisablesHTTPAndPushSources(t *testing.T) {
+	store := newMemoryTokenStore()
+	if err := store.Save(&oauth2.Token{AccessToken: "access", RefreshToken: "refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	auth := NewOAuthWithStore("client", "secret", store)
+	client, err := auth.Restore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := auth.Service(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpSource := client.Transport.(*oauth2.Transport).Source
+	service.Deactivate()
+	if _, err := httpSource.Token(); !errors.Is(err, errTokenSourceInactive) {
+		t.Fatalf("HTTP refresh after deactivation = %v", err)
+	}
+	if _, err := service.tokenSource.Token(); !errors.Is(err, errTokenSourceInactive) {
+		t.Fatalf("Pub/Sub refresh after deactivation = %v", err)
+	}
+}
+
 type blockingTokenSource struct {
 	started chan struct{}
 	release chan struct{}
