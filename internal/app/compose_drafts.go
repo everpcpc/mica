@@ -55,6 +55,7 @@ func (a *App) markComposerEdited(m *composer) {
 		m.outboxID = ""
 		m.outboxAttempted = false
 		m.messageID = ""
+		m.draftID = ""
 	}
 	m.revision++
 	m.saveState = draftSaveScheduled

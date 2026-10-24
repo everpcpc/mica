@@ -226,6 +226,61 @@ func TestOutboxEditAfterFailureGetsNewIdentity(t *testing.T) {
 	}
 }
 
+func TestOutboxEditDetachesRemoteDraft(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	draft, err := service.CreateDraft(context.Background(), mail.Compose{To: "to@example.com", Text: "saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.openDraftMessage(draft.ID, draft.Message)
+	service.sendDraftErr = errOffline
+	a.sendCompose()
+	original := onlyOutboxRecord(t, store)
+	m := a.compose
+	m.doc.SetText(richtext.NewText("edited body"))
+	a.markComposerEdited(m)
+	if m.draftID != "" || m.outboxID != "" || m.messageID != "" {
+		t.Fatalf("edited composer retained the original remote identity: %+v", m)
+	}
+	draftCalls := service.sendDraftCalls
+	service.sendDraftErr = nil
+	a.sendCompose()
+	if service.sendCalls != 1 || service.sendDraftCalls != draftCalls {
+		t.Fatalf("edited send consumed the original draft: calls=%d/%d", service.sendCalls, service.sendDraftCalls)
+	}
+	if record := onlyOutboxRecord(t, store); record.ID != original.ID || record.DraftID != draft.ID {
+		t.Fatalf("edited send changed the original Outbox entry: %+v", record)
+	}
+	if _, err := service.Draft(context.Background(), draft.ID); err != nil {
+		t.Fatalf("original remote draft was consumed: %v", err)
+	}
+}
+
+func TestOutboxDiscardAfterEditPreservesOriginalDraft(t *testing.T) {
+	a, service, store := newOutboxOrderHarness()
+	draft, err := service.CreateDraft(context.Background(), mail.Compose{To: "to@example.com", Text: "saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.openDraftMessage(draft.ID, draft.Message)
+	service.sendDraftErr = errOffline
+	a.sendCompose()
+	original := onlyOutboxRecord(t, store)
+	m := a.compose
+	m.doc.SetText(richtext.NewText("edited body"))
+	a.markComposerEdited(m)
+	a.discardCompose()
+	if service.deleteCalls != 0 || a.compose != nil {
+		t.Fatalf("edited discard deleted a remote draft: calls=%d compose=%+v", service.deleteCalls, a.compose)
+	}
+	if record := onlyOutboxRecord(t, store); record.ID != original.ID || record.DraftID != draft.ID {
+		t.Fatalf("edited discard changed the original Outbox entry: %+v", record)
+	}
+	if _, err := service.Draft(context.Background(), draft.ID); err != nil {
+		t.Fatalf("edited discard removed the original draft: %v", err)
+	}
+}
+
 func TestOutboxDiscardRemovesLinkedEntry(t *testing.T) {
 	a, service, store := newOutboxOrderHarness()
 	draft, err := service.CreateDraft(context.Background(), mail.Compose{To: "to@example.com", Text: "saved"})

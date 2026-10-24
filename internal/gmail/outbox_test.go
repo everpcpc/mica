@@ -62,16 +62,16 @@ func TestSendEndpointsDoNotRetryTransientErrors(t *testing.T) {
 func TestSentMessageExistsUsesRFC822MessageID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/users/me/threads":
+		case "/users/me/messages":
 			if got := r.URL.Query().Get("q"); got != "rfc822msgid:<stable@example.com>" {
 				t.Errorf("search query = %q", got)
 			}
 			if got := r.URL.Query().Get("labelIds"); got != mail.Sent {
 				t.Errorf("label scope = %q", got)
 			}
-			writeTestJSON(t, w, map[string]any{"threads": []map[string]string{{"id": "sent-1"}}})
-		case "/users/me/threads/sent-1":
-			writeTestJSON(t, w, apiThread{ID: "sent-1", Messages: []apiMessage{{ID: "message-1", LabelIDs: []string{mail.Sent}, Payload: apiPart{Headers: []apiHeader{{Name: "Subject", Value: "Outgoing"}}}}}})
+			writeTestJSON(t, w, map[string]any{"messages": []map[string]string{{"id": "message-1"}}})
+		case "/users/me/messages/message-1":
+			writeTestJSON(t, w, apiMessage{ID: "message-1", LabelIDs: []string{mail.Sent}, Payload: apiPart{Headers: []apiHeader{{Name: "Message-ID", Value: "<stable@example.com>"}}}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -87,13 +87,13 @@ func TestSentMessageExistsUsesRFC822MessageID(t *testing.T) {
 func TestSentMessageExistsIgnoresNonSentMatches(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/users/me/threads":
+		case "/users/me/messages":
 			if got := r.URL.Query().Get("labelIds"); got != mail.Sent {
 				t.Errorf("label scope = %q", got)
 			}
-			writeTestJSON(t, w, map[string]any{"threads": []map[string]string{{"id": "draft-1"}}})
-		case "/users/me/threads/draft-1":
-			writeTestJSON(t, w, apiThread{ID: "draft-1", Messages: []apiMessage{{ID: "message-1", LabelIDs: []string{mail.Draft}, Payload: apiPart{Headers: []apiHeader{{Name: "Subject", Value: "Outgoing"}}}}}})
+			writeTestJSON(t, w, map[string]any{"messages": []map[string]string{{"id": "message-1"}}})
+		case "/users/me/messages/message-1":
+			writeTestJSON(t, w, apiMessage{ID: "message-1", LabelIDs: []string{mail.Draft}, Payload: apiPart{Headers: []apiHeader{{Name: "Message-ID", Value: "<stable@example.com>"}}}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -103,5 +103,24 @@ func TestSentMessageExistsIgnoresNonSentMatches(t *testing.T) {
 	found, err := service.SentMessageExists(context.Background(), "<stable@example.com>")
 	if err != nil || found {
 		t.Fatalf("DRAFT-only match was accepted as Sent: found=%v err=%v", found, err)
+	}
+}
+
+func TestSentMessageExistsRequiresExactMessageID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/users/me/messages":
+			writeTestJSON(t, w, map[string]any{"messages": []map[string]string{{"id": "message-1"}}})
+		case "/users/me/messages/message-1":
+			writeTestJSON(t, w, apiMessage{ID: "message-1", LabelIDs: []string{mail.Sent}, Payload: apiPart{Headers: []apiHeader{{Name: "Message-ID", Value: "<other@example.com>"}}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	service := testService(server)
+	found, err := service.SentMessageExists(context.Background(), "<stable@example.com>")
+	if err != nil || found {
+		t.Fatalf("different Message-ID was accepted as Sent: found=%v err=%v", found, err)
 	}
 }

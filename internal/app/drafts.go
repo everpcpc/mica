@@ -65,10 +65,10 @@ func (a *App) invalidateDraftSnapshotWrites(email string) {
 	a.cacheState.mu.Lock()
 	a.cacheState.draftWrite++
 	write := a.cacheState.draftWrite
-	a.cacheState.mu.Unlock()
 	draftSnapshotWrites.Lock()
 	draftSnapshotWrites.latest[draftSnapshotWriteKey{app: a, email: email}] = write
 	draftSnapshotWrites.Unlock()
+	a.cacheState.mu.Unlock()
 }
 
 func (a *App) restoreDraftSnapshot() {
