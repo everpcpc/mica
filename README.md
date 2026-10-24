@@ -30,6 +30,7 @@
 - **Fast local actions with undo.** Archive, star, trash, report spam, and change read state immediately while changes synchronize in the background.
 - **Compose and reply.** Write new mail, reply, reply all, forward, and open or save attachments.
 - **Persistent Outbox.** Sends are journaled locally with attachments and a stable Message-ID. Review, retry, or delete outgoing mail; retries check Sent and require confirmation before sending again.
+- **Scheduled sending.** Choose a preset or a local date and time. Mica keeps the schedule and attachments on this Mac and sends while it is running, or after reopening if the time was missed. Canceling returns the complete message to a draft; uncertain results always require review before another attempt.
 - **Persistent Snooze.** Archive conversations until a local wake time, see them in Snoozed, reschedule or cancel, and restore them after restarts. Gmail changes stay ordered through the same background queue.
 - **Email links.** Open `mailto:` links into a draft, with an explicit default email app setting in macOS.
 - **Label management.** Assign, create, recolor, and delete custom Gmail labels.
@@ -105,7 +106,7 @@ Tests use fake services or the demo mailbox. Never run destructive tests against
 ## Privacy and security
 
 - OAuth tokens are stored in the macOS Keychain.
-- Account metadata, labels, and loaded conversations are cached locally in SQLite. Attachments are cached after being opened, saved, forwarded, or displayed as inline images. Individual attachments over 32 MiB are not cached, and each account's attachment cache is limited to 128 MiB with oldest-first eviction. Remote images remain on demand.
+- Account metadata, labels, and loaded conversations are cached locally in SQLite. Draft and Outbox snapshots, outgoing attachments, and scheduled times are stored in the same local database. Received attachments are cached after being opened, saved, forwarded, or displayed as inline images. Individual attachments over 32 MiB are not cached, and each account's attachment cache is limited to 128 MiB with oldest-first eviction. Remote images remain on demand.
 - HTML mail is sanitized and rendered in per-message sandboxed WebViews. Remote image requests never carry Gmail credentials.
 
 ## Contributing
