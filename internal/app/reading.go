@@ -42,27 +42,28 @@ func (a *App) reader(c *ui.Context) {
 		ui.Toolbar(c, func() {
 			trashLabel, spamLabel := a.recoveryActionLabels()
 			actionTargets := a.actionSummaries()
+			compositionView := a.selectedLabel == mail.Draft || a.selectedLabel == mail.Outbox
 			archiveLabel := locales.Archive()
 			if len(actionTargets) > 1 {
 				archiveLabel = locales.ArchiveSelected(len(actionTargets))
 			}
-			iconButton(c, archiveLabel, iconArchive, a.archive).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
-			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
-			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
-			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
-			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(a.selectedLabel == mail.Draft).Padding(5, 6).Children(func() {
+			iconButton(c, archiveLabel, iconArchive, a.archive).Disabled(len(actionTargets) == 0 || compositionView)
+			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(len(actionTargets) == 0 || compositionView)
+			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(len(actionTargets) == 0 || compositionView)
+			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(len(actionTargets) == 0 || compositionView)
+			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(compositionView).Padding(5, 6).Children(func() {
 				ui.Icon(c, iconLabel).Size(16, 16)
 			}).Menu(a.labelMenu)
 			starLabel := locales.AddStar()
 			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				starLabel = locales.RemoveStar()
 			}
-			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(len(actionTargets) == 0 || a.selectedLabel == mail.Draft)
+			star := iconButton(c, starLabel, iconStar, a.toggleStar).Disabled(len(actionTargets) == 0 || compositionView)
 			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				star.TextColor(t.Warning)
 			}
 			ui.Spacer(c)
-			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0 || a.selectedLabel == mail.Draft).OnClick(a.openReply)
+			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0 || compositionView).OnClick(a.openReply)
 		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
 	})
 }
@@ -129,7 +130,10 @@ func (a *App) threadContent(c *ui.Context) {
 					a.messageView(c, i, message)
 				}
 				ui.Row(c).Gap(10).Children(func() {
-					if a.selectedLabel == mail.Draft {
+					if a.selectedLabel == mail.Outbox {
+						threadAction(c, locales.Retry(), iconSent, a.retryOutbox, a.outboxBusy != "" || a.compose != nil)
+						threadAction(c, locales.OutboxDelete(), iconTrash, a.requestDeleteOutbox, a.outboxBusy != "" || a.compose != nil)
+					} else if a.selectedLabel == mail.Draft {
 						threadAction(c, locales.ContinueDraft(), iconCompose, a.openSelectedDraft)
 					} else {
 						threadAction(c, locales.Reply(), iconReply, a.openReply)
@@ -142,9 +146,9 @@ func (a *App) threadContent(c *ui.Context) {
 	})
 }
 
-func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func()) {
+func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func(), disabled ...bool) {
 	t := c.Theme()
-	ui.Button(c, "").Label(label).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
+	ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph).Size(15, 15)
 			ui.Text(c, label)
@@ -199,7 +203,7 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		for i, attachment := range message.Attachments {
 			a.attachmentView(c, message, attachment, i)
 		}
-		if a.selectedLabel != mail.Draft {
+		if a.selectedLabel != mail.Draft && a.selectedLabel != mail.Outbox {
 			a.expandedMessageActions(c, message)
 		}
 	})
@@ -245,7 +249,7 @@ func (a *App) collapsedMessageView(c *ui.Context, message mail.Message) {
 				ui.Icon(c, iconChevronRight).Size(12, 12).TextColor(t.TextMuted)
 			})
 		})
-		if a.selectedLabel != mail.Draft {
+		if a.selectedLabel != mail.Draft && a.selectedLabel != mail.Outbox {
 			a.messageActionsMenu(c, message)
 		}
 	})

@@ -25,7 +25,7 @@ func (a *App) View(c *ui.Context) {
 	if c.Vibrancy() {
 		c.Root().Background(ui.Transparent)
 	}
-	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen && (a.labelDialog == nil || !a.labelDialog.open) {
+	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen && (a.labelDialog == nil || !a.labelDialog.open) && !a.outboxDeleteOpen && !a.outboxReviewOpen {
 		a.shortcuts(c)
 	}
 	sidebarSplit := ui.Split(c, &a.sidebarWidth, func() {
@@ -54,6 +54,12 @@ func (a *App) View(c *ui.Context) {
 	}
 	if a.labelDialog != nil && a.labelDialog.open {
 		a.labelDialogView(c)
+	}
+	if a.outboxDeleteOpen {
+		a.outboxDeleteView(c)
+	}
+	if a.outboxReviewOpen {
+		a.outboxReviewView(c)
 	}
 	a.showNotice(c)
 	a.syncShortcutMenu()
@@ -327,7 +333,10 @@ func (a *App) emptyList(c *ui.Context) {
 			ui.Text(c, a.err).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
 			ui.Button(c, locales.Retry()).OnClick(a.refresh)
 		} else if !a.loading {
-			if a.unreadOnly && len(a.threads) > 0 {
+			if a.selectedLabel == mail.Outbox {
+				ui.Text(c, locales.EmptyOutbox()).Bold()
+				ui.Text(c, locales.EmptyOutboxHint()).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
+			} else if a.unreadOnly && len(a.threads) > 0 {
 				ui.Text(c, locales.EmptyUnread()).Bold()
 				ui.Text(c, locales.EmptyUnreadHint()).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
 			} else {

@@ -98,6 +98,10 @@ func (a *App) SetMailStore(store mailStore) {
 	a.cacheState.mu.Lock()
 	defer a.cacheState.mu.Unlock()
 	a.store = store
+	a.outbox = nil
+	if outbox, ok := store.(outboxStore); ok {
+		a.outbox = outbox
+	}
 	a.cacheState.version = a.serviceVersion
 }
 

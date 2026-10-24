@@ -115,6 +115,8 @@ type fakeMailStore struct {
 	lists            map[cacheListKey][]mail.ThreadSummary
 	threads          map[cacheThreadKey]mail.Thread
 	drafts           map[string]mail.DraftSnapshot
+	outbox           map[string]mail.OutboxMessage
+	outboxErr        error
 	preferences      map[string]string
 	preferenceWrites int
 	saveThreadErr    error
@@ -127,6 +129,7 @@ func newFakeMailStore() *fakeMailStore {
 		lists:       make(map[cacheListKey][]mail.ThreadSummary),
 		threads:     make(map[cacheThreadKey]mail.Thread),
 		drafts:      make(map[string]mail.DraftSnapshot),
+		outbox:      make(map[string]mail.OutboxMessage),
 		preferences: make(map[string]string),
 	}
 }
@@ -205,6 +208,11 @@ func (s *fakeMailStore) DeleteAccount(_ context.Context, email string) error {
 			delete(s.threads, key)
 		}
 	}
+	for key, record := range s.outbox {
+		if normalizedEmail(record.AccountEmail) == email {
+			delete(s.outbox, key)
+		}
+	}
 	return nil
 }
 func (s *fakeMailStore) DraftSnapshot(_ context.Context, email string) (mail.DraftSnapshot, bool, error) {
@@ -212,6 +220,7 @@ func (s *fakeMailStore) DraftSnapshot(_ context.Context, email string) (mail.Dra
 	return snapshot, found, nil
 }
 func (s *fakeMailStore) SaveDraftSnapshot(_ context.Context, email string, snapshot mail.DraftSnapshot) error {
+	snapshot.Compose = mail.CloneCompose(snapshot.Compose)
 	s.drafts[normalizedEmail(email)] = snapshot
 	return nil
 }
@@ -219,6 +228,110 @@ func (s *fakeMailStore) DeleteDraftSnapshot(_ context.Context, email string) err
 	delete(s.drafts, normalizedEmail(email))
 	return nil
 }
+func fakeOutboxKey(email, id string) string {
+	return normalizedEmail(email) + "\x00" + id
+}
+
+func (s *fakeMailStore) EnqueueOutbox(_ context.Context, email string, record mail.OutboxMessage, snapshot mail.DraftSnapshot) error {
+	if s.outboxErr != nil {
+		return s.outboxErr
+	}
+	email = normalizedEmail(email)
+	if current, found := s.outbox[fakeOutboxKey(email, record.ID)]; found && current.Attempt > record.Attempt {
+		return errors.New("outbox conflict")
+	}
+	record.AccountEmail = email
+	record.Compose = mail.CloneCompose(record.Compose)
+	s.outbox[fakeOutboxKey(email, record.ID)] = record
+	snapshot.DraftID = record.DraftID
+	snapshot.OutboxID = record.ID
+	snapshot.Compose = mail.CloneCompose(record.Compose)
+	s.drafts[email] = snapshot
+	return nil
+}
+
+func (s *fakeMailStore) SaveOutboxMessage(_ context.Context, email string, record mail.OutboxMessage) error {
+	if s.outboxErr != nil {
+		return s.outboxErr
+	}
+	email = normalizedEmail(email)
+	if current, found := s.outbox[fakeOutboxKey(email, record.ID)]; found && current.Attempt > record.Attempt {
+		return errors.New("outbox conflict")
+	}
+	record.AccountEmail = email
+	record.Compose = mail.CloneCompose(record.Compose)
+	s.outbox[fakeOutboxKey(email, record.ID)] = record
+	return nil
+}
+
+func (s *fakeMailStore) OutboxMessage(_ context.Context, email, id string) (mail.OutboxMessage, bool, error) {
+	record, found := s.outbox[fakeOutboxKey(email, id)]
+	record.Compose = mail.CloneCompose(record.Compose)
+	return record, found, s.outboxErr
+}
+
+func (s *fakeMailStore) OutboxMessages(_ context.Context, email string) ([]mail.OutboxMessage, error) {
+	if s.outboxErr != nil {
+		return nil, s.outboxErr
+	}
+	var messages []mail.OutboxMessage
+	for _, record := range s.outbox {
+		if normalizedEmail(record.AccountEmail) == normalizedEmail(email) {
+			record.Compose = mail.CloneCompose(record.Compose)
+			messages = append(messages, record)
+		}
+	}
+	slices.SortFunc(messages, func(a, b mail.OutboxMessage) int {
+		if a.Updated.Equal(b.Updated) {
+			if a.ID < b.ID {
+				return -1
+			}
+			if a.ID > b.ID {
+				return 1
+			}
+			return 0
+		}
+		if a.Updated.After(b.Updated) {
+			return -1
+		}
+		return 1
+	})
+	return messages, nil
+}
+
+func (s *fakeMailStore) DeleteOutboxMessage(_ context.Context, email, id string, attempt uint64) error {
+	if s.outboxErr != nil {
+		return s.outboxErr
+	}
+	key := fakeOutboxKey(email, id)
+	record, found := s.outbox[key]
+	if !found || record.Attempt != attempt {
+		return errors.New("outbox conflict")
+	}
+	delete(s.outbox, key)
+	return nil
+}
+
+func (s *fakeMailStore) CompleteOutbox(_ context.Context, email, id string, attempt uint64) error {
+	if s.outboxErr != nil {
+		return s.outboxErr
+	}
+	key := fakeOutboxKey(email, id)
+	record, found := s.outbox[key]
+	if !found {
+		return nil
+	}
+	if record.Attempt != attempt {
+		return errors.New("outbox conflict")
+	}
+	delete(s.outbox, key)
+	email = normalizedEmail(email)
+	if snapshot, found := s.drafts[email]; found && snapshot.OutboxID == id {
+		delete(s.drafts, email)
+	}
+	return nil
+}
+
 func (s *fakeMailStore) Labels(_ context.Context, email string) ([]mail.Label, bool, error) {
 	labels, found := s.labels[email]
 	return slices.Clone(labels), found, nil

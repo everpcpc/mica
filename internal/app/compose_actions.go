@@ -14,7 +14,7 @@ import (
 )
 
 func (a *App) openReplyAll() {
-	if a.selectedLabel == mailmodel.Draft || len(a.thread.Messages) == 0 {
+	if a.selectedLabel == mailmodel.Draft || a.selectedLabel == mailmodel.Outbox || len(a.thread.Messages) == 0 {
 		return
 	}
 	a.openReplyAllMessage(a.thread.Messages[len(a.thread.Messages)-1])
@@ -88,14 +88,14 @@ func replyQuoteHTML(message mailmodel.Message) string {
 }
 
 func (a *App) openForward() {
-	if a.selectedLabel == mailmodel.Draft || len(a.thread.Messages) == 0 {
+	if a.selectedLabel == mailmodel.Draft || a.selectedLabel == mailmodel.Outbox || len(a.thread.Messages) == 0 {
 		return
 	}
 	a.openForwardMessage(a.thread.Messages[len(a.thread.Messages)-1])
 }
 
 func (a *App) openForwardMessage(message mailmodel.Message) {
-	if a.accountTransition != nil {
+	if a.accountTransition != nil || a.selectedLabel == mailmodel.Outbox {
 		return
 	}
 	subject := strings.TrimSpace(message.Subject)

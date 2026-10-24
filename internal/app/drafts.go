@@ -60,6 +60,17 @@ func untrackDraftSnapshotWrite(a *App) {
 	}
 }
 
+func (a *App) invalidateDraftSnapshotWrites(email string) {
+	email = normalizedEmail(email)
+	a.cacheState.mu.Lock()
+	a.cacheState.draftWrite++
+	write := a.cacheState.draftWrite
+	draftSnapshotWrites.Lock()
+	draftSnapshotWrites.latest[draftSnapshotWriteKey{app: a, email: email}] = write
+	draftSnapshotWrites.Unlock()
+	a.cacheState.mu.Unlock()
+}
+
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
@@ -103,7 +114,7 @@ func (a *App) persistDraftSnapshot(m *composer) {
 	if !ok {
 		return
 	}
-	snapshot := mailmodel.DraftSnapshot{DraftID: m.draftID, Compose: composeSnapshotContent(m)}
+	snapshot := mailmodel.DraftSnapshot{DraftID: m.draftID, OutboxID: m.outboxID, Compose: composeSnapshotContent(m)}
 	for i, item := range m.attachments {
 		if item.loading || item.err != "" {
 			snapshot.AttachmentErrors = append(snapshot.AttachmentErrors, i)
@@ -185,6 +196,8 @@ func (a *App) openRecoveredDraft(snapshot mailmodel.DraftSnapshot, email string)
 	email = normalizedEmail(email)
 	m := newDraftComposer(snapshot.Compose, email)
 	m.draftID = snapshot.DraftID
+	m.outboxID = snapshot.OutboxID
+	m.outboxAttempted = snapshot.OutboxID != ""
 	m.recoveryAccount = email
 	m.revision = 1
 	m.savedRevision = 0
@@ -210,7 +223,7 @@ func newDraftComposer(compose mailmodel.Compose, owner string) *composer {
 		open: true, accountEmail: normalizedEmail(owner), generation: 1, saveState: draftSaveSaved,
 		to: compose.To, cc: compose.Cc, bcc: compose.Bcc, subject: compose.Subject, doc: doc,
 		showCc: compose.Cc != "", showBcc: compose.Bcc != "",
-		threadID: compose.ThreadID, inReplyTo: compose.InReplyTo, references: compose.References,
+		threadID: compose.ThreadID, messageID: compose.MessageID, inReplyTo: compose.InReplyTo, references: compose.References,
 	}
 	for _, attachment := range compose.Attachments {
 		m.nextAttachmentID++

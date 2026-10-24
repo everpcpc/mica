@@ -288,6 +288,10 @@ func TestComposeSendFailurePreservesAttachments(t *testing.T) {
 	}
 	service.sendErr = nil
 	a.sendCompose()
+	if a.compose == nil {
+		t.Fatal("empty Sent result did not preserve the composer for review")
+	}
+	a.sendCompose()
 	if service.sent.ThreadID != "thread-reply" || len(service.sent.Attachments) != 1 || !bytes.Equal(service.sent.Attachments[0].Data, []byte{0, 1, '\r', '\n', 255}) {
 		t.Fatalf("reply retry silently dropped attachments: %+v", service.sent)
 	}

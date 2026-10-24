@@ -406,6 +406,10 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 	}
 	d.nextID++
 	id := fmt.Sprintf("demo-message-%d", d.nextID)
+	messageID := compose.MessageID
+	if messageID == "" {
+		messageID = fmt.Sprintf("<%s@mica.example>", id)
+	}
 	message := Message{
 		ID:         id,
 		ThreadID:   compose.ThreadID,
@@ -414,7 +418,7 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 		Cc:         strings.TrimSpace(compose.Cc),
 		Bcc:        strings.TrimSpace(compose.Bcc),
 		Subject:    strings.TrimSpace(compose.Subject),
-		MessageID:  fmt.Sprintf("<%s@mica.example>", id),
+		MessageID:  messageID,
 		InReplyTo:  strings.TrimSpace(compose.InReplyTo),
 		References: strings.TrimSpace(compose.References),
 		Date:       d.now(),
@@ -473,6 +477,22 @@ func (d *Demo) Attachment(_ context.Context, messageID, attachmentID string) ([]
 		return nil, errors.New("mail: attachment not found")
 	}
 	return append([]byte(nil), data...), nil
+}
+
+func (d *Demo) SentMessageExists(_ context.Context, messageID string) (bool, error) {
+	if messageID == "" {
+		return false, errors.New("mail: empty message ID")
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	for _, thread := range d.threads {
+		for _, message := range thread.Messages {
+			if hasString(message.LabelIDs, Sent) && message.MessageID == messageID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func demoSummary(thread *Thread) ThreadSummary {

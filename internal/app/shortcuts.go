@@ -51,7 +51,7 @@ func (a *App) SetShortcutMenuHandler(handler func(bool, string, string)) {
 }
 
 func (a *App) shortcutsDisabled() bool {
-	return a.searchFocused || a.compose != nil || (a.settings != nil && a.settings.open) || a.helpOpen || (a.labelDialog != nil && a.labelDialog.open)
+	return a.searchFocused || a.compose != nil || (a.settings != nil && a.settings.open) || a.helpOpen || (a.labelDialog != nil && a.labelDialog.open) || a.outboxDeleteOpen || a.outboxReviewOpen
 }
 
 func (a *App) syncShortcutMenu() {

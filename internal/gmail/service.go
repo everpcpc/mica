@@ -489,7 +489,12 @@ func (s *Service) doJSON(ctx context.Context, method, path string, query url.Val
 	if sleep == nil {
 		sleep = sleepContext
 	}
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	attempts := maxAttempts
+	if path == "/messages/send" || path == "/drafts/send" {
+		// Send endpoints are not idempotent; the caller must reconcile response failures.
+		attempts = 1
+	}
+	for attempt := 1; attempt <= attempts; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, method, requestURL, bytes.NewReader(payload))
 		if err != nil {
 			return fmt.Errorf("gmail: create request: %w", err)
@@ -507,7 +512,7 @@ func (s *Service) doJSON(ctx context.Context, method, path string, query url.Val
 			return err
 		}
 		var apiErr *APIError
-		if !errors.As(err, &apiErr) || !apiErr.Transient() || attempt == maxAttempts {
+		if !errors.As(err, &apiErr) || !apiErr.Transient() || attempt == attempts {
 			return err
 		}
 		if err := sleep(ctx, retryDelay(attempt, apiErr.RetryAfter)); err != nil {

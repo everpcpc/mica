@@ -48,6 +48,7 @@ func newOwnerAttachmentHarness() *ownerAttachmentHarness {
 	app.storeAccount = ownerComposeA
 	app.account = mailmodel.Account{Email: ownerComposeA}
 	app.accountVerified = true
+	app.outbox = newFakeMailStore()
 	app.after = func(time.Duration, func()) {}
 	app.schedule = func(fn func()) { fn() }
 	app.registerAccountClient(b, mailmodel.Account{Email: ownerComposeB}, nil, true)

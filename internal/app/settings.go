@@ -612,6 +612,13 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.accountCount = 0
 	a.unifiedAccounts = nil
 	a.unifiedExpanded = true
+	a.outboxRecords = nil
+	a.outboxBusy = ""
+	a.outboxDeleteID = ""
+	a.outboxDeleteOpen = false
+	a.outboxReviewed = nil
+	a.outboxReviewOpen = false
+	a.outboxReviewID = ""
 	a.thread = mail.Thread{}
 	a.query = ""
 	a.unreadOnly = false
