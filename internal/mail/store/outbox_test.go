@@ -156,6 +156,8 @@ func TestOutboxMigrationFromDraftSchema(t *testing.T) {
 		"DROP TRIGGER IF EXISTS outbox_attempt_guard",
 		"DROP TABLE IF EXISTS outbox_messages",
 		"DROP TABLE IF EXISTS attachments",
+		"ALTER TABLE thread_lists DROP COLUMN updated",
+		"ALTER TABLE threads DROP COLUMN updated",
 		"PRAGMA user_version = 3",
 	} {
 		if _, err := s.db.Execute(ctx, query); err != nil {

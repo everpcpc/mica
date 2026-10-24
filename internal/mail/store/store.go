@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"mica/internal/mail"
 
@@ -76,6 +77,9 @@ var migrations = [][]string{{
 		updated INTEGER NOT NULL,
 		PRIMARY KEY (account_email, thread_id, message_id, attachment_id)
 	)`,
+}, {
+	`ALTER TABLE thread_lists ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE threads ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
 }}
 
 type Store struct {
@@ -256,11 +260,13 @@ func (s *Store) ThreadList(ctx context.Context, email string, query mail.Query) 
 	if err != nil {
 		return nil, false, fmt.Errorf("store: encode thread query: %w", err)
 	}
+	email = normalizeAccountEmail(email)
 	return readSnapshot[[]mail.ThreadSummary](ctx, s.db,
-		"SELECT data FROM thread_lists WHERE account_email = ? AND query_key = ?", email, string(key))
+		"SELECT data FROM thread_lists WHERE account_email = ? COLLATE NOCASE AND query_key = ? ORDER BY updated DESC LIMIT 1", email, string(key))
 }
 
 func (s *Store) SaveThreadList(ctx context.Context, email string, query mail.Query, threads []mail.ThreadSummary) error {
+	email = normalizeAccountEmail(email)
 	key, err := json.Marshal(query)
 	if err != nil {
 		return fmt.Errorf("store: encode thread query: %w", err)
@@ -269,8 +275,9 @@ func (s *Store) SaveThreadList(ctx context.Context, email string, query mail.Que
 	if err != nil {
 		return fmt.Errorf("store: encode thread list: %w", err)
 	}
-	_, err = s.db.Execute(ctx, `INSERT INTO thread_lists(account_email, query_key, data) VALUES(?, ?, ?)
-		ON CONFLICT(account_email, query_key) DO UPDATE SET data = excluded.data`, email, string(key), data)
+	_, err = s.db.Execute(ctx, `INSERT INTO thread_lists(account_email, query_key, data, updated) VALUES(?, ?, ?, ?)
+		ON CONFLICT(account_email, query_key) DO UPDATE SET data = excluded.data, updated = excluded.updated`,
+		email, string(key), data, time.Now().UnixNano())
 	if err != nil {
 		return fmt.Errorf("store: save thread list: %w", err)
 	}
@@ -279,16 +286,19 @@ func (s *Store) SaveThreadList(ctx context.Context, email string, query mail.Que
 
 func (s *Store) Thread(ctx context.Context, email, id string) (mail.Thread, bool, error) {
 	return readSnapshot[mail.Thread](ctx, s.db,
-		"SELECT data FROM threads WHERE account_email = ? AND thread_id = ?", email, id)
+		"SELECT data FROM threads WHERE account_email = ? COLLATE NOCASE AND thread_id = ? ORDER BY updated DESC LIMIT 1",
+		normalizeAccountEmail(email), id)
 }
 
 func (s *Store) SaveThread(ctx context.Context, email string, thread mail.Thread) error {
+	email = normalizeAccountEmail(email)
 	data, err := json.Marshal(thread)
 	if err != nil {
 		return fmt.Errorf("store: encode thread: %w", err)
 	}
-	_, err = s.db.Execute(ctx, `INSERT INTO threads(account_email, thread_id, data) VALUES(?, ?, ?)
-		ON CONFLICT(account_email, thread_id) DO UPDATE SET data = excluded.data`, email, thread.ID, data)
+	_, err = s.db.Execute(ctx, `INSERT INTO threads(account_email, thread_id, data, updated) VALUES(?, ?, ?, ?)
+		ON CONFLICT(account_email, thread_id) DO UPDATE SET data = excluded.data, updated = excluded.updated`,
+		email, thread.ID, data, time.Now().UnixNano())
 	if err != nil {
 		return fmt.Errorf("store: save thread: %w", err)
 	}
@@ -296,7 +306,7 @@ func (s *Store) SaveThread(ctx context.Context, email string, thread mail.Thread
 }
 
 func (s *Store) DeleteThread(ctx context.Context, email, id string) error {
-	_, err := s.db.Execute(ctx, "DELETE FROM threads WHERE account_email = ? AND thread_id = ?", email, id)
+	_, err := s.db.Execute(ctx, "DELETE FROM threads WHERE account_email = ? COLLATE NOCASE AND thread_id = ?", normalizeAccountEmail(email), id)
 	if err != nil {
 		return fmt.Errorf("store: delete thread: %w", err)
 	}

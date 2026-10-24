@@ -9,9 +9,27 @@ import (
 	"mica/internal/mail"
 )
 
+type cachedSearchCandidate struct {
+	summary  mail.ThreadSummary
+	revision int64
+	detail   bool
+}
+
+type cachedThreadDetail struct {
+	thread   mail.Thread
+	revision int64
+}
+
+type cachedSearchRow struct {
+	data     []byte
+	revision int64
+	detail   bool
+}
+
 func (s *Store) SearchThreads(ctx context.Context, email string, query mail.Query) ([]mail.ThreadSummary, error) {
 	email = normalizeAccountEmail(email)
 	labelID, search := query.LabelID, strings.ToLower(strings.TrimSpace(query.Search))
+	unreadOnly := search == "is:unread"
 	switch search {
 	case "in:snoozed":
 		labelID, search = mail.Snoozed, ""
@@ -22,55 +40,55 @@ func (s *Store) SearchThreads(ctx context.Context, email string, query mail.Quer
 	case "is:unread":
 		search = ""
 	}
-	rows, err := s.db.Query(ctx, "SELECT data FROM thread_lists WHERE account_email = ?", email)
+	rows, err := s.db.Query(ctx, `SELECT 0 AS kind, data, updated, query_key AS record_key FROM thread_lists WHERE account_email = ? COLLATE NOCASE
+		UNION ALL
+		SELECT 1, data, updated, thread_id FROM threads WHERE account_email = ? COLLATE NOCASE
+		ORDER BY kind, record_key, updated`, email, email)
 	if err != nil {
 		return nil, err
 	}
-	details := make(map[string]mail.Thread)
-	detailRows, err := s.db.Query(ctx, "SELECT data FROM threads WHERE account_email = ?", email)
-	if err != nil {
-		return nil, err
-	}
-	for _, values := range detailRows.Values {
-		var thread mail.Thread
-		if err := json.Unmarshal(values[0].([]byte), &thread); err != nil {
-			return nil, fmt.Errorf("store: decode cached thread: %w", err)
+	candidates := make(map[string]cachedSearchCandidate)
+	details := make(map[string]cachedThreadDetail)
+	add := func(summary mail.ThreadSummary, revision int64, detail bool) {
+		if current, found := candidates[summary.ID]; found && (current.revision > revision || current.revision == revision && current.detail && !detail) {
+			return
 		}
-		details[thread.ID] = thread
+		if summary.AccountEmail == "" {
+			summary.AccountEmail = email
+		}
+		summary.Unread = hasCachedLabel(summary.LabelIDs, mail.Unread)
+		summary.Starred = hasCachedLabel(summary.LabelIDs, mail.Starred)
+		candidates[summary.ID] = cachedSearchCandidate{summary: summary, revision: revision, detail: detail}
 	}
-	candidates := make(map[string]mail.ThreadSummary)
 	for _, values := range rows.Values {
-		var summaries []mail.ThreadSummary
-		if err := json.Unmarshal(values[0].([]byte), &summaries); err != nil {
-			return nil, fmt.Errorf("store: decode cached thread list: %w", err)
+		row, err := decodeCachedSearchRow(values)
+		if err != nil {
+			return nil, err
 		}
-		for _, summary := range summaries {
-			if !cachedThreadMatches(summary, details[summary.ID], labelID, search, query.Search == "is:unread") {
-				continue
+		if !row.detail {
+			var summaries []mail.ThreadSummary
+			if err := json.Unmarshal(row.data, &summaries); err != nil {
+				return nil, fmt.Errorf("store: decode cached thread list: %w", err)
 			}
-			if summary.AccountEmail == "" {
-				summary.AccountEmail = email
+			for _, summary := range summaries {
+				add(summary, row.revision, false)
 			}
-			if current, found := candidates[summary.ID]; !found || current.Updated.Before(summary.Updated) {
-				candidates[summary.ID] = summary
-			}
-		}
-	}
-	for id, thread := range details {
-		if _, found := candidates[id]; found {
 			continue
 		}
-		summary := cachedThreadSummary(thread)
-		if cachedThreadMatches(summary, thread, labelID, search, query.Search == "is:unread") {
-			if summary.AccountEmail == "" {
-				summary.AccountEmail = email
-			}
-			candidates[id] = summary
+		var thread mail.Thread
+		if err := json.Unmarshal(row.data, &thread); err != nil {
+			return nil, fmt.Errorf("store: decode cached thread: %w", err)
 		}
+		if current, found := details[thread.ID]; !found || current.revision <= row.revision {
+			details[thread.ID] = cachedThreadDetail{thread: thread, revision: row.revision}
+		}
+		add(cachedThreadSummary(thread), row.revision, true)
 	}
 	result := make([]mail.ThreadSummary, 0, len(candidates))
-	for _, summary := range candidates {
-		result = append(result, summary)
+	for id, candidate := range candidates {
+		if cachedThreadMatches(candidate.summary, details[id].thread, labelID, search, unreadOnly) {
+			result = append(result, candidate.summary)
+		}
 	}
 	sortThreadSummaries(result)
 	limit := query.Limit
@@ -83,11 +101,32 @@ func (s *Store) SearchThreads(ctx context.Context, email string, query mail.Quer
 	return result, nil
 }
 
+func decodeCachedSearchRow(values []any) (cachedSearchRow, error) {
+	if len(values) != 4 {
+		return cachedSearchRow{}, fmt.Errorf("store: invalid cached search row with %d columns", len(values))
+	}
+	kind, kindOK := values[0].(int64)
+	revision, revisionOK := values[2].(int64)
+	if !kindOK || kind != 0 && kind != 1 || !revisionOK {
+		return cachedSearchRow{}, fmt.Errorf("store: invalid cached search metadata")
+	}
+	row := cachedSearchRow{revision: revision, detail: kind == 1}
+	switch data := values[1].(type) {
+	case []byte:
+		row.data = data
+	case string:
+		row.data = []byte(data)
+	default:
+		return cachedSearchRow{}, fmt.Errorf("store: invalid cached search data type %T", data)
+	}
+	return row, nil
+}
+
 func cachedThreadMatches(summary mail.ThreadSummary, thread mail.Thread, labelID, search string, unreadOnly bool) bool {
 	if unreadOnly && !summary.Unread {
 		return false
 	}
-	if labelID != "" && !hasCachedLabel(summary.LabelIDs, labelID) && !hasCachedLabel(thread.LabelIDs, labelID) {
+	if labelID != "" && !hasCachedLabel(summary.LabelIDs, labelID) {
 		return false
 	}
 	if search == "" {

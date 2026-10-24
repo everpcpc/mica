@@ -34,6 +34,8 @@ func TestDraftSnapshotMigrationRestartAndAccountIsolation(t *testing.T) {
 		"DROP TRIGGER IF EXISTS outbox_attempt_guard",
 		"DROP TABLE IF EXISTS outbox_messages",
 		"DROP TABLE IF EXISTS attachments",
+		"ALTER TABLE thread_lists DROP COLUMN updated",
+		"ALTER TABLE threads DROP COLUMN updated",
 	} {
 		if _, err := s.db.Execute(ctx, query); err != nil {
 			t.Fatal(err)
