@@ -207,7 +207,7 @@ func (a *App) threadList(c *ui.Context) {
 			return thread.Senders + ", " + thread.Subject + ", " + thread.Snippet
 		}
 		a.list.RoundRows = true
-		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Padding(0, 4).Rows(func(row ui.ListRow) {
+		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Padding(4).Rows(func(row ui.ListRow) {
 			a.threadRow(row, &threads[row.Index])
 		})
 		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {
