@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 - 2026-10-25
+
+- Added a persistent, account-scoped Outbox with complete message and attachment storage, a local preview, and explicit retry and deletion.
+- Preserved a stable Message-ID across retries, with exact Sent reconciliation and a second confirmation before resending an uncertain outcome.
+- Made Outbox completion, draft snapshots, edited-message identities, and account removal safe across restarts and account transitions.
+- Disabled generic transient retries for Gmail send endpoints to avoid duplicate delivery.
+
 ## 0.14.0 - 2026-10-24
 
 - Added an expandable All Inboxes group with per-account Inbox rows, accessible disclosure state, and keyboard navigation.
