@@ -178,6 +178,10 @@ func (a *App) failAccountTransition(transition *accountTransition, err error) {
 	} else {
 		a.notice = message
 	}
+	if accountInboxLabel(a.selectedLabel) == normalizedEmail(transition.email) && normalizedEmail(a.storeAccount) != normalizedEmail(transition.email) {
+		a.selectedLabel = mail.Inbox
+		a.selectLabel()
+	}
 	a.startNotifications()
 	a.resumePendingMailto()
 }

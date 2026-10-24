@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"mica/internal/mail"
@@ -114,5 +115,24 @@ func TestAccountInboxRemovalReturnsToInbox(t *testing.T) {
 	}
 	if len(h.services["a@example.com"].listCalls) != calls+1 || len(h.app.threads) != 1 || h.app.threads[0].ID != "a-1" {
 		t.Fatalf("fallback did not refresh the active account: calls=%+v threads=%+v", h.services["a@example.com"].listCalls, h.app.threads)
+	}
+}
+
+func TestAccountInboxSwitchFailureRestoresCurrentAccount(t *testing.T) {
+	h := newAllInboxesHarness(t)
+	h.app.saveActiveAccount = func(string) error { return errors.New("keychain unavailable") }
+	tt := ui.NewTester(h.app.View, 1280, 800)
+	tt.SetLocale("en")
+	if err := tt.Click("Work"); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.storeAccount != "a@example.com" {
+		t.Fatalf("failed activation changed the current account: %q", h.app.storeAccount)
+	}
+	if h.app.selectedLabel != mail.Inbox || h.app.compositeThreads || h.app.currentQuery().LabelID != mail.Inbox {
+		t.Fatalf("failed activation left a mismatched selection: label=%q composite=%v", h.app.selectedLabel, h.app.compositeThreads)
+	}
+	if len(h.app.threads) != 1 || h.app.threads[0].AccountEmail != "a@example.com" {
+		t.Fatalf("failed activation did not restore the current account's Inbox: %+v", h.app.threads)
 	}
 }
