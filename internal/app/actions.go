@@ -31,6 +31,7 @@ type mutationJob struct {
 	service         mail.Service
 	runFunc         func() error
 	id              string
+	owner           string
 	kind            threadMutation
 	add             []string
 	remove          []string
@@ -193,7 +194,11 @@ func (a *App) enqueueMutation(job mutationJob) {
 	a.mutationSequence++
 	job.sequence = a.mutationSequence
 	job.viewVersion = a.serviceVersion
-	job.ownerGeneration = a.generationForThreadKey(job.id)
+	if job.owner != "" {
+		_, job.ownerGeneration = a.ownerService(job.owner)
+	} else {
+		job.ownerGeneration = a.generationForThreadKey(job.id)
+	}
 	a.mutationQueue = append(a.mutationQueue, job)
 	a.pumpMutations()
 }

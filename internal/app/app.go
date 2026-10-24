@@ -379,6 +379,11 @@ func (a *App) refreshList() {
 		email = normalizedEmail(a.account.Email)
 	}
 	query := a.currentQuery()
+	snoozed := a.selectedLabel == mail.Snoozed
+	var snoozeCache snoozeCacheOperation
+	if snoozed {
+		snoozeCache = a.snoozeCache(email)
+	}
 	a.schedule(func() {
 		if store != nil && email != "" {
 			cached, found, cacheErr := store.ThreadList(context.Background(), email, query)
@@ -400,21 +405,24 @@ func (a *App) refreshList() {
 				cached, cacheErr = searchStore.SearchThreads(context.Background(), email, query)
 			}
 		}
-		if a.selectedLabel == mail.Snoozed {
+		if snoozed {
 			var records []mail.SnoozeRecord
-			if cache := a.snoozeCache(email); cache != nil {
-				if err := cache(func(store snoozeStore) error {
+			recordsLoaded := false
+			if snoozeCache != nil {
+				if err := snoozeCache(func(store snoozeStore) error {
 					var err error
 					records, err = store.SnoozeRecords(context.Background(), email)
 					return err
 				}); err != nil {
 					logCacheError(err)
+				} else {
+					recordsLoaded = true
 				}
 			}
 			if err == nil {
-				page.Threads = mergeSnoozedSummaries(page.Threads, records)
+				page.Threads = mergeSnoozedSummaries(page.Threads, records, recordsLoaded)
 			} else {
-				cached = mergeSnoozedSummaries(cached, records)
+				cached = mergeSnoozedSummaries(cached, records, recordsLoaded)
 				if len(cached) > 0 {
 					cacheErr = nil
 				}

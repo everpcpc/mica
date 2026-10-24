@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +44,20 @@ func TestSnoozeMenuAndShortcutEnglish(t *testing.T) {
 	}
 	r, ok = tt.Find("Snooze")
 	if !ok {
+		t.Fatal("snooze menu button not found for rescheduling")
+	}
+	x, y = r.X+r.W/2, r.Y+r.H/2
+	tt.Press(x, y)
+	tt.Release(x, y)
+	if err := tt.ChooseMenuItem("Next week"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.threads) != 1 || len(store.snoozes) != 1 {
+		t.Fatalf("rescheduling removed the Snoozed row: threads=%v store=%v", a.threads, store.snoozes)
+	}
+	tt.Frame()
+	r, ok = tt.Find("Snooze")
+	if !ok {
 		t.Fatal("snooze menu button not found in Snoozed view")
 	}
 	x, y = r.X+r.W/2, r.Y+r.H/2
@@ -81,4 +96,10 @@ func TestCaptureSnoozed(t *testing.T) {
 	tt := ui.NewTester(a.View, 1280, 800)
 	tt.SetLocale("en")
 	captureFrame(t, tt, "snoozed")
+}
+
+func TestSnoozeWebViewShortcutMapping(t *testing.T) {
+	if !strings.Contains(emailHeightScript, `b: "snooze"`) || !strings.Contains(emailHeightScript, "MicaMail.Shortcut") {
+		t.Fatal("WebView does not forward the b shortcut to the native Snooze action")
+	}
 }

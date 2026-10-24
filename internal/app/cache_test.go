@@ -120,6 +120,7 @@ type fakeMailStore struct {
 	outboxErr        error
 	snoozes          map[string]mail.SnoozeRecord
 	snoozeErr        error
+	snoozeDeleteErr  error
 	snoozeReads      int
 	attachments      map[string][]byte
 	preferences      map[string]string

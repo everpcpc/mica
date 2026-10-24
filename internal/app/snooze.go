@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"mica/internal/mail"
@@ -33,11 +34,38 @@ func snoozeKey(email, threadID string) string {
 	return normalizedEmail(email) + "\x00" + threadID
 }
 
-func mergeSnoozedSummaries(summaries []mail.ThreadSummary, records []mail.SnoozeRecord) []mail.ThreadSummary {
-	result := append([]mail.ThreadSummary(nil), summaries...)
-	indices := make(map[string]int, len(result))
-	for i, summary := range result {
-		indices[summary.ID] = i
+func (a *App) removeSnoozesForAccount(email string) {
+	prefix := normalizedEmail(email) + "\x00"
+	for key := range a.snoozeRuntime.records {
+		if strings.HasPrefix(key, prefix) {
+			delete(a.snoozeRuntime.records, key)
+		}
+	}
+	for key := range a.snoozeRuntime.timers {
+		if strings.HasPrefix(key, prefix) {
+			delete(a.snoozeRuntime.timers, key)
+		}
+	}
+	for key := range a.snoozeRuntime.versions {
+		if strings.HasPrefix(key, prefix) {
+			delete(a.snoozeRuntime.versions, key)
+		}
+	}
+}
+
+func mergeSnoozedSummaries(summaries []mail.ThreadSummary, records []mail.SnoozeRecord, recordsLoaded bool) []mail.ThreadSummary {
+	scheduled := make(map[string]bool, len(records))
+	for _, record := range records {
+		scheduled[record.ThreadID] = true
+	}
+	result := make([]mail.ThreadSummary, 0, len(summaries)+len(records))
+	indices := make(map[string]int, len(summaries)+len(records))
+	for _, summary := range summaries {
+		if recordsLoaded && !summary.SnoozeAt.IsZero() && !scheduled[summary.ID] {
+			continue
+		}
+		indices[summary.ID] = len(result)
+		result = append(result, summary)
 	}
 	for _, record := range records {
 		summary := record.Summary
@@ -45,7 +73,15 @@ func mergeSnoozedSummaries(summaries []mail.ThreadSummary, records []mail.Snooze
 		summary.AccountEmail = record.AccountEmail
 		summary.SnoozeAt = record.WakeAt
 		if index, found := indices[summary.ID]; found {
-			result[index] = summary
+			current := result[index]
+			current.SnoozeAt = record.WakeAt
+			current.LabelIDs = modifyLabelIDs(current.LabelIDs, []string{mail.Snoozed}, []string{mail.Inbox})
+			current.Unread = containsLabel(current.LabelIDs, mail.Unread)
+			current.Starred = containsLabel(current.LabelIDs, mail.Starred)
+			if current.AccountEmail == "" {
+				current.AccountEmail = summary.AccountEmail
+			}
+			result[index] = current
 		} else {
 			indices[summary.ID] = len(result)
 			result = append(result, summary)
@@ -53,7 +89,10 @@ func mergeSnoozedSummaries(summaries []mail.ThreadSummary, records []mail.Snooze
 	}
 	sort.SliceStable(result, func(i, j int) bool {
 		left, right := result[i], result[j]
-		if left.SnoozeAt.IsZero() || right.SnoozeAt.IsZero() {
+		if left.SnoozeAt.IsZero() != right.SnoozeAt.IsZero() {
+			return right.SnoozeAt.IsZero()
+		}
+		if left.SnoozeAt.IsZero() {
 			if left.Updated.Equal(right.Updated) {
 				return left.ID < right.ID
 			}
@@ -163,17 +202,21 @@ func (a *App) armSnooze(record mail.SnoozeRecord) {
 	a.armSnoozeDelay(record, time.Until(record.WakeAt))
 }
 
+func (a *App) invalidateSnoozeTimer(key string) uint64 {
+	a.snoozeRuntime.timerSeq++
+	if a.snoozeRuntime.timers == nil {
+		a.snoozeRuntime.timers = make(map[string]uint64)
+	}
+	a.snoozeRuntime.timers[key] = a.snoozeRuntime.timerSeq
+	return a.snoozeRuntime.timerSeq
+}
+
 func (a *App) armSnoozeDelay(record mail.SnoozeRecord, delay time.Duration) {
 	if a.snooze == nil || a.cacheState.quitting {
 		return
 	}
 	key := snoozeKey(record.AccountEmail, record.ThreadID)
-	a.snoozeRuntime.timerSeq++
-	timer := a.snoozeRuntime.timerSeq
-	if a.snoozeRuntime.timers == nil {
-		a.snoozeRuntime.timers = make(map[string]uint64)
-	}
-	a.snoozeRuntime.timers[key] = timer
+	timer := a.invalidateSnoozeTimer(key)
 	generation := a.snoozeRuntime.generation
 	if delay < 0 {
 		delay = 0
@@ -200,9 +243,11 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 		return
 	}
 	email := normalizedEmail(record.AccountEmail)
+	record.Summary.ID = record.ThreadID
+	record.Summary.AccountEmail = email
 	key := snoozeKey(email, record.ThreadID)
-	id := a.summaryKey(record.Summary)
-	service := a.serviceForThreadKey(id)
+	id, _ := a.snoozeSelection(record)
+	service, _ := a.ownerService(email)
 	cache := a.snoozeCache(email)
 	if service == nil || cache == nil {
 		return
@@ -212,6 +257,7 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 	var restored, applied, stale bool
 	a.enqueueMutation(mutationJob{
 		service: service,
+		owner:   email,
 		id:      id,
 		runFunc: func() error {
 			var found bool
@@ -244,14 +290,21 @@ func (a *App) wakeSnooze(record mail.SnoozeRecord) {
 				return
 			}
 			if stale {
-				delete(a.snoozeRuntime.records, key)
-				delete(a.snoozeRuntime.timers, key)
+				if current, found := a.snoozeRuntime.records[key]; found && current.WakeAt.Equal(record.WakeAt) {
+					delete(a.snoozeRuntime.records, key)
+					delete(a.snoozeRuntime.timers, key)
+				}
 				return
 			}
 			if applied || restored {
-				delete(a.snoozeRuntime.records, key)
-				delete(a.snoozeRuntime.timers, key)
-				a.applySnoozeState(id, []string{mail.Inbox}, []string{mail.Snoozed}, time.Time{})
+				if applied {
+					delete(a.snoozeRuntime.records, key)
+					delete(a.snoozeRuntime.timers, key)
+				} else {
+					a.retrySnooze(record)
+				}
+				a.applySnoozeStateForRecord(record, []string{mail.Inbox}, []string{mail.Snoozed}, time.Time{})
+				a.restoreSnoozeInbox(record)
 			}
 			if err != nil && !restored {
 				a.retrySnooze(record)
