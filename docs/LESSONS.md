@@ -55,6 +55,7 @@
 - Start embedded-document measurement at DOM readiness rather than full page load when slow subresources would otherwise delay the initial layout.
 - A gradient fill does not interpolate like a solid color transition. Keep animated toggles on a solid accent and verify start, middle, and end pixels before replacing them with a gradient.
 - Small account photos use a stable first frame rather than animated frame swaps. A multi-frame GIF must keep the same rendered pixels after its frame delays and schedule no animation frames.
+- Rounded row selection needs vertical as well as horizontal insets. Measure the first row's rendered distance from the divider; horizontal padding alone lets the selection touch it.
 
 ## Match live theme changes in native and web content
 

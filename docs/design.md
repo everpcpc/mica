@@ -17,7 +17,7 @@ HTML and plain-text bodies have a 24px horizontal reading inset. Root email styl
 Before the first HTML measurement, the body fills the available reader viewport instead of a one-line placeholder. Measurement starts at DOM readiness, and measured or cached heights replace the placeholder.
 Subjects, sender metadata, and recipients use a compact Gmail-style hierarchy, with Reply, Reply all, and Forward after the conversation.
 The reader toolbar floats above the conversation with a lightly tinted Liquid Glass material and a subtle shadow. Primary actions share a blue-indigo gradient and restrained shadow.
-Grouped dialog content uses 12pt-radius bordered panels with consistent padding. Conversation rows use rounded selection with a small inset.
+Grouped dialog content uses 12pt-radius bordered panels with consistent padding. Conversation rows use rounded selection with a small inset and vertical separation from the list divider.
 Reader reply actions use interactive Liquid Glass, and other secondary actions use light borders and shadows.
 The app icon is a white rounded square with a four-color envelope inspired by Gmail, while the interface keeps its own identity.
 English is the source and fallback language, with Simplified Chinese available through MyGo's catalogs.

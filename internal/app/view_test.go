@@ -176,6 +176,34 @@ func TestThreadListUsesRoundedSelection(t *testing.T) {
 	}
 }
 
+func TestThreadListSelectionHasDividerSpacing(t *testing.T) {
+	a := newTestApp(newFakeService())
+	a.selectThread("thread-1")
+	var border ui.Color
+	tt := ui.NewTester(func(c *ui.Context) {
+		border = c.Theme().Border
+		a.View(c)
+	}, 1280, 800)
+	row, ok := tt.Find("Ada, Launch plan, The latest plan")
+	if !ok {
+		t.Fatalf("selected row not found: %q", tt.Texts())
+	}
+	dividerY := -1
+	for y := int(row.Y) - 1; y >= 0; y-- {
+		pixel := tt.Image().RGBAAt(int(row.X+8), y)
+		if pixel.R == border.R && pixel.G == border.G && pixel.B == border.B && pixel.A == border.A {
+			dividerY = y
+			break
+		}
+	}
+	if dividerY < 0 {
+		t.Fatal("divider above the selected row not found")
+	}
+	if gap := int(row.Y) - dividerY; gap < 5 {
+		t.Fatalf("selected row is %dpx below the divider, want at least 5px", gap)
+	}
+}
+
 func TestThreadListKeepsSingleSelection(t *testing.T) {
 	service := newFakeService()
 	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})
