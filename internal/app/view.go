@@ -289,7 +289,7 @@ func (a *App) emptyList(c *ui.Context) {
 }
 
 func iconButton(c *ui.Context, label string, svg *ui.SVG, action func()) ui.Element {
-	return ui.Button(c, "").Label(label).Tooltip(label).Padding(5, 6).Children(func() {
+	return ui.Button(c, "").Label(label).Tooltip(label).Padding(5, 6).Radius(999).Children(func() {
 		ui.Icon(c, svg).Size(16, 16)
 	}).OnClick(action)
 }
