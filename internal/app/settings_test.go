@@ -60,6 +60,24 @@ func TestSettingsLanguageUsesDisplayLabels(t *testing.T) {
 	}
 }
 
+type deactivatingService struct {
+	*fakeService
+	deactivated bool
+}
+
+func (s *deactivatingService) Deactivate() {
+	s.deactivated = true
+}
+
+func TestCancelAuthenticationDeactivatesService(t *testing.T) {
+	service := &deactivatingService{fakeService: newFakeService()}
+	a := New(service)
+	a.cancelAuthentication()
+	if !service.deactivated {
+		t.Fatal("service was not deactivated before authentication changed")
+	}
+}
+
 func TestLogoutCancelsAuthentication(t *testing.T) {
 	a := newTestApp(newFakeService())
 	a.storeAccount = "user@example.com"

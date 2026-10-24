@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -422,18 +423,36 @@ func (a *OAuth) tokenSource(ctx context.Context, token *oauth2.Token) oauth2.Tok
 	}
 }
 
+var errTokenSourceInactive = errors.New("gmail: token source is inactive")
+
 type savingTokenSource struct {
-	mu      sync.Mutex
-	source  oauth2.TokenSource
-	store   TokenStore
-	access  string
-	refresh string
-	expiry  time.Time
+	mu       sync.Mutex
+	inactive atomic.Bool
+	source   oauth2.TokenSource
+	store    TokenStore
+	access   string
+	refresh  string
+	expiry   time.Time
+}
+
+func (s *savingTokenSource) Deactivate() {
+	s.inactive.Store(true)
 }
 
 func (s *savingTokenSource) Token() (*oauth2.Token, error) {
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
+	}
+	credentialLifecycle.mu.RLock()
+	defer credentialLifecycle.mu.RUnlock()
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
+	}
 	token, err := s.source.Token()
 	if err != nil {
 		return nil, err
@@ -443,6 +462,9 @@ func (s *savingTokenSource) Token() (*oauth2.Token, error) {
 	}
 	if token.AccessToken == s.access && token.RefreshToken == s.refresh && token.Expiry.Equal(s.expiry) {
 		return token, nil
+	}
+	if s.inactive.Load() {
+		return nil, errTokenSourceInactive
 	}
 	if err := s.store.Save(token); err != nil {
 		return nil, err

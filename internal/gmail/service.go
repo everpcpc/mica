@@ -120,6 +120,12 @@ func NewWithProject(client *http.Client, projectID string, source oauth2.TokenSo
 	return &Service{client: client, baseURL: gmailAPIURL, userinfoURL: googleUserinfoURL, userID: "me", maxParallel: listParallel, projectID: projectID, tokenSource: source, sleep: sleepContext}
 }
 
+func (s *Service) Deactivate() {
+	if source, ok := s.tokenSource.(interface{ Deactivate() }); ok {
+		source.Deactivate()
+	}
+}
+
 func (s *Service) Account(ctx context.Context) (mail.Account, error) {
 	var profile struct {
 		EmailAddress string `json:"emailAddress"`

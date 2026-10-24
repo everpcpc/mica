@@ -393,6 +393,40 @@ func TestCredentialStoresRejectLateWrites(t *testing.T) {
 	}
 }
 
+type blockingTokenSource struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingTokenSource) Token() (*oauth2.Token, error) {
+	select {
+	case s.started <- struct{}{}:
+	default:
+	}
+	<-s.release
+	return &oauth2.Token{AccessToken: "stale"}, nil
+}
+
+func TestSavingTokenSourceRejectsDeactivatedRefresh(t *testing.T) {
+	source := &blockingTokenSource{started: make(chan struct{}, 1), release: make(chan struct{})}
+	store := newMemoryTokenStore()
+	saving := &savingTokenSource{source: source, store: store}
+	result := make(chan error, 1)
+	go func() {
+		_, err := saving.Token()
+		result <- err
+	}()
+	<-source.started
+	saving.Deactivate()
+	close(source.release)
+	if err := <-result; !errors.Is(err, errTokenSourceInactive) {
+		t.Fatalf("deactivated refresh error = %v", err)
+	}
+	if _, err := store.Load(); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("deactivated refresh wrote a token: %v", err)
+	}
+}
+
 type memoryTokenStore struct {
 	mu    sync.Mutex
 	token *oauth2.Token

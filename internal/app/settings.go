@@ -301,6 +301,9 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 }
 
 func (a *App) cancelAuthentication() {
+	if service, ok := a.service.(interface{ Deactivate() }); ok {
+		service.Deactivate()
+	}
 	a.authID++
 	gmail.InvalidateCredentials()
 	if a.authCancel != nil {
