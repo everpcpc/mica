@@ -929,3 +929,39 @@ func TestUnifiedDeleteLabelOnlyCleansActiveOwner(t *testing.T) {
 		}
 	}
 }
+
+func TestUnifiedLeaveDuringMutationDoesNotExposeOwnerlessRows(t *testing.T) {
+	h := newUnifiedHarness()
+	h.app.startupSelectionDone = true
+	for _, email := range []string{"a@example.com", "b@example.com"} {
+		h.setPages(email, mail.ThreadPage{Threads: []mail.ThreadSummary{unifiedInboxSummary("shared", email, 10)}})
+	}
+	h.app.refreshUnified()
+	var jobs []func()
+	h.app.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	h.app.threadSelection.Add(threadRefForAccount("b@example.com", "shared").key())
+	h.app.toggleStar()
+	if !h.app.mutationsPending() {
+		t.Fatal("mutation fixture did not remain pending")
+	}
+	previousRequest := h.app.request
+	h.app.selectedLabel = mail.Inbox
+	h.app.selectLabel()
+	if len(h.app.threads) != 0 || !h.app.loading || h.app.request <= previousRequest {
+		t.Fatalf("mode transition exposed stale rows: threads=%d loading=%v request=%d previous=%d", len(h.app.threads), h.app.loading, h.app.request, previousRequest)
+	}
+	if len(h.app.actionSummaries()) != 0 {
+		t.Fatal("stale merged rows remained actionable during the transition")
+	}
+	for steps := 0; len(jobs) > 0; steps++ {
+		if steps > 20 {
+			t.Fatal("deferred mailbox refresh did not settle")
+		}
+		job := jobs[0]
+		jobs = jobs[1:]
+		job()
+	}
+	if len(h.app.threads) != 1 || h.app.threads[0].AccountEmail != "a@example.com" || unifiedContainsThread(h.app.threads, "b@example.com", "shared") {
+		t.Fatalf("deferred refresh installed the wrong list: %+v", h.app.threads)
+	}
+}

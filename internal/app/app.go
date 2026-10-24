@@ -521,6 +521,12 @@ func historyListContains(query mail.Query, summary mail.ThreadSummary) bool {
 
 func (a *App) selectLabel() {
 	if a.compositeThreads != (a.selectedLabel == mail.Unified) {
+		a.request++
+		a.threads = nil
+		a.nextPageToken = ""
+		a.loadingMore = false
+		a.loading = true
+		a.err = ""
 		a.undo = nil
 		if a.noticeToastID != "" {
 			a.expiredNoticeID = a.noticeToastID
