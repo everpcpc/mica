@@ -599,6 +599,11 @@ func (a *App) resetFailedAccountInbox() {
 	}
 }
 
+func (a *App) cancelAccountInboxRequest() {
+	a.cancelPendingAuthentication()
+	a.resetFailedAccountInbox()
+}
+
 func (a *App) clearThread() {
 	a.startupSelectionDone = true
 	a.closeEmailViews()

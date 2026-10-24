@@ -263,6 +263,68 @@ func TestAccountInboxAuthenticationCancelRestoresCurrentAccount(t *testing.T) {
 	}
 }
 
+func newAllInboxesReauthentication(t *testing.T) (*unifiedHarness, *ui.Tester, *[]func(), *[]func()) {
+	t.Helper()
+	h := newAllInboxesHarness(t)
+	var jobs, updates []func()
+	h.app.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	h.app.update = func(fn func()) { updates = append(updates, fn) }
+	tt := ui.NewTester(h.app.View, 1280, 800)
+	tt.SetLocale("en")
+	if err := tt.Click("Work"); err != nil {
+		t.Fatal(err)
+	}
+	h.app.accountTransition = nil
+	h.app.authCancel = func() {}
+	return h, tt, &jobs, &updates
+}
+
+func assertAccountInboxReset(t *testing.T, h *unifiedHarness, tt *ui.Tester) {
+	t.Helper()
+	if h.app.accountInboxPending != "" || h.app.selectedLabel != mail.Inbox || h.app.compositeThreads || h.app.unified != nil {
+		t.Fatalf("superseded authentication left stale navigation: pending=%q label=%q composite=%v unified=%p", h.app.accountInboxPending, h.app.selectedLabel, h.app.compositeThreads, h.app.unified)
+	}
+	h.app.settings = nil
+	tt.Frame()
+	if err := tt.Click("Inbox"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(0, ui.KeyDown)
+	if h.app.selectedLabel != mail.Starred {
+		t.Fatalf("navigation remained locked to the stale request: %q", h.app.selectedLabel)
+	}
+}
+
+func TestAccountInboxRemovalDuringReauthentication(t *testing.T) {
+	h, tt, jobs, updates := newAllInboxesReauthentication(t)
+	h.app.settings = &settingsState{open: true}
+	h.app.verifyLegacy = func(context.Context, string) (bool, error) { return false, nil }
+	h.app.removeCredentials = func(context.Context, string) error { return nil }
+	h.app.deleteCheckpoint = func(string) error { return nil }
+	h.app.removeAccount("b@example.com")
+	runAllInboxesCallbacks(t, jobs, updates)
+	assertAccountInboxReset(t, h, tt)
+}
+
+func TestAccountInboxSettingsCancelDuringReauthentication(t *testing.T) {
+	h, tt, jobs, updates := newAllInboxesReauthentication(t)
+	h.app.settings = &settingsState{open: true, cancel: h.app.authCancel}
+	h.app.closeSettings()
+	runAllInboxesCallbacks(t, jobs, updates)
+	assertAccountInboxReset(t, h, tt)
+}
+
+func TestAccountInboxNewConnectionDuringReauthentication(t *testing.T) {
+	h, tt, jobs, updates := newAllInboxesReauthentication(t)
+	h.app.settings = &settingsState{open: true}
+	h.app.loginGmail = func(context.Context, mailStore, string, string, string, string) (mail.Service, string, error) {
+		return nil, "", errOffline
+	}
+	h.app.connectGmailWith("id", "secret", "project", false)
+	runAllInboxesCallbacks(t, jobs, updates)
+	assertAccountInboxReset(t, h, tt)
+}
+
 func TestAllInboxesKeyboardNavigation(t *testing.T) {
 	h := newAllInboxesHarness(t)
 	h.app.saveActiveAccount = func(string) error { return nil }

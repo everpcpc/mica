@@ -168,7 +168,7 @@ func (a *App) removeAccount(email string) {
 	s.err = ""
 	transition := &accountTransition{sourceVersion: a.serviceVersion, removeEmail: email}
 	a.accountTransition = transition
-	a.cancelPendingAuthentication()
+	a.cancelAccountInboxRequest()
 	store, restore := a.store, a.accountService
 	if restore == nil {
 		restore = restoreStoredAccount

@@ -167,7 +167,7 @@ func settingsField(c *ui.Context, label string, value *string, placeholder strin
 func (a *App) closeSettings() {
 	if a.settings != nil && a.settings.cancel != nil {
 		a.settings.cancel()
-		a.cancelPendingAuthentication()
+		a.cancelAccountInboxRequest()
 	}
 	a.settings = nil
 	a.openPendingMailto()
@@ -273,7 +273,7 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 	}
 	s.busy = true
 	s.err = ""
-	a.cancelPendingAuthentication()
+	a.cancelAccountInboxRequest()
 	auth := a.authID
 	version := a.serviceVersion
 	ctx, cancel := context.WithCancel(context.Background())
