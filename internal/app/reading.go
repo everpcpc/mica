@@ -174,26 +174,54 @@ func (a *App) messageView(c *ui.Context, index int, message mail.Message) {
 		} else {
 			ui.Text(c, locales.NoBody()).FontSize(13).TextColor(t.TextMuted)
 		}
-		for _, attachment := range message.Attachments {
-			a.attachmentView(c, message, attachment)
+		for i, attachment := range message.Attachments {
+			a.attachmentView(c, message, attachment, i)
+		}
+		a.expandedMessageActions(c, message)
+	})
+}
+
+func (a *App) expandedMessageActions(c *ui.Context, message mail.Message) {
+	ui.Row(c).Gap(2).Justify(ui.End).Children(func() {
+		iconButton(c, locales.Reply(), iconReply, func() { a.openReplyMessage(message) })
+		iconButton(c, locales.ReplyAll(), iconReplyAll, func() { a.openReplyAllMessage(message) })
+		iconButton(c, locales.Forward(), iconForward, func() { a.openForwardMessage(message) })
+	})
+}
+
+func (a *App) messageActionsMenu(c *ui.Context, message mail.Message) {
+	ui.Button(c, "").Label(locales.MessageActions()).Tooltip(locales.MessageActions()).Padding(5, 6).Children(func() {
+		ui.Icon(c, iconMore).Size(16, 16)
+	}).Menu(func(menu *ui.Menu) {
+		if menu.Item(locales.Reply()).Chosen() {
+			a.openReplyMessage(message)
+		}
+		if menu.Item(locales.ReplyAll()).Chosen() {
+			a.openReplyAllMessage(message)
+		}
+		if menu.Item(locales.Forward()).Chosen() {
+			a.openForwardMessage(message)
 		}
 	})
 }
 
 func (a *App) collapsedMessageView(c *ui.Context, message mail.Message) {
 	t := c.Theme()
-	ui.Button(c, "").Label(locales.ExpandMessage()).WidthPercent(100).Padding(8, 10).Radius(8).Background(t.Background).OnClick(func() {
-		a.setMessageExpanded(message.ID, true)
-	}).Children(func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Avatar(c, addressName(message.From), nil)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Text(c, addressName(message.From)).Bold().SingleLine()
-				ui.Text(c, a.messagePreview(message)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+	ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+		ui.Button(c, "").Label(locales.ExpandMessage()).Grow(1).MinWidth(0).Padding(8, 10).Radius(8).Background(t.Background).OnClick(func() {
+			a.setMessageExpanded(message.ID, true)
+		}).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Avatar(c, addressName(message.From), nil)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Text(c, addressName(message.From)).Bold().SingleLine()
+					ui.Text(c, a.messagePreview(message)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				})
+				ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted)
+				ui.Icon(c, iconChevronRight).Size(12, 12).TextColor(t.TextMuted)
 			})
-			ui.Text(c, fullTime(c, message.Date)).FontSize(11).TextColor(t.TextMuted)
-			ui.Icon(c, iconChevronRight).Size(12, 12).TextColor(t.TextMuted)
 		})
+		a.messageActionsMenu(c, message)
 	})
 }
 

@@ -166,6 +166,9 @@ func cloneMailThread(thread mail.Thread) mail.Thread {
 	for i := range cloned.Messages {
 		cloned.Messages[i].LabelIDs = slices.Clone(thread.Messages[i].LabelIDs)
 		cloned.Messages[i].Attachments = slices.Clone(thread.Messages[i].Attachments)
+		for j := range cloned.Messages[i].Attachments {
+			cloned.Messages[i].Attachments[j].Data = slices.Clone(thread.Messages[i].Attachments[j].Data)
+		}
 	}
 	return cloned
 }

@@ -17,8 +17,11 @@ func (a *App) openReplyAll() {
 	if len(a.thread.Messages) == 0 {
 		return
 	}
-	message := a.thread.Messages[len(a.thread.Messages)-1]
-	a.openCompose(&message)
+	a.openReplyAllMessage(a.thread.Messages[len(a.thread.Messages)-1])
+}
+
+func (a *App) openReplyAllMessage(message mailmodel.Message) {
+	a.openReplyMessage(message)
 	a.compose.to, a.compose.cc = replyAllRecipients(message, a.account.Email)
 }
 
@@ -85,7 +88,10 @@ func (a *App) openForward() {
 	if len(a.thread.Messages) == 0 {
 		return
 	}
-	message := a.thread.Messages[len(a.thread.Messages)-1]
+	a.openForwardMessage(a.thread.Messages[len(a.thread.Messages)-1])
+}
+
+func (a *App) openForwardMessage(message mailmodel.Message) {
 	subject := strings.TrimSpace(message.Subject)
 	if !strings.HasPrefix(strings.ToLower(subject), "fwd:") {
 		subject = "Fwd: " + subject
@@ -105,6 +111,7 @@ func (a *App) openForward() {
 		subject: subject,
 		doc:     richtext.NewDocument(richtext.NewText(quote)),
 	}
+	a.addMessageAttachments(message)
 }
 
 func (a *App) composeShortcuts(c *ui.Context) {

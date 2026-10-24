@@ -415,7 +415,7 @@ func (s *Service) TrashThread(ctx context.Context, id string) error {
 }
 
 func (s *Service) Send(ctx context.Context, compose mail.Compose) error {
-	if compose.ThreadID != "" && (compose.InReplyTo == "" || compose.References == "") {
+	if compose.ThreadID != "" && !compose.ThreadingResolved && (compose.InReplyTo == "" || compose.References == "") {
 		thread, err := s.Thread(ctx, compose.ThreadID)
 		if err != nil {
 			return err

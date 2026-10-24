@@ -19,12 +19,15 @@ type attachmentDownload struct {
 	err     string
 }
 
-func attachmentKey(messageID, attachmentID string) string {
+func attachmentKey(messageID, attachmentID string, index int) string {
+	if attachmentID == "" {
+		return fmt.Sprintf("%s\x00inline-%d", messageID, index)
+	}
 	return messageID + "\x00" + attachmentID
 }
 
-func (a *App) attachmentView(c *ui.Context, message mail.Message, attachment mail.Attachment) {
-	state := a.attachmentDownloads[attachmentKey(message.ID, attachment.ID)]
+func (a *App) attachmentView(c *ui.Context, message mail.Message, attachment mail.Attachment, index int) {
+	state := a.attachmentDownloads[attachmentKey(message.ID, attachment.ID, index)]
 	ui.Column(c).Gap(4).Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconLabel).Size(14, 14).TextColor(c.Theme().TextMuted)
@@ -34,10 +37,10 @@ func (a *App) attachmentView(c *ui.Context, message mail.Message, attachment mai
 				ui.Spinner(c).Size(12, 12)
 			} else {
 				ui.Button(c, locales.OpenAttachment()).OnClick(func() {
-					a.downloadAttachment(message, attachment, false)
+					a.downloadAttachment(message, attachment, false, index)
 				})
 				ui.Button(c, locales.SaveAttachment()).OnClick(func() {
-					a.downloadAttachment(message, attachment, true)
+					a.downloadAttachment(message, attachment, true, index)
 				})
 			}
 		})
@@ -57,8 +60,8 @@ func formatAttachmentSize(size int64) string {
 	return fmt.Sprintf("%.1f MB", float64(size)/(1<<20))
 }
 
-func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachment, save bool) {
-	key := attachmentKey(message.ID, attachment.ID)
+func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachment, save bool, index int) {
+	key := attachmentKey(message.ID, attachment.ID, index)
 	state := a.attachmentDownloads[key]
 	if state.loading {
 		return
@@ -67,7 +70,7 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 		a.attachmentDownloads = make(map[string]attachmentDownload)
 	}
 	fetcher, ok := a.service.(mail.AttachmentFetcher)
-	if !ok {
+	if attachment.Data == nil && !ok {
 		state.err = locales.AttachmentUnavailable()
 		a.attachmentDownloads[key] = state
 		return
@@ -77,7 +80,11 @@ func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachmen
 	a.attachmentDownloads[key] = state
 	version := a.serviceVersion
 	a.schedule(func() {
-		data, err := fetcher.Attachment(context.Background(), message.ID, attachment.ID)
+		data := attachment.Data
+		var err error
+		if data == nil {
+			data, err = fetcher.Attachment(context.Background(), message.ID, attachment.ID)
+		}
 		if err == nil {
 			if save {
 				err = a.saveAttachment(attachment, data)

@@ -439,7 +439,7 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 		if message.Subject == "" {
 			message.Subject = thread.Subject
 		}
-		if len(thread.Messages) > 0 && message.References == "" {
+		if len(thread.Messages) > 0 && !compose.ThreadingResolved && message.References == "" {
 			last := thread.Messages[len(thread.Messages)-1]
 			message.References = appendReference(last.References, last.MessageID)
 		}
@@ -500,6 +500,9 @@ func cloneThread(thread Thread) Thread {
 		clone.Messages[i] = message
 		clone.Messages[i].LabelIDs = append([]string(nil), message.LabelIDs...)
 		clone.Messages[i].Attachments = append([]Attachment(nil), message.Attachments...)
+		for j := range clone.Messages[i].Attachments {
+			clone.Messages[i].Attachments[j].Data = append([]byte(nil), message.Attachments[j].Data...)
+		}
 	}
 	clone.LabelIDs = combinedLabels(clone.Messages)
 	return clone

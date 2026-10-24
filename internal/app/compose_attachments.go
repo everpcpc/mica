@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	mailmodel "mica/internal/mail"
 	"mica/locales"
@@ -21,7 +21,7 @@ var errComposeAttachmentTooLarge = errors.New("attachment exceeds 25 MiB")
 
 type composerAttachment struct {
 	id         uint64
-	path       string
+	source     composeAttachmentSource
 	attachment mailmodel.OutgoingAttachment
 	loading    bool
 	err        string
@@ -51,6 +51,16 @@ func (a *App) chooseComposeAttachments() {
 }
 
 func (a *App) addComposeAttachments(paths []string) {
+	sources := make([]composeAttachmentSource, 0, len(paths))
+	for _, path := range paths {
+		if path != "" {
+			sources = append(sources, localComposeAttachmentSource{path: path})
+		}
+	}
+	a.addComposeAttachmentSources(sources)
+}
+
+func (a *App) addComposeAttachmentSources(sources []composeAttachmentSource) {
 	m := a.compose
 	if m == nil {
 		return
@@ -59,19 +69,16 @@ func (a *App) addComposeAttachments(paths []string) {
 		m.err = locales.AttachmentsSending()
 		return
 	}
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
+	for _, source := range sources {
 		m.nextAttachmentID++
 		m.attachments = append(m.attachments, composerAttachment{
 			id:         m.nextAttachmentID,
-			path:       path,
-			attachment: mailmodel.OutgoingAttachment{Name: filepath.Base(path)},
+			source:     source,
+			attachment: mailmodel.OutgoingAttachment{Name: source.name()},
 			loading:    true,
 		})
 	}
-	if len(paths) == 0 {
+	if len(sources) == 0 {
 		return
 	}
 	m.err = ""
@@ -89,19 +96,19 @@ func (a *App) pumpComposeAttachments(m *composer) {
 		}
 		m.readingAttachment = true
 		remaining := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
-		a.readComposeAttachment(m, item.id, item.path, remaining)
+		a.readComposeAttachment(m, item.id, item.source, remaining)
 		return
 	}
 }
 
-func (a *App) readComposeAttachment(m *composer, id uint64, path string, remaining int64) {
+func (a *App) readComposeAttachment(m *composer, id uint64, source composeAttachmentSource, remaining int64) {
 	a.schedule(func() {
-		attachment, err := readOutgoingAttachmentLimit(path, remaining)
+		attachment, err := source.read(context.Background(), remaining)
 		a.publish(func() {
 			if errors.Is(err, errComposeAttachmentTooLarge) && a.compose == m {
 				latest := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
 				if latest > remaining {
-					a.readComposeAttachment(m, id, path, latest)
+					a.readComposeAttachment(m, id, source, latest)
 					return
 				}
 			}
@@ -188,10 +195,8 @@ func readOutgoingAttachment(path string) (mailmodel.OutgoingAttachment, error) {
 
 func readOutgoingAttachmentLimit(path string, limit int64) (mailmodel.OutgoingAttachment, error) {
 	attachment := mailmodel.OutgoingAttachment{Name: filepath.Base(path)}
-	if strings.TrimSpace(attachment.Name) == "" || strings.IndexFunc(attachment.Name, func(r rune) bool {
-		return r < 0x20 || r == 0x7f
-	}) >= 0 {
-		return attachment, errors.New("invalid attachment name")
+	if err := validateOutgoingAttachmentName(attachment.Name); err != nil {
+		return attachment, err
 	}
 	if limit < 0 {
 		return attachment, errComposeAttachmentTooLarge
