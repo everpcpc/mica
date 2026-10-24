@@ -40,7 +40,12 @@ func (a *App) reader(c *ui.Context) {
 		})
 		ui.Toolbar(c, func() {
 			trashLabel, spamLabel := a.recoveryActionLabels()
-			iconButton(c, locales.Archive(), iconArchive, a.archive).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
+			archiveTargets := a.actionSummaries()
+			archiveLabel := locales.Archive()
+			if len(archiveTargets) > 1 {
+				archiveLabel = locales.ArchiveSelected(len(archiveTargets))
+			}
+			iconButton(c, archiveLabel, iconArchive, a.archive).Disabled(len(archiveTargets) == 0 || a.selectedLabel == mail.Draft)
 			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(a.selectedThread == "" || a.selectedLabel == mail.Draft)

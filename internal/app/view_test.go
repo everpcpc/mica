@@ -23,7 +23,7 @@ func TestToastDurations(t *testing.T) {
 			var got time.Duration
 			a.after = func(duration time.Duration, _ func()) { got = duration }
 			if tc.undo {
-				a.undo = &undoAction{id: "thread-1"}
+				a.undo = &undoAction{items: []undoItem{{id: "thread-1"}}}
 			}
 			a.notice = "Archived"
 			ui.NewTester(a.View, 1280, 800)
@@ -38,7 +38,7 @@ func TestToastExpiresWhileHovered(t *testing.T) {
 	a := newTestApp(newFakeService())
 	var expire func()
 	a.after = func(_ time.Duration, fn func()) { expire = fn }
-	a.undo = &undoAction{id: "thread-1"}
+	a.undo = &undoAction{items: []undoItem{{id: "thread-1"}}}
 	a.notice = "Archived"
 	tt := ui.NewTester(a.View, 1280, 800)
 	toast, ok := tt.Find("Archived")
@@ -204,9 +204,12 @@ func TestThreadListSelectionHasDividerSpacing(t *testing.T) {
 	}
 }
 
-func TestThreadListKeepsSingleSelection(t *testing.T) {
+func TestThreadListMultiSelection(t *testing.T) {
 	service := newFakeService()
-	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})
+	service.threads = append(service.threads,
+		mail.ThreadSummary{ID: "thread-2", Subject: "Second", Senders: "Bob", LabelIDs: []string{mail.Inbox}},
+		mail.ThreadSummary{ID: "thread-3", Subject: "Third", Senders: "Cid", LabelIDs: []string{mail.Inbox}},
+	)
 	service.threadFunc = func(id string) (mail.Thread, error) {
 		return mail.Thread{
 			ID: id, Subject: id,
@@ -216,16 +219,87 @@ func TestThreadListKeepsSingleSelection(t *testing.T) {
 	a := newTestApp(service)
 	a.selectThread("thread-1")
 	tt := ui.NewTester(a.View, 1280, 800)
-	for range 2 {
-		if err := tt.ClickWith(ui.Cmd, "Second"); err != nil {
-			t.Fatal(err)
-		}
-		if a.selectedThread != "thread-2" || a.selectedRow != 1 || a.thread.ID != "thread-2" {
-			t.Fatalf("selection = %q at row %d, detail = %q; want thread-2", a.selectedThread, a.selectedRow, a.thread.ID)
-		}
-		if a.threadSelection.Len() != 1 || !a.threadSelection.Has("thread-2") {
-			t.Fatal("list selection does not contain only thread-2")
-		}
+	if err := tt.Click("Second"); err != nil {
+		t.Fatal(err)
+	}
+	if a.selectedThread != "thread-2" || a.threadSelection.Len() != 1 || !a.threadSelection.Has("thread-2") {
+		t.Fatalf("plain click did not collapse selection: %q, %v", a.selectedThread, a.threadSelection)
+	}
+	if err := tt.ClickWith(ui.Cmd, "Launch plan"); err != nil {
+		t.Fatal(err)
+	}
+	if a.selectedThread != "thread-1" || a.threadSelection.Len() != 2 || !a.threadSelection.Has("thread-1") || !a.threadSelection.Has("thread-2") {
+		t.Fatalf("Cmd-click did not add to selection: %q, %v", a.selectedThread, a.threadSelection)
+	}
+	if _, ok := tt.Find("Archive 2 conversations"); !ok {
+		t.Fatal("multi-selection does not show the archive count")
+	}
+	if err := tt.ClickWith(ui.Cmd, "Launch plan"); err != nil {
+		t.Fatal(err)
+	}
+	if a.selectedThread != "thread-1" || a.threadSelection.Len() != 1 || !a.threadSelection.Has("thread-2") {
+		t.Fatalf("Cmd-click did not remove only the clicked row: %q, %v", a.selectedThread, a.threadSelection)
+	}
+	if err := tt.ClickWith(ui.Shift, "Third"); err != nil {
+		t.Fatal(err)
+	}
+	if a.selectedThread != "thread-3" || a.threadSelection.Len() != 3 {
+		t.Fatalf("Shift-click did not select the range: %q, %v", a.selectedThread, a.threadSelection)
+	}
+	if err := tt.ClickWith(ui.Cmd, "Second"); err != nil {
+		t.Fatal(err)
+	}
+	if a.threadSelection.Len() != 2 || !a.threadSelection.Has("thread-1") || !a.threadSelection.Has("thread-3") {
+		t.Fatalf("Cmd-click did not update the range: %v", a.threadSelection)
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	if a.threadSelection.Len() != 3 || !a.threadSelection.Has("thread-1") || !a.threadSelection.Has("thread-2") || !a.threadSelection.Has("thread-3") {
+		t.Fatalf("Cmd+A did not select every conversation: %v", a.threadSelection)
+	}
+}
+
+func TestBatchArchiveButtonWithoutReader(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}})
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	a.selectThread("thread-1")
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.ClickWith(ui.Cmd, "Second"); err != nil {
+		t.Fatal(err)
+	}
+	a.closeReader()
+	tt.Frame()
+	if err := tt.Click("Archive 2 conversations"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.threads) != 0 {
+		t.Fatalf("batch archive without a reader left %+v", a.threads)
+	}
+}
+
+func TestThreadSelectionSurvivesListChanges(t *testing.T) {
+	service := newFakeService()
+	service.threads = append(service.threads,
+		mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: []string{mail.Inbox}},
+		mail.ThreadSummary{ID: "thread-3", Subject: "Third", LabelIDs: []string{mail.Inbox}},
+	)
+	a := newTestApp(service)
+	a.selectThread("thread-2")
+	for i, id := range []string{"thread-1", "thread-2", "thread-3"} {
+		a.threads[i].Unread = id != "thread-3"
+		a.threadSelection.Add(id)
+	}
+	a.unreadOnly = true
+	a.syncThreadSelection(false)
+	if a.threadSelection.Len() != 2 || !a.threadSelection.Has("thread-1") || !a.threadSelection.Has("thread-2") || a.threadSelection.Has("thread-3") {
+		t.Fatalf("filter did not preserve only visible selections: %v", a.threadSelection)
+	}
+	a.applyHistoryChanges([]mail.ThreadSummary{{ID: "thread-new", Subject: "New", LabelIDs: []string{mail.Inbox}, Unread: true, Updated: time.Now()}}, nil)
+	if a.selectedThread != "thread-2" || a.threadSelection.Len() != 2 || !a.threadSelection.Has("thread-1") || !a.threadSelection.Has("thread-2") {
+		t.Fatalf("history update changed the multi-selection: %q, %v", a.selectedThread, a.threadSelection)
 	}
 }
 

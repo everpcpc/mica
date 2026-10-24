@@ -596,6 +596,26 @@ func (msgs Messages) Archive() string {
 	return Catalog.Format(msgs.locale, "archive", nil)
 }
 
+// ArchiveSelected says "Archive {count} conversations"
+// in the language the app shows.
+func ArchiveSelected(count int) string { return In(i18n.Locale()).ArchiveSelected(count) }
+
+// ArchiveSelected says "Archive {count} conversations"
+// in the language of msgs.
+func (msgs Messages) ArchiveSelected(count int) string {
+	return Catalog.Format(msgs.locale, "archiveSelected", map[string]any{"count": count})
+}
+
+// ConversationsArchived says "Archived {count} conversations"
+// in the language the app shows.
+func ConversationsArchived(count int) string { return In(i18n.Locale()).ConversationsArchived(count) }
+
+// ConversationsArchived says "Archived {count} conversations"
+// in the language of msgs.
+func (msgs Messages) ConversationsArchived(count int) string {
+	return Catalog.Format(msgs.locale, "conversationsArchived", map[string]any{"count": count})
+}
+
 // MoveToTrash says "Move to Trash"
 // in the language the app shows.
 func MoveToTrash() string { return In(i18n.Locale()).MoveToTrash() }

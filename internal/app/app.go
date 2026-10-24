@@ -363,8 +363,16 @@ func (a *App) visibleThreads() []mail.ThreadSummary {
 
 func (a *App) syncThreadSelection(clearMissing bool) {
 	threads := a.visibleThreads()
+	visible := make(map[string]bool, len(threads))
+	for _, thread := range threads {
+		visible[thread.ID] = true
+	}
+	for id := range a.threadSelection.All() {
+		if !visible[id] {
+			a.threadSelection.Remove(id)
+		}
+	}
 	if a.selectedThread == "" {
-		a.threadSelection.Clear()
 		if a.selectedRow >= len(threads) {
 			a.selectedRow = -1
 		}
@@ -373,13 +381,10 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 	for i := range threads {
 		if threads[i].ID == a.selectedThread {
 			a.selectedRow = i
-			a.threadSelection.Clear()
-			a.threadSelection.Add(a.selectedThread)
 			return
 		}
 	}
 	a.selectedRow = -1
-	a.threadSelection.Clear()
 	if !clearMissing {
 		return
 	}
@@ -464,6 +469,19 @@ func (a *App) clearThread() {
 }
 
 func (a *App) selectThread(id string) {
+	if id == "" {
+		return
+	}
+	a.threadSelection.Clear()
+	a.threadSelection.Add(id)
+	a.loadThread(id)
+}
+
+func (a *App) openThreadFromList(id string) {
+	a.loadThread(id)
+}
+
+func (a *App) loadThread(id string) {
 	if id == "" {
 		return
 	}
@@ -628,13 +646,60 @@ func (a *App) toggleUnread() {
 	})
 }
 
+func (a *App) actionSummaries() []mail.ThreadSummary {
+	threads := a.visibleThreads()
+	summaries := make([]mail.ThreadSummary, 0, a.threadSelection.Len())
+	for _, thread := range threads {
+		if a.threadSelection.Has(thread.ID) {
+			summaries = append(summaries, thread)
+		}
+	}
+	if len(summaries) > 0 {
+		return summaries
+	}
+	if summary := a.selectedSummary(); summary != nil {
+		return []mail.ThreadSummary{*summary}
+	}
+	return nil
+}
+
 func (a *App) archive() {
-	summary := a.selectedSummary()
-	if summary == nil {
+	summaries := a.actionSummaries()
+	if len(summaries) == 0 {
 		return
 	}
-	a.recordUndo(summary.ID, []string{mail.Inbox}, nil)
-	a.mutate(summary.ID, nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
+	if len(summaries) == 1 {
+		summary := summaries[0]
+		a.recordUndo(summary.ID, []string{mail.Inbox}, nil)
+		a.mutate(summary.ID, nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
+		return
+	}
+	a.archiveThreads(summaries)
+}
+
+func (a *App) archiveThreads(summaries []mail.ThreadSummary) {
+	action := &undoAction{items: make([]undoItem, 0, len(summaries))}
+	a.undo = action
+	ids := make([]string, 0, len(summaries))
+	for _, summary := range summaries {
+		action.items = append(action.items, undoItem{id: summary.ID, add: []string{mail.Inbox}})
+		ids = append(ids, summary.ID)
+	}
+	for _, id := range ids {
+		a.updateThreadLabels(id, nil, []string{mail.Inbox})
+		a.captureUndoSummary(id)
+	}
+	a.removeThreads(ids)
+	a.notice = locales.ConversationsArchived(len(ids))
+	for _, id := range ids {
+		a.enqueueMutation(mutationJob{
+			service: a.service,
+			id:      id,
+			remove:  []string{mail.Inbox},
+			undo:    action,
+			failure: locales.ActionFailed,
+		})
+	}
 }
 
 func (a *App) toggleTrash() {
@@ -716,6 +781,39 @@ func (a *App) removeThreadIfHidden(id string) {
 		}
 	}
 	a.removeThread(id)
+}
+
+func (a *App) removeThreads(ids []string) {
+	removed := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		removed[id] = true
+		delete(a.threadCache, id)
+		a.threadSelection.Remove(id)
+	}
+	row := max(a.selectedRow, 0)
+	readerRemoved := removed[a.selectedThread]
+	remaining := make([]mail.ThreadSummary, 0, len(a.threads))
+	for _, thread := range a.threads {
+		if !removed[thread.ID] {
+			remaining = append(remaining, thread)
+		}
+	}
+	a.threads = remaining
+	if a.accountVerified {
+		a.persistList(a.currentQuery(), a.threads)
+	}
+	if !readerRemoved {
+		a.syncThreadSelection(false)
+		return
+	}
+	a.selectedThread = ""
+	threads := a.visibleThreads()
+	if len(threads) == 0 {
+		a.clearThread()
+		return
+	}
+	a.selectedRow = min(row, len(threads)-1)
+	a.selectThread(threads[a.selectedRow].ID)
 }
 
 func (a *App) removeThread(id string) {
