@@ -48,7 +48,13 @@ func (a *App) attachmentView(c *ui.Context, message mail.Message, attachment mai
 }
 
 func formatAttachmentSize(size int64) string {
-	return fmt.Sprintf("%d KB", max(size/1024, 1))
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	}
+	if size < 1<<20 {
+		return fmt.Sprintf("%d KB", (size+1023)/1024)
+	}
+	return fmt.Sprintf("%.1f MB", float64(size)/(1<<20))
 }
 
 func (a *App) downloadAttachment(message mail.Message, attachment mail.Attachment, save bool) {

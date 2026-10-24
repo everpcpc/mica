@@ -28,25 +28,27 @@ var demoLabelNames = map[string]string{
 }
 
 type Demo struct {
-	mu          sync.RWMutex
-	account     Account
-	threads     map[string]*Thread
-	labelNames  map[string]string
-	labelColors map[string]LabelColor
-	labelOrder  []string
-	now         func() time.Time
-	nextID      int
+	mu             sync.RWMutex
+	account        Account
+	threads        map[string]*Thread
+	attachmentData map[string][]byte
+	labelNames     map[string]string
+	labelColors    map[string]LabelColor
+	labelOrder     []string
+	now            func() time.Time
+	nextID         int
 }
 
 func NewDemo() *Demo {
 	now := time.Now()
 	d := &Demo{
-		account:     Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
-		threads:     make(map[string]*Thread),
-		labelNames:  make(map[string]string, len(demoLabelNames)),
-		labelColors: make(map[string]LabelColor),
-		labelOrder:  []string{Inbox, Starred, Sent, Trash, Unread, "Label_1", "Label_2", "Label_3", "Label_4"},
-		now:         time.Now,
+		account:        Account{Name: "Alex Morgan", Email: "alex@mica.example", Demo: true},
+		threads:        make(map[string]*Thread),
+		attachmentData: make(map[string][]byte),
+		labelNames:     make(map[string]string, len(demoLabelNames)),
+		labelColors:    make(map[string]LabelColor),
+		labelOrder:     []string{Inbox, Starred, Sent, Trash, Unread, "Label_1", "Label_2", "Label_3", "Label_4"},
+		now:            time.Now,
 	}
 	for id, name := range demoLabelNames {
 		d.labelNames[id] = name
@@ -412,6 +414,15 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 		HTML:       compose.HTML,
 		LabelIDs:   []string{Sent},
 	}
+	for i, attachment := range compose.Attachments {
+		message.Attachments = append(message.Attachments, Attachment{
+			ID:        fmt.Sprintf("%s-attachment-%d", id, i+1),
+			Name:      attachment.Name,
+			MIMEType:  attachment.MIMEType,
+			Size:      int64(len(attachment.Data)),
+			ContentID: attachment.ContentID,
+		})
+	}
 
 	thread, ok := d.threads[compose.ThreadID]
 	if compose.ThreadID == "" {
@@ -441,7 +452,20 @@ func (d *Demo) Send(_ context.Context, compose Compose) error {
 	if thread.Subject == "" {
 		thread.Subject = message.Subject
 	}
+	for i, attachment := range message.Attachments {
+		d.attachmentData[message.ID+"\x00"+attachment.ID] = append([]byte(nil), compose.Attachments[i].Data...)
+	}
 	return nil
+}
+
+func (d *Demo) Attachment(_ context.Context, messageID, attachmentID string) ([]byte, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	data, ok := d.attachmentData[messageID+"\x00"+attachmentID]
+	if !ok {
+		return nil, errors.New("mail: attachment not found")
+	}
+	return append([]byte(nil), data...), nil
 }
 
 func demoSummary(thread *Thread) ThreadSummary {

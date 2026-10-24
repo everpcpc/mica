@@ -63,6 +63,7 @@ type App struct {
 	emailHeights         map[string]float32
 	attachmentDownloads  map[string]attachmentDownload
 	openPath             func(string) error
+	openDialog           func(mygo.OpenDialogOptions) ([]string, error)
 	saveDialog           func(mygo.SaveDialogOptions) (string, error)
 	newEmailView         func() (*mygo.WebView, error)
 	documents            map[string]*emailDocument
@@ -105,6 +106,7 @@ func New(service mail.Service) *App {
 		service:        service,
 		emailResources: newEmailResourceStore(service),
 		openPath:       mygo.Shell.OpenPath,
+		openDialog:     mygo.Dialog.Open,
 		saveDialog:     mygo.Dialog.Save,
 		account:        mail.Account{Name: "Mica", Demo: true},
 		threadCache:    make(map[string]mail.Thread),
