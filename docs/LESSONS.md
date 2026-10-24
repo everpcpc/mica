@@ -43,6 +43,8 @@
 
 - Check attachment bytes at every boundary: file selection or drop, background reads, removal, send and retry, MIME output, and demo retrieval. A visible filename or metadata row does not prove that the content survived.
 - Serialize attachment reads per composer and recompute the remaining allowance before each read instead of reserving it from a stale snapshot. If an in-flight read fails against a stale smaller allowance, retry after loaded items are removed; true oversize files still fail. Late results for removed items must not reappear or consume allowance, and read failures must block sending rather than silently dropping the attachment.
+- Build message actions from the selected message, not the latest message in the thread. A three-message fixture should prove recipients, quotes, threading headers, and forwarded attachments all come from the first message.
+- Inline MIME `body.data` needs no attachment fetcher, but it must be cloned for asynchronous use and excluded from persisted snapshots. Missing bytes must fail explicitly instead of disappearing from a forward.
 
 ## Verify visuals through real rendering
 
