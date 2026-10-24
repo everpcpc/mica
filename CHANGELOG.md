@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 - 2026-10-24
+
+- Added Unified Inbox across saved Gmail accounts, with deterministic merging, independent per-account pagination, and complete offline snapshots.
+- Added account ownership in unified rows and owner-aware reading, replies, drafts, attachments, mutations, and label cleanup.
+- Preserved optimistic changes and query-aware Undo across refreshes, cache writes, account removal, and view transitions.
+- Added safeguards for unavailable account services, stale responses, cross-view cache ordering, and same-ID labels across accounts.
+- Added English Unified Inbox documentation and screenshot coverage.
+
 ## 0.12.0 - 2026-10-24
 
 - Added Gmail multi-account management in Settings, including adding, switching, reauthorizing, and removing accounts with English and Simplified Chinese interfaces.
