@@ -193,13 +193,13 @@ func (a *App) moveSelection(delta int) {
 	}
 	a.selectedRow = row
 	a.list.ScrollIntoView(row)
-	a.selectThread(threads[row].ID)
+	a.selectThread(a.summaryKey(threads[row]))
 }
 
 func (a *App) openSelected() {
 	threads := a.visibleThreads()
 	if a.selectedRow >= 0 && a.selectedRow < len(threads) {
-		a.selectThread(threads[a.selectedRow].ID)
+		a.selectThread(a.summaryKey(threads[a.selectedRow]))
 	}
 }
 

@@ -49,12 +49,8 @@ func (a *App) switchAccount(email string) {
 	transition := &accountTransition{sourceVersion: a.serviceVersion, email: email}
 	a.accountTransition = transition
 	a.cancelPendingAuthentication()
-	store, restore := a.store, a.accountService
-	if restore == nil {
-		restore = restoreStoredAccount
-	}
+	store := a.store
 	a.schedule(func() {
-		var service mail.Service
 		var err error
 		if store == nil {
 			err = errors.New("mail: account catalog is unavailable")
@@ -65,8 +61,6 @@ func (a *App) switchAccount(email string) {
 				err = accountErr
 			case !found:
 				err = errors.New("mail: account is no longer available")
-			default:
-				service, err = restore(context.Background(), email)
 			}
 		}
 		a.publish(func() {
@@ -74,16 +68,25 @@ func (a *App) switchAccount(email string) {
 				return
 			}
 			if err != nil {
-				if errors.Is(err, gmail.ErrNoSession) {
-					a.accountTransition = nil
-					a.authenticateAccount(email)
-					return
-				}
 				a.failAccountTransition(transition, err)
 				return
 			}
-			transition.service = service
-			a.drainAccountTransition(transition)
+			a.ensureAccountClient(email, func(err error) {
+				if a.accountTransition != transition {
+					return
+				}
+				if err != nil {
+					if errors.Is(err, gmail.ErrNoSession) {
+						a.accountTransition = nil
+						a.authenticateAccount(email)
+						return
+					}
+					a.failAccountTransition(transition, err)
+					return
+				}
+				transition.service, _ = a.ownerService(email)
+				a.drainAccountTransition(transition)
+			})
 		})
 	})
 }
@@ -128,6 +131,7 @@ func (a *App) drainAccountTransition(transition *accountTransition) {
 						}
 						a.accountTransition = nil
 						a.useService(transition.service, transition.email)
+						a.removeAccountClient(transition.removeEmail)
 						message := transition.notice
 						if err != nil {
 							message = locales.AccountSwitchFailed(err.Error())

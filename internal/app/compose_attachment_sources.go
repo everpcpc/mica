@@ -30,7 +30,7 @@ func (s localComposeAttachmentSource) read(_ context.Context, limit int64) (mail
 
 type messageComposeAttachmentSource struct {
 	fetcher    mailmodel.AttachmentFetcher
-	messageID  string
+	message    messageRef
 	attachment mailmodel.Attachment
 }
 
@@ -52,7 +52,7 @@ func (s messageComposeAttachmentSource) read(ctx context.Context, limit int64) (
 			return outgoing, errComposeAttachmentUnavailable
 		}
 		var err error
-		data, err = s.fetcher.Attachment(ctx, s.messageID, s.attachment.ID)
+		data, err = s.fetcher.Attachment(ctx, s.message.MessageID, s.attachment.ID)
 		if err != nil {
 			return outgoing, err
 		}
@@ -77,10 +77,13 @@ func validateOutgoingAttachmentName(name string) error {
 }
 
 func (a *App) addMessageAttachments(message mailmodel.Message) {
-	fetcher, _ := a.service.(mailmodel.AttachmentFetcher)
+	owner := a.storedMessageOwner(message)
+	service, _ := a.ownerService(owner)
+	fetcher, _ := service.(mailmodel.AttachmentFetcher)
+	ref := messageRefForAccount(owner, message.ThreadID, message.ID)
 	sources := make([]composeAttachmentSource, len(message.Attachments))
 	for i, attachment := range message.Attachments {
-		sources[i] = messageComposeAttachmentSource{fetcher: fetcher, messageID: message.ID, attachment: attachment}
+		sources[i] = messageComposeAttachmentSource{fetcher: fetcher, message: ref, attachment: attachment}
 	}
 	a.addComposeAttachmentSources(sources, false)
 }

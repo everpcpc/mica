@@ -31,11 +31,16 @@ const (
 )
 
 func (a *App) draftManager(m *composer) (mailmodel.DraftManager, bool) {
-	manager, ok := a.service.(mailmodel.DraftManager)
-	if !ok || !a.accountVerified || a.storeAccount != "" && !strings.EqualFold(a.account.Email, a.storeAccount) {
+	owner := a.composerOwner(m)
+	service, _ := a.ownerService(owner)
+	manager, ok := service.(mailmodel.DraftManager)
+	if !ok || !a.composeOwnerVerified(owner) {
 		return nil, false
 	}
-	if m != nil && m.recoveryAccount != "" && !strings.EqualFold(m.recoveryAccount, a.account.Email) {
+	if a.composeOwnerIsActive(owner) && a.storeAccount != "" && !strings.EqualFold(a.account.Email, a.storeAccount) {
+		return nil, false
+	}
+	if m != nil && m.recoveryAccount != "" && !strings.EqualFold(m.recoveryAccount, owner) {
 		return nil, false
 	}
 	return manager, true
@@ -106,7 +111,9 @@ func (a *App) pumpDraftSave(m *composer) {
 	}
 	m.draftSaving = true
 	m.saveState = draftSaveSaving
-	generation, revision, draftID, version := m.generation, m.revision, m.draftID, a.serviceVersion
+	generation, revision, draftID := m.generation, m.revision, m.draftID
+	owner := a.composerOwner(m)
+	_, ownerGeneration := a.ownerService(owner)
 	a.schedule(func() {
 		var draft mailmodel.DraftRecord
 		var err error
@@ -116,16 +123,16 @@ func (a *App) pumpDraftSave(m *composer) {
 			draft, err = manager.UpdateDraft(context.Background(), draftID, compose)
 		}
 		a.publish(func() {
-			a.finishDraftSave(m, generation, revision, draftID, version, draft, err)
+			a.finishDraftSave(m, generation, revision, draftID, ownerGeneration, draft, err)
 		})
 	})
 }
 
-func (a *App) finishDraftSave(m *composer, generation, revision uint64, previousDraftID string, version int, draft mailmodel.DraftRecord, err error) {
+func (a *App) finishDraftSave(m *composer, generation, revision uint64, previousDraftID string, ownerGeneration uint64, draft mailmodel.DraftRecord, err error) {
 	if a.compose == m && m.generation == generation {
 		m.draftSaving = false
 	}
-	if a.compose != m || m.generation != generation || a.serviceVersion != version {
+	if a.compose != m || m.generation != generation || !a.ownerOperationCurrent(a.composerOwner(m), ownerGeneration) {
 		return
 	}
 	if err != nil {
@@ -211,7 +218,8 @@ func (a *App) finishCloseCompose(m *composer) {
 	if a.compose != m {
 		return
 	}
-	if m.draftID != "" && a.selectedLabel == mailmodel.Draft && a.selectedThread == m.draftID {
+	draftKey := threadRefForAccount(a.composerOwner(m), m.draftID).key()
+	if m.draftID != "" && a.selectedLabel == mailmodel.Draft && (a.selectedThread == m.draftID || a.selectedThread == draftKey) {
 		a.clearThread()
 	}
 	a.compose = nil
@@ -222,7 +230,8 @@ func (a *App) closeCompose() {
 	if m == nil || m.sending || m.pendingAction != composerActionNone {
 		return
 	}
-	if _, ok := a.service.(mailmodel.DraftManager); !ok && m.recoveryAccount == "" {
+	service, _ := a.ownerService(a.composerOwner(m))
+	if _, ok := service.(mailmodel.DraftManager); !ok && m.recoveryAccount == "" {
 		a.clearDraftSnapshot(m)
 		a.compose = nil
 		return
@@ -271,11 +280,13 @@ func (a *App) discardCompose() {
 	m.pendingAction = composerActionDiscard
 	m.err = ""
 	m.generation++
-	draftID, generation, version := m.draftID, m.generation, a.serviceVersion
+	owner := a.composerOwner(m)
+	draftID, generation := m.draftID, m.generation
+	_, ownerGeneration := a.ownerService(owner)
 	a.schedule(func() {
 		err := manager.DeleteDraft(context.Background(), draftID)
 		a.publish(func() {
-			if a.compose != m || m.generation != generation || a.serviceVersion != version {
+			if a.compose != m || m.generation != generation || !a.ownerOperationCurrent(owner, ownerGeneration) {
 				return
 			}
 			if err != nil {
@@ -285,7 +296,9 @@ func (a *App) discardCompose() {
 			}
 			a.clearDraftSnapshot(m)
 			a.compose = nil
-			a.refresh()
+			if a.composeOwnerIsActive(owner) {
+				a.refresh()
+			}
 		})
 	})
 }
@@ -337,7 +350,8 @@ func (a *App) beginSendCompose(m *composer) {
 	if a.compose != m {
 		return
 	}
-	if m.recoveryAccount != "" && (!a.accountVerified || !strings.EqualFold(m.recoveryAccount, a.account.Email)) {
+	owner := a.composerOwner(m)
+	if m.recoveryAccount != "" && (!a.composeOwnerVerified(owner) || !strings.EqualFold(m.recoveryAccount, owner)) {
 		m.sending = false
 		m.pendingAction = composerActionNone
 		m.err = locales.DraftSaveFailedReason("account is not verified")
@@ -350,7 +364,8 @@ func (a *App) beginSendCompose(m *composer) {
 		return
 	}
 	manager, hasDrafts := a.draftManager(m)
-	if m.draftID != "" && !hasDrafts {
+	service, ownerGeneration := a.ownerService(owner)
+	if service == nil || m.draftID != "" && !hasDrafts {
 		m.sending = false
 		m.pendingAction = composerActionNone
 		m.err = locales.DraftSaveFailedReason("drafts are unavailable")
@@ -362,7 +377,6 @@ func (a *App) beginSendCompose(m *composer) {
 	m.saveState = draftSaveIdle
 	m.sending = true
 	m.err = ""
-	service, version := a.service, a.serviceVersion
 	a.schedule(func() {
 		var err error
 		if hasDrafts && draftID != "" {
@@ -371,7 +385,7 @@ func (a *App) beginSendCompose(m *composer) {
 			err = service.Send(context.Background(), compose)
 		}
 		a.publish(func() {
-			if a.compose != m || a.serviceVersion != version {
+			if a.compose != m || !a.ownerOperationCurrent(owner, ownerGeneration) {
 				return
 			}
 			if err != nil {
@@ -387,7 +401,9 @@ func (a *App) beginSendCompose(m *composer) {
 			a.clearDraftSnapshot(m)
 			a.compose = nil
 			a.notice = locales.SendSucceeded()
-			a.refresh()
+			if a.composeOwnerIsActive(owner) {
+				a.refresh()
+			}
 		})
 	})
 }

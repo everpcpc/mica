@@ -147,7 +147,7 @@ func TestDownloadAttachmentSave(t *testing.T) {
 	if err != nil || string(data) != "saved-data" {
 		t.Fatalf("saved content = %q, err=%v", data, err)
 	}
-	state := a.attachmentDownloads[attachmentKey("message-1", "attachment-1", 0)]
+	state := a.attachmentDownloads[attachmentKey(messageRefForAccount("", "", "message-1"), "attachment-1", 0)]
 	if state.loading || state.err != "" {
 		t.Fatalf("download state = %+v, want success", state)
 	}
@@ -158,7 +158,7 @@ func TestDownloadAttachmentFailure(t *testing.T) {
 	a := New(service)
 	a.schedule = func(fn func()) { fn() }
 	a.downloadAttachment(mail.Message{ID: "message-1"}, mail.Attachment{ID: "attachment-1", Name: "report.pdf"}, false, 0)
-	state := a.attachmentDownloads[attachmentKey("message-1", "attachment-1", 0)]
+	state := a.attachmentDownloads[attachmentKey(messageRefForAccount("", "", "message-1"), "attachment-1", 0)]
 	if state.loading || !strings.Contains(state.err, "offline") {
 		t.Fatalf("download state = %+v, want offline error", state)
 	}

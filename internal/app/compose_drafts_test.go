@@ -187,7 +187,7 @@ func TestComposerCreateCompletionPersistsDraftIDForRecovery(t *testing.T) {
 	m.savedRevision = 0
 	m.saveState = draftSaveSaving
 	h.app.persistDraftSnapshot(m)
-	h.app.finishDraftSave(m, m.generation, 1, "", h.app.serviceVersion, mailmodel.DraftRecord{ID: "draft-1"}, nil)
+	h.app.finishDraftSave(m, m.generation, 1, "", uint64(h.app.serviceVersion), mailmodel.DraftRecord{ID: "draft-1"}, nil)
 	for len(h.jobs) > 0 {
 		h.runJobAt(0)
 	}

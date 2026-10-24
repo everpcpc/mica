@@ -117,9 +117,14 @@ func (a *App) pumpComposeAttachments(m *composer) {
 }
 
 func (a *App) readComposeAttachment(m *composer, id uint64, source composeAttachmentSource, remaining int64) {
+	owner := a.composerOwner(m)
+	_, ownerGeneration := a.ownerService(owner)
 	a.schedule(func() {
 		attachment, err := source.read(context.Background(), remaining)
 		a.publish(func() {
+			if a.compose != m || !a.ownerOperationCurrent(owner, ownerGeneration) {
+				return
+			}
 			if errors.Is(err, errComposeAttachmentTooLarge) && a.compose == m {
 				latest := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
 				if latest > remaining {

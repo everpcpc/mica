@@ -532,7 +532,16 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.storeAccount = ""
 	if connected {
 		a.storeAccount = normalizedEmail(cachedAccount[0])
+		if client := a.accountClients[a.storeAccount]; client != nil {
+			if client.service != service {
+				a.removeAccountClient(a.storeAccount)
+			} else {
+				client.generation.Store(a.nextAccountGeneration(a.storeAccount))
+				delete(a.accountClients, a.storeAccount)
+			}
+		}
 	}
+	a.nextAccountGeneration(a.storeAccount)
 	a.accountVerified = false
 	a.labelsSynced = false
 	a.profileReauthAttempted = false

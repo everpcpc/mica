@@ -173,84 +173,88 @@ func (a *App) removeAccount(email string) {
 	if restore == nil {
 		restore = restoreStoredAccount
 	}
-	a.schedule(func() {
-		var snapshotFound bool
-		var next mail.Service
-		var nextEmail string
-		var err error
-		if store == nil {
-			err = errors.New("mail: account catalog is unavailable")
-		} else {
-			if drafts, ok := store.(draftStore); ok {
-				_, snapshotFound, err = drafts.DraftSnapshot(context.Background(), email)
-			}
-			if err == nil && !snapshotFound && email == current {
-				var accounts []mail.Account
-				accounts, err = store.Accounts(context.Background())
-				for _, account := range accounts {
-					if err != nil || normalizedEmail(account.Email) == email {
-						continue
-					}
-					candidate := normalizedEmail(account.Email)
-					next, err = restore(context.Background(), candidate)
-					if err == nil {
-						nextEmail = candidate
-						break
-					}
-					if errors.Is(err, gmail.ErrNoSession) {
-						err = nil
-						next = nil
-					}
-				}
-			}
-		}
-		if err == nil && !snapshotFound && email != current {
-			legacyMatches, verifyErr := a.legacyAccountMatches(email)
-			if verifyErr != nil {
-				err = verifyErr
+	a.waitForMutations(func() {
+		a.schedule(func() {
+			a.cacheState.writes.Wait()
+			var snapshotFound bool
+			var next mail.Service
+			var nextEmail string
+			var err error
+			if store == nil {
+				err = errors.New("mail: account catalog is unavailable")
 			} else {
-				commit, ok := gmail.BeginAccountCommit(email, gmail.CredentialGeneration())
-				if !ok {
-					err = errors.New("gmail: authentication was cancelled")
-				} else {
-					err = a.deleteAccountArtifacts(email, legacyMatches)
-					commit()
+				if drafts, ok := store.(draftStore); ok {
+					_, snapshotFound, err = drafts.DraftSnapshot(context.Background(), email)
+				}
+				if err == nil && !snapshotFound && email == current {
+					var accounts []mail.Account
+					accounts, err = store.Accounts(context.Background())
+					for _, account := range accounts {
+						if err != nil || normalizedEmail(account.Email) == email {
+							continue
+						}
+						candidate := normalizedEmail(account.Email)
+						next, err = restore(context.Background(), candidate)
+						if err == nil {
+							nextEmail = candidate
+							break
+						}
+						if errors.Is(err, gmail.ErrNoSession) {
+							err = nil
+							next = nil
+						}
+					}
 				}
 			}
-		}
-		a.publish(func() {
-			if a.accountTransition != transition || a.serviceVersion != transition.sourceVersion {
-				return
+			if err == nil && !snapshotFound && email != current {
+				legacyMatches, verifyErr := a.legacyAccountMatches(email)
+				if verifyErr != nil {
+					err = verifyErr
+				} else {
+					commit, ok := gmail.BeginAccountCommit(email, gmail.CredentialGeneration())
+					if !ok {
+						err = errors.New("gmail: authentication was cancelled")
+					} else {
+						err = a.deleteAccountArtifacts(email, legacyMatches)
+						commit()
+					}
+				}
 			}
-			if a.settings != s {
-				a.accountTransition = nil
-				return
-			}
-			if snapshotFound {
-				a.accountTransition = nil
-				s.busy = false
-				s.err = locales.AccountDraftRemaining(email)
-				return
-			}
-			if err != nil {
-				a.failAccountTransition(transition, err)
-				return
-			}
-			if email != current {
-				a.accountTransition = nil
-				s.busy = false
-				s.removeEmail = ""
-				a.notice = locales.AccountRemoved(email)
-				a.refreshAccountList()
-				return
-			}
-			if next == nil {
-				next = mail.NewDemo()
-			}
-			transition.email = nextEmail
-			transition.service = next
-			transition.notice = locales.AccountRemoved(email)
-			a.drainAccountTransition(transition)
+			a.publish(func() {
+				if a.accountTransition != transition || a.serviceVersion != transition.sourceVersion {
+					return
+				}
+				if a.settings != s {
+					a.accountTransition = nil
+					return
+				}
+				if snapshotFound {
+					a.accountTransition = nil
+					s.busy = false
+					s.err = locales.AccountDraftRemaining(email)
+					return
+				}
+				if err != nil {
+					a.failAccountTransition(transition, err)
+					return
+				}
+				if email != current {
+					a.accountTransition = nil
+					a.removeAccountClient(email)
+					s.busy = false
+					s.removeEmail = ""
+					a.notice = locales.AccountRemoved(email)
+					a.refreshAccountList()
+					return
+				}
+				if next == nil {
+					next = mail.NewDemo()
+				}
+				transition.email = nextEmail
+				transition.service = next
+				transition.notice = locales.AccountRemoved(email)
+				a.drainAccountTransition(transition)
+			})
 		})
 	})
 }

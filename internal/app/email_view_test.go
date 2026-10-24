@@ -16,7 +16,7 @@ func TestEmailViewShowsWebViewBeforeFirstMeasurement(t *testing.T) {
 	a.selectedThread = "thread-1"
 	a.thread = mail.Thread{ID: "thread-1", Messages: []mail.Message{{ID: "message-1", HTML: "<p>Body</p>"}}}
 	a.emailPages = map[string]*emailPage{
-		"message-1": {messageID: "message-1", view: new(mygo.WebView), height: emailInitialHeight},
+		"message-1": {messageKey: "message-1", view: new(mygo.WebView), height: emailInitialHeight},
 	}
 	tt := ui.NewTester(a.View, 1280, 800)
 	found := false
@@ -38,7 +38,7 @@ func TestEmailViewFillsViewportBeforeFirstMeasurement(t *testing.T) {
 	a.selectedThread = "thread-1"
 	a.thread = mail.Thread{ID: "thread-1", Messages: []mail.Message{{ID: "message-1", HTML: "<p>Body</p>"}}}
 	a.emailPages = map[string]*emailPage{
-		"message-1": {messageID: "message-1", view: new(mygo.WebView), height: a.estimatedEmailHeight("message-1")},
+		"message-1": {messageKey: "message-1", view: new(mygo.WebView), height: a.estimatedEmailHeight("message-1")},
 	}
 	tt := ui.NewTester(a.View, 1280, 800)
 	if tt.WebViewAt(900, 600) == nil {
@@ -68,7 +68,7 @@ func TestEmailHeightEstimateAndUpdate(t *testing.T) {
 	if height != 0 {
 		t.Fatalf("initial email height = %v, want unknown height", height)
 	}
-	page := &emailPage{messageID: "message-1", height: height, failed: true}
+	page := &emailPage{messageKey: "message-1", height: height, failed: true}
 	a.setEmailHeight(page, 480)
 	if page.height != 480 || page.failed {
 		t.Fatalf("updated page = %+v, want ready 480px page", page)

@@ -78,7 +78,7 @@ func TestReaderToolbarStaysLightOverWebView(t *testing.T) {
 			a.selectThread("thread-1")
 			a.thread.Messages[0].HTML = "<p>Body</p>"
 			a.emailPages = map[string]*emailPage{
-				"message-1": {messageID: "message-1", view: new(mygo.WebView), height: 1000},
+				"message-1": {messageKey: "message-1", view: new(mygo.WebView), height: 1000},
 			}
 			tt := ui.NewTester(a.View, 1280, 800)
 			tt.SetDark(tc.dark)

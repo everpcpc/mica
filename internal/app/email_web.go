@@ -16,27 +16,66 @@ import (
 
 const emailResourcePlaceholder = "https://resource.mica.invalid/"
 
+type emailResourceBinding struct {
+	owner      string
+	service    mail.Service
+	generation uint64
+	loader     *messageImages
+	client     *accountClient
+}
+
 type emailResource struct {
-	message mail.Message
-	source  string
+	message    mail.Message
+	messageKey string
+	source     string
+	binding    emailResourceBinding
 }
 
 type emailResourceStore struct {
-	loader    *messageImages
-	mu        sync.RWMutex
-	resources map[string]emailResource
+	loader        *messageImages
+	ownerService  func(string) (mail.Service, uint64)
+	ownerClient   func(string) *accountClient
+	activeVersion func() int
+	mu            sync.RWMutex
+	resources     map[string]emailResource
 }
 
 func newEmailResourceStore(service mail.Service) *emailResourceStore {
 	return &emailResourceStore{loader: newMessageImageLoader(service), resources: make(map[string]emailResource)}
 }
 
+func (s *emailResourceStore) bindingFor(message mail.Message) emailResourceBinding {
+	owner := normalizedEmail(message.AccountEmail)
+	s.mu.RLock()
+	fallback, resolve, ownerClient := s.loader, s.ownerService, s.ownerClient
+	s.mu.RUnlock()
+	if owner == "" || resolve == nil {
+		return emailResourceBinding{}
+	}
+	service, generation := resolve(owner)
+	loader := newMessageImageLoader(service)
+	if fallback != nil {
+		loader.client = fallback.client
+	}
+	binding := emailResourceBinding{owner: owner, service: service, generation: generation, loader: loader}
+	if ownerClient != nil {
+		binding.client = ownerClient(owner)
+	}
+	return binding
+}
+
 func (s *emailResourceStore) register(message mail.Message, source string) string {
+	return s.registerWith(s.bindingFor(message), message, source)
+}
+
+func (s *emailResourceStore) registerWith(binding emailResourceBinding, message mail.Message, source string) string {
 	var random [16]byte
 	_, _ = rand.Read(random[:])
 	token := hex.EncodeToString(random[:])
 	s.mu.Lock()
-	s.resources[token] = emailResource{message: message, source: source}
+	s.resources[token] = emailResource{
+		message: message, messageKey: readerMessageKey(message), source: source, binding: binding,
+	}
 	s.mu.Unlock()
 	return token
 }
@@ -49,25 +88,45 @@ func (s *emailResourceStore) revoke(tokens ...string) {
 	s.mu.Unlock()
 }
 
-func (s *emailResourceStore) revokeMessage(id string) {
+func (s *emailResourceStore) revokeMessage(key string) {
 	s.mu.Lock()
 	for token, resource := range s.resources {
-		if resource.message.ID == id {
+		if resource.messageKey == key {
 			delete(s.resources, token)
 		}
 	}
 	s.mu.Unlock()
 }
 
+func (s *emailResourceStore) valid(resource emailResource) bool {
+	if resource.binding.owner == "" {
+		return true
+	}
+	if resource.binding.service == nil {
+		return false
+	}
+	if client := resource.binding.client; client != nil {
+		return client.generation.Load() == resource.binding.generation
+	}
+	s.mu.RLock()
+	activeVersion := s.activeVersion
+	s.mu.RUnlock()
+	return activeVersion != nil && uint64(activeVersion()) == resource.binding.generation
+}
+
 func (s *emailResourceStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	resource, ok := s.resources[r.URL.Host]
+	loader := resource.binding.loader
+	if resource.binding.owner == "" {
+		loader = s.loader
+	}
 	s.mu.RUnlock()
-	if !ok {
+	if !ok || loader == nil || !s.valid(resource) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := s.loader.loadData(messageImageURL(resource.message, resource.source))
+	data, err := loader.loadData(messageImageURL(resource.message, resource.source))
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -82,6 +141,10 @@ func (s *emailResourceStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if !s.valid(resource) {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", http.DetectContentType(data))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -93,6 +156,7 @@ func prepareEmailHTML(resources *emailResourceStore, message mail.Message) strin
 	if err != nil {
 		return ""
 	}
+	binding := resources.bindingFor(message)
 	var hidden []*xhtml.Node
 	walkEmailNodes(root, func(node *xhtml.Node) {
 		if emailHidden(node) {
@@ -110,7 +174,7 @@ func prepareEmailHTML(resources *emailResourceStore, message mail.Message) strin
 		if source == "" {
 			return
 		}
-		setImageAttribute(node, "src", emailResourcePlaceholder+resources.register(message, source))
+		setImageAttribute(node, "src", emailResourcePlaceholder+resources.registerWith(binding, message, source))
 	})
 	var input strings.Builder
 	if err := xhtml.Render(&input, root); err != nil {
@@ -125,7 +189,7 @@ func prepareEmailHTML(resources *emailResourceStore, message mail.Message) strin
 		}
 		if background := imageAttribute(node, "data-bg"); background != "" {
 			removeImageAttribute(node, "data-bg")
-			token := resources.register(message, background)
+			token := resources.registerWith(binding, message, background)
 			declaration := `background-image:url("mica-img://` + token + `");--mica-bg:url("mica-img://` + token + `")`
 			if style := imageAttribute(node, "style"); style != "" {
 				declaration = strings.TrimRight(strings.TrimSpace(style), ";") + ";" + declaration
