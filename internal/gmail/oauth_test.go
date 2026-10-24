@@ -266,6 +266,56 @@ func TestKeychainTokenStoreEncoding(t *testing.T) {
 	}
 }
 
+func TestAccountTokenStoresAreIndependent(t *testing.T) {
+	secrets := newMemorySecrets()
+	legacy := &keychainTokenStore{secrets: secrets}
+	if err := legacy.Save(&oauth2.Token{AccessToken: "legacy"}); err != nil {
+		t.Fatal(err)
+	}
+	authA := NewOAuthForAccount("client", "secret", "project", " User@Example.COM ")
+	authB := NewOAuthForAccount("client", "secret", "project", "other@example.com")
+	storeA := authA.store.(*keychainTokenStore)
+	storeB := authB.store.(*keychainTokenStore)
+	storeA.secrets = secrets
+	storeB.secrets = secrets
+	if storeA.key != "gmail-oauth2-token:user@example.com" {
+		t.Fatalf("account key = %q", storeA.key)
+	}
+	if err := authA.SaveToken(&oauth2.Token{AccessToken: "a-1", RefreshToken: "a-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := authB.SaveToken(&oauth2.Token{AccessToken: "b-1", RefreshToken: "b-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := authA.SaveToken(&oauth2.Token{AccessToken: "a-2", RefreshToken: "a-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	gotA, err := storeA.Load()
+	if err != nil || gotA.AccessToken != "a-2" {
+		t.Fatalf("account A token = %+v, %v", gotA, err)
+	}
+	gotB, err := storeB.Load()
+	if err != nil || gotB.AccessToken != "b-1" {
+		t.Fatalf("account B token = %+v, %v", gotB, err)
+	}
+	gotLegacy, err := legacy.Load()
+	if err != nil || gotLegacy.AccessToken != "legacy" {
+		t.Fatalf("legacy token = %+v, %v", gotLegacy, err)
+	}
+	if err := authA.Logout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storeA.Load(); !errors.Is(err, ErrNoSession) {
+		t.Fatalf("account A after logout = %v", err)
+	}
+	if gotB, err := storeB.Load(); err != nil || gotB.AccessToken != "b-1" {
+		t.Fatalf("account B after A logout = %+v, %v", gotB, err)
+	}
+	if gotLegacy, err := legacy.Load(); err != nil || gotLegacy.AccessToken != "legacy" {
+		t.Fatalf("legacy token after A logout = %+v, %v", gotLegacy, err)
+	}
+}
+
 type memoryTokenStore struct {
 	mu    sync.Mutex
 	token *oauth2.Token

@@ -1,12 +1,36 @@
 package app
 
 import (
+	"errors"
 	"testing"
 
+	"mica/internal/gmail"
 	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
+	"golang.org/x/oauth2"
 )
+
+func TestPendingTokenStore(t *testing.T) {
+	store := &pendingTokenStore{}
+	if _, err := store.Load(); !errors.Is(err, gmail.ErrNoSession) {
+		t.Fatalf("empty pending store = %v", err)
+	}
+	want := &oauth2.Token{AccessToken: "pending", RefreshToken: "refresh"}
+	if err := store.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Load()
+	if err != nil || got != want {
+		t.Fatalf("pending token = %+v, %v", got, err)
+	}
+	if err := store.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(); !errors.Is(err, gmail.ErrNoSession) {
+		t.Fatalf("deleted pending store = %v", err)
+	}
+}
 
 func TestSettingsLanguageUsesDisplayLabels(t *testing.T) {
 	for _, tc := range []struct {

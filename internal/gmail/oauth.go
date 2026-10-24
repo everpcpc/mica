@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +52,7 @@ type secretStore interface {
 
 type keychainTokenStore struct {
 	secrets secretStore
+	key     string
 }
 
 func NewOAuth(clientID, clientSecret string) *OAuth {
@@ -58,7 +60,16 @@ func NewOAuth(clientID, clientSecret string) *OAuth {
 }
 
 func NewOAuthWithProject(clientID, clientSecret, projectID string) *OAuth {
-	a := NewOAuth(clientID, clientSecret)
+	return NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, &keychainTokenStore{secrets: mygo.Secrets})
+}
+
+func NewOAuthForAccount(clientID, clientSecret, projectID, email string) *OAuth {
+	key := oauthTokenKey + ":" + strings.ToLower(strings.TrimSpace(email))
+	return NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, &keychainTokenStore{secrets: mygo.Secrets, key: key})
+}
+
+func NewOAuthWithProjectAndStore(clientID, clientSecret, projectID string, store TokenStore) *OAuth {
+	a := NewOAuthWithStore(clientID, clientSecret, store)
 	a.projectID = projectID
 	return a
 }
@@ -89,8 +100,15 @@ func NewOAuthWithStore(clientID, clientSecret string, store TokenStore) *OAuth {
 	}
 }
 
+func (s *keychainTokenStore) tokenKey() string {
+	if s.key != "" {
+		return s.key
+	}
+	return oauthTokenKey
+}
+
 func (s *keychainTokenStore) Load() (*oauth2.Token, error) {
-	value, err := s.secrets.Get(oauthTokenKey)
+	value, err := s.secrets.Get(s.tokenKey())
 	if errors.Is(err, mygo.ErrSecretNotFound) {
 		return nil, ErrNoSession
 	}
@@ -109,17 +127,21 @@ func (s *keychainTokenStore) Save(token *oauth2.Token) error {
 	if err != nil {
 		return fmt.Errorf("gmail: encode OAuth token: %w", err)
 	}
-	if err := s.secrets.Set(oauthTokenKey, value); err != nil {
+	if err := s.secrets.Set(s.tokenKey(), value); err != nil {
 		return fmt.Errorf("gmail: save OAuth token: %w", err)
 	}
 	return nil
 }
 
 func (s *keychainTokenStore) Delete() error {
-	if err := s.secrets.Delete(oauthTokenKey); err != nil {
+	if err := s.secrets.Delete(s.tokenKey()); err != nil {
 		return fmt.Errorf("gmail: delete OAuth token: %w", err)
 	}
 	return nil
+}
+
+func (a *OAuth) SaveToken(token *oauth2.Token) error {
+	return a.store.Save(token)
 }
 
 func (a *OAuth) Restore(ctx context.Context) (*http.Client, error) {
