@@ -32,13 +32,19 @@
 - When the current conversation is filtered out, the list selection may be cleared without interrupting the open reader.
 - Avoid fetching a large first page of complete conversations; use a small first page and load more with `nextPageToken`.
 - Deduplicate appended pages and preserve selection. Do not mix the base query snapshot with pagination request parameters.
+- A k-way merge needs independent cursors and emitted sets, not a concatenated first page. Rebuild the current prefix on initial or history refresh, consume cached remainders before fetching, and never let a page inserted behind the cursor disappear or print twice.
+- A merged view is a projection, not a complete account snapshot. Applying a star to two 30-thread accounts truncated their caches to the visible 25; local mutations must update the complete per-owner snapshots, removals need tombstones through later page responses, and persistence must never write the visible prefix back as the full cache.
+- Network and cache writes must not reorder optimistic state. Preserve same-generation local modifications when applying pages and skip superseded per-account/query writes; deliberately reversed cache jobs resurrected an archived row, and a slow first page erased a local star before these guards were added.
+- Cache restoration and network completion must apply owner state on the UI thread. A background cache read originally mutated Unified streams directly, and a late page from a removed account restored its row; publish cached values and validate the owner generation before changing snapshots or caches.
+- Unified Undo cannot borrow the history-refresh path. Reinsert only summaries that match the current query after the inverse labels, and enqueue inverse mutations in FIFO order instead of starting a network generation that can overtake the local restoration. Undo belongs to its source view: entering or leaving Unified must invalidate it rather than inserting another account's raw ID into an ordinary list.
+- A visible cached summary is not permission to mutate it. An account whose client could not be restored originally panicked the mutation worker; reject unavailable owner services before optimistic changes and keep a nil-service guard at the queue boundary.
 - When a load-at-end request fails, view rebuilds must not retry it automatically and repeatedly.
 - Opening a thread by ID must also synchronize the selected row before detail loading. A regression reproduced `selectedRow == -1` before loading; do not synchronize only in `showThread`.
 - Run automatic startup selection once for each account's first non-empty list. The previous behavior left no selection after offline restoration and account switches. New mail inserted above may move only the selected row by ID; it must not reselect or switch the detail.
 - When single selection is bound only by row index, archiving the first conversation lets the next one occupy the same row and makes the list keep tracking the old key. Highlight the list with a Selection keyed by thread ID, and use first/last archive comparisons to verify that detail and selection stay aligned.
-- A multi-selection is not the reader. Programmatic opens may collapse it, but list input must preserve it; filters and history should prune only invisible keys without clearing the remaining set.
+- A multi-selection is not the reader. Programmatic opens may collapse it, but list input must preserve it; ordinary filters and history should prune only invisible keys without clearing the remaining set. Unified history keeps off-screen composite keys until an explicit removal or account change.
 - `Selection.All()` is unordered and retains disappeared keys. Resolve action targets in visible-list order, and represent a batch Undo as one action with ordered items rather than looping over a single-slot Undo.
-- Batch Archive must preserve the single action's view membership: only Inbox removes rows. For non-contiguous removal, choose the next survivor after the reader in the original list, then the previous survivor; reusing the old row index skips a conversation.
+- Batch Archive must preserve the single action's view membership: only Inbox and Unified Inbox remove rows. For non-contiguous removal, choose the next survivor after the reader in the original list, then the previous survivor; reusing the old row index skips a conversation.
 - Mixed-state batches need one target state and must filter out items already in that state before recording Undo. Applying a uniform inverse to originally mixed items can remove a star or read state that the user already had.
 
 ## Label assignment and label lifecycle are different operations
@@ -46,7 +52,7 @@
 - Adding or removing a label on a conversation is not the same as creating or deleting the label itself.
 - Keep label creation and deletion in the sidebar's management area; the reader menu is only for assigning labels to the current conversation. Creation must remain available when no custom labels exist. Right-clicking a label should expose color editing and deletion, and color updates must use Gmail-supported background/text pairs rather than arbitrary picker values.
 - Creating a label must wait for the server's real ID; do not invent temporary IDs.
-- Deleting a label removes it from every conversation. Require explicit confirmation and clean up the sidebar, current conversation, caches, and stale Undo entries.
+- Deleting a label removes it from every conversation in that account. Require explicit confirmation and clean up the sidebar, current conversation, caches, and stale Undo entries. Unified cleanup must filter by owner because two accounts can use the same raw label ID.
 - When the active label is deleted, return to a mailbox view that still exists.
 
 ## Respect content type in body layout
