@@ -1526,6 +1526,16 @@ func (msgs Messages) Gmail() string {
 	return Catalog.Format(msgs.locale, "gmail", nil)
 }
 
+// UnifiedInbox says "Unified Inbox"
+// in the language the app shows.
+func UnifiedInbox() string { return In(i18n.Locale()).UnifiedInbox() }
+
+// UnifiedInbox says "Unified Inbox"
+// in the language of msgs.
+func (msgs Messages) UnifiedInbox() string {
+	return Catalog.Format(msgs.locale, "unifiedInbox", nil)
+}
+
 // GmailSetup says "Mica opens Google sign-in in your browser and connects directly to Gmail."
 // in the language the app shows.
 func GmailSetup() string { return In(i18n.Locale()).GmailSetup() }

@@ -180,6 +180,7 @@
   "languageEnglish": "English",
   "languageChinese": "简体中文",
   "gmail": "Gmail",
+  "unifiedInbox": "Unified Inbox",
   "gmailSetup": "Mica opens Google sign-in in your browser and connects directly to Gmail.",
   "gmailCloudCredentials": "Open Google Cloud credentials",
   "customOauthClient": "Use a custom OAuth client",

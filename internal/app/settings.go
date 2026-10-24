@@ -549,6 +549,9 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.accountPhoto = nil
 	a.labels = nil
 	a.threads = nil
+	a.compositeThreads = false
+	a.unified = nil
+	a.accountCount = 0
 	a.thread = mail.Thread{}
 	a.query = ""
 	a.unreadOnly = false

@@ -16,6 +16,7 @@ const (
 	Spam      = "SPAM"
 	Trash     = "TRASH"
 	Unread    = "UNREAD"
+	Unified   = "UNIFIED"
 
 	CategorySocial       = "CATEGORY_SOCIAL"
 	CategoryPromotions   = "CATEGORY_PROMOTIONS"

@@ -117,11 +117,19 @@ func (a *App) sidebar(c *ui.Context) {
 				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			})
 		})
-		mailboxes := ui.Sidebar(c, &a.selectedLabel, func() {
+		mailboxes := visibleSidebarLabels(a.labels, mailboxLabels)
+		if a.accountCount > 1 {
+			mailboxes = append([]sidebarLabel{{id: mail.Unified, icon: iconInbox}}, mailboxes...)
+		}
+		mailboxList := ui.Sidebar(c, &a.selectedLabel, func() {
 			ui.SidebarSection(c, locales.Mailboxes(), nil, func() {
-				for _, mailbox := range visibleSidebarLabels(a.labels, mailboxLabels) {
+				for _, mailbox := range mailboxes {
 					item := ui.SidebarItem(c.Key(mailbox.id), mailbox.id, mailbox.icon, a.labelName(mailbox.id))
-					if unread := labelUnread(a.labels, mailbox.id); unread > 0 {
+					if mailbox.id == mail.Unified {
+						if unread := a.unifiedUnread(); unread > 0 {
+							item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
+						}
+					} else if unread := labelUnread(a.labels, mailbox.id); unread > 0 {
 						item.Children(func() { ui.Badge(c, fmt.Sprint(unread)) })
 					}
 				}
@@ -149,7 +157,7 @@ func (a *App) sidebar(c *ui.Context) {
 				ui.Button(c, locales.NewLabel()).WidthPercent(100).OnClick(a.openLabelCreate)
 			})
 		}).Grow(1).Label(locales.SidebarLabels())
-		if mailboxes.Changed() {
+		if mailboxList.Changed() {
 			a.selectLabel()
 		}
 	})
@@ -262,6 +270,9 @@ func (a *App) threadRow(row ui.ListRow, thread *mail.ThreadSummary) {
 			}
 		})
 		ui.Text(c, thread.Snippet).FontSize(12).LineHeight(1.35).TextColor(secondary).MaxLines(2)
+		if a.compositeThreads && normalizedEmail(thread.AccountEmail) != "" {
+			ui.Text(c, normalizedEmail(thread.AccountEmail)).FontSize(10).TextColor(secondary).SingleLine()
+		}
 		if thread.MessageCount > 1 {
 			ui.Text(c, locales.MessageCount(thread.MessageCount)).FontSize(10).TextColor(secondary)
 		}

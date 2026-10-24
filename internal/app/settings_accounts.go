@@ -16,8 +16,10 @@ func (a *App) refreshAccountList() {
 	}
 	if store == nil {
 		s.accounts = nil
+		a.accountCount = 0
 		if email := normalizedEmail(a.account.Email); !a.account.Demo && email != "" {
 			s.accounts = []mail.Account{a.account}
+			a.accountCount = 1
 		}
 		return
 	}
@@ -32,6 +34,7 @@ func (a *App) refreshAccountList() {
 				return
 			}
 			s.accounts = accounts
+			a.accountCount = len(accounts)
 		})
 	})
 }
