@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 - 2026-10-24
+
+- Added Move out of Trash and Not spam with label-aware toolbar and native-menu actions, dedicated Gmail endpoints, and operation-aware Undo.
+- Added Cmd/Ctrl, Shift, and select-all multi-selection with batch Archive, Trash, Spam, Star, and Read/Unread actions and coherent batch Undo.
+- Preserved mixed read, star, Trash, and Spam states, combined-label visibility, and reader adjacency across batch actions.
+
 ## 0.10.0 - 2026-10-24
 
 - Added multi-file attachments to composing, replying, and forwarding, with background reads, a 25 MB total limit, and byte-preserving retries.
