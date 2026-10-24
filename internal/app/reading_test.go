@@ -7,6 +7,7 @@ import (
 
 	"mica/internal/mail"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -58,6 +59,49 @@ func TestThreadContentUsesBackground(t *testing.T) {
 				got := tt.Image().RGBAAt(point.x, point.y)
 				if got.R != want.R || got.G != want.G || got.B != want.B || got.A != want.A {
 					t.Fatalf("reader background at %v = %v, want %v", point, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestReaderToolbarStaysLightOverWebView(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dark bool
+	}{
+		{name: "light"},
+		{name: "dark", dark: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.selectThread("thread-1")
+			a.thread.Messages[0].HTML = "<p>Body</p>"
+			a.emailPages = map[string]*emailPage{
+				"message-1": {messageID: "message-1", view: new(mygo.WebView), height: 1000},
+			}
+			tt := ui.NewTester(a.View, 1280, 800)
+			tt.SetDark(tc.dark)
+			tt.Advance(time.Second)
+			archive, ok := tt.Find("Archive")
+			if !ok {
+				t.Fatal("reader toolbar not found")
+			}
+			x, y := int(archive.X+archive.W/2), int(archive.Y)-2
+			before := tt.Image().RGBAAt(x, y)
+			a.readerScroll.Y = 650
+			tt.Frame()
+			tt.Advance(time.Second)
+			after := tt.Image().RGBAAt(x, y)
+			delta := func(a, b uint8) int {
+				if a > b {
+					return int(a - b)
+				}
+				return int(b - a)
+			}
+			for _, difference := range []int{delta(before.R, after.R), delta(before.G, after.G), delta(before.B, after.B)} {
+				if difference > 20 {
+					t.Fatalf("toolbar changed too much over WebView: before=%v after=%v at (%d,%d)", before, after, x, y)
 				}
 			}
 		})
