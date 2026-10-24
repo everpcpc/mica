@@ -16,6 +16,7 @@
 - After an account switch, requests and Undo entries from the previous account must not write into the new state.
 - When an action toggles between forward and recovery behavior, update native application-menu labels as well as the toolbar. A shortcut dispatcher alone does not prevent the menu from promising the opposite action.
 - Removing a recovered conversation unconditionally can drop it from a view it still matches through another label. Check post-action labels against the current query before changing the list or persisted cache.
+- Keep recovery-specific visibility logic out of forward actions. Query-aware recovery must preserve Report spam's existing All Mail removal and selection behavior, with a regression test on that path.
 
 ## Filtering, pagination, and selection are one problem
 
