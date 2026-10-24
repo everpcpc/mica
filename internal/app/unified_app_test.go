@@ -1027,3 +1027,45 @@ func TestUnifiedReadFailureAfterModeChangePreservesCache(t *testing.T) {
 		t.Fatalf("read failure did not restore the owner detail's unread state: %+v", ownerThread)
 	}
 }
+
+func TestUnifiedNewerReadSupersedesUnreadRollback(t *testing.T) {
+	h := newUnifiedHarness()
+	h.app.compositeThreads = true
+	h.app.registerAccountClient(h.services["b@example.com"], mail.Account{Email: "b@example.com"}, nil, true)
+	cached := unifiedInboxSummary("shared", "b@example.com", 20)
+	cached.Unread = true
+	cached.LabelIDs = append(cached.LabelIDs, mail.Unread)
+	cachedThread := unifiedAccountThread("b@example.com", "shared")
+	cachedThread.AccountEmail = "b@example.com"
+	cachedThread.LabelIDs = []string{mail.Inbox, mail.Unread}
+	cachedThread.Messages[0].LabelIDs = []string{mail.Unread}
+	h.store.lists[cacheListKey{email: "b@example.com", query: h.query}] = []mail.ThreadSummary{cached}
+	h.store.threads[cacheThreadKey{email: "b@example.com", id: "shared"}] = cachedThread
+	var jobs []func()
+	h.app.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	key := threadRefForAccount("b@example.com", "shared").key()
+	h.app.restoreUnread(key, h.query)
+	updated := cached
+	updated.LabelIDs = modifyLabelIDs(updated.LabelIDs, nil, []string{mail.Unread})
+	updated.Unread = false
+	h.app.persistList(h.query, []mail.ThreadSummary{updated})
+	updatedThread := cloneMailThread(cachedThread)
+	updatedThread.LabelIDs = modifyLabelIDs(updatedThread.LabelIDs, nil, []string{mail.Unread})
+	updatedThread.Messages[0].LabelIDs = modifyLabelIDs(updatedThread.Messages[0].LabelIDs, nil, []string{mail.Unread})
+	h.app.persistThread(updatedThread)
+	if len(jobs) != 4 {
+		t.Fatalf("cache jobs = %d, want rollback, two owner lists, and detail", len(jobs))
+	}
+	for _, job := range jobs[1:] {
+		job()
+	}
+	jobs[0]()
+	ownerList := h.store.lists[cacheListKey{email: "b@example.com", query: h.query}]
+	if len(ownerList) != 1 || ownerList[0].Unread || containsLabel(ownerList[0].LabelIDs, mail.Unread) {
+		t.Fatalf("stale rollback restored an unread list item: %+v", ownerList)
+	}
+	ownerThread := h.store.threads[cacheThreadKey{email: "b@example.com", id: "shared"}]
+	if containsLabel(ownerThread.LabelIDs, mail.Unread) || containsLabel(ownerThread.Messages[0].LabelIDs, mail.Unread) {
+		t.Fatalf("stale rollback restored an unread detail: %+v", ownerThread)
+	}
+}

@@ -27,6 +27,7 @@ type App struct {
 	accountClientPending     map[string][]func(error)
 	unified                  *unifiedState
 	listVersions             listCacheVersions
+	threadVersions           threadCacheVersions
 	accountCount             int
 	storeAccount             string
 	account                  mail.Account

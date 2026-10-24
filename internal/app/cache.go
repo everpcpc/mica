@@ -33,6 +33,30 @@ func (a *App) nextListCacheVersion(email string, query mail.Query) (*atomic.Uint
 	return version, version.Add(1)
 }
 
+type threadCacheKey struct {
+	email string
+	id    string
+}
+
+type threadCacheVersions map[threadCacheKey]*atomic.Uint64
+
+func (a *App) nextThreadCacheVersion(email, id string) (*atomic.Uint64, uint64) {
+	if a.threadVersions == nil {
+		a.threadVersions = make(threadCacheVersions)
+	}
+	email = normalizedEmail(email)
+	if email == "" {
+		email = a.storeAccount
+	}
+	key := threadCacheKey{email: email, id: id}
+	version := a.threadVersions[key]
+	if version == nil {
+		version = &atomic.Uint64{}
+		a.threadVersions[key] = version
+	}
+	return version, version.Add(1)
+}
+
 type cacheState struct {
 	mu         sync.Mutex
 	writes     sync.WaitGroup
@@ -143,7 +167,11 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 
 func (a *App) persistThread(thread mail.Thread) {
 	thread = cloneMailThread(thread)
+	version, revision := a.nextThreadCacheVersion(thread.AccountEmail, thread.ID)
 	a.persistForAccount(thread.AccountEmail, func(store mailStore, email string) error {
+		if version.Load() != revision {
+			return nil
+		}
 		return store.SaveThread(context.Background(), email, thread)
 	})
 }
@@ -155,6 +183,7 @@ func (a *App) restoreUnread(id string, query mail.Query) {
 		owner = a.storeAccount
 	}
 	version, revision := a.nextListCacheVersion(owner, query)
+	detailVersion, detailRevision := a.nextThreadCacheVersion(owner, ref.ID)
 	a.persistForAccount(owner, func(store mailStore, email string) error {
 		if version.Load() == revision {
 			threads, found, err := store.ThreadList(context.Background(), email, query)
@@ -180,6 +209,9 @@ func (a *App) restoreUnread(id string, query mail.Query) {
 				}
 			}
 		}
+		if detailVersion.Load() != detailRevision {
+			return nil
+		}
 		thread, found, err := store.Thread(context.Background(), email, ref.ID)
 		if err != nil || !found {
 			return err
@@ -189,6 +221,9 @@ func (a *App) restoreUnread(id string, query mail.Query) {
 		for i := range thread.Messages {
 			thread.Messages[i].AccountEmail = email
 			thread.Messages[i].LabelIDs = modifyLabelIDs(thread.Messages[i].LabelIDs, []string{mail.Unread}, nil)
+		}
+		if detailVersion.Load() != detailRevision {
+			return nil
 		}
 		return store.SaveThread(context.Background(), email, thread)
 	})
