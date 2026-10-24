@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func TestAccountPhotoAnimatedGIF(t *testing.T) {
+func TestAccountPhotoGIFStaysOnFirstFrame(t *testing.T) {
 	a := newTestApp(newFakeService())
 	a.loadAccountPhoto(mail.Account{PhotoURL: "data:image/gif;base64," + base64.StdEncoding.EncodeToString(testAnimatedGIF(t))})
 	if a.accountPhoto == nil {
@@ -22,51 +22,18 @@ func TestAccountPhotoAnimatedGIF(t *testing.T) {
 	}
 	tt := ui.NewTester(func(c *ui.Context) {
 		ui.Row(c).Padding(10).Children(func() {
-			ui.Avatar(c, "Demo", a.accountPhotoFrame(c))
+			ui.Avatar(c, "Demo", a.accountPhoto)
 		})
 	}, 100, 100)
 	if got := tt.Image().RGBAAt(24, 24); got != (color.RGBA{R: 255, A: 255}) {
 		t.Fatalf("first frame = %v, want red", got)
 	}
 	tt.Advance(150 * time.Millisecond)
-	if got := tt.Image().RGBAAt(24, 24); got != (color.RGBA{B: 255, A: 255}) {
-		t.Fatalf("frame after delay = %v, want blue", got)
-	}
-}
-
-func TestAccountPhotoReduceMotion(t *testing.T) {
-	a := newTestApp(newFakeService())
-	a.loadAccountPhoto(mail.Account{PhotoURL: "data:image/gif;base64," + base64.StdEncoding.EncodeToString(testAnimatedGIF(t))})
-	tt := ui.NewTester(func(c *ui.Context) {
-		ui.Row(c).Padding(10).Children(func() {
-			ui.Avatar(c, "Demo", a.accountPhotoFrame(c))
-		})
-	}, 100, 100)
-	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
-	tt.Advance(150 * time.Millisecond)
 	if got := tt.Image().RGBAAt(24, 24); got != (color.RGBA{R: 255, A: 255}) {
-		t.Fatalf("reduced-motion frame = %v, want first red frame", got)
+		t.Fatalf("frame after delay = %v, want first red frame", got)
 	}
-}
-
-func TestAccountPhotoFiniteLoop(t *testing.T) {
-	a := newTestApp(newFakeService())
-	a.loadAccountPhoto(mail.Account{PhotoURL: "data:image/gif;base64," + base64.StdEncoding.EncodeToString(testAnimatedGIFWithLoops(t, 1))})
-	tt := ui.NewTester(func(c *ui.Context) {
-		ui.Row(c).Padding(10).Children(func() {
-			ui.Avatar(c, "Demo", a.accountPhotoFrame(c))
-		})
-	}, 100, 100)
-	tt.Advance(150 * time.Millisecond)
-	if got := tt.Image().RGBAAt(24, 24); got != (color.RGBA{B: 255, A: 255}) {
-		t.Fatalf("finite-loop frame = %v, want blue", got)
-	}
-	tt.Advance(150 * time.Millisecond)
-	if got := tt.Image().RGBAAt(24, 24); got != (color.RGBA{B: 255, A: 255}) {
-		t.Fatalf("completed animation restarted at %v, want final blue frame", got)
-	}
-	if !a.photoAnimation.done {
-		t.Fatal("finite animation did not stop after its last frame")
+	if tt.FramePending() {
+		t.Fatal("account photo scheduled animation frames")
 	}
 }
 
@@ -75,7 +42,7 @@ func TestAccountPhotoStaticDoesNotAnimate(t *testing.T) {
 	a.loadAccountPhoto(mail.Account{PhotoURL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(testPNG(t))})
 	tt := ui.NewTester(func(c *ui.Context) {
 		ui.Row(c).Padding(10).Children(func() {
-			ui.Avatar(c, "Demo", a.accountPhotoFrame(c))
+			ui.Avatar(c, "Demo", a.accountPhoto)
 		})
 	}, 100, 100)
 	tt.Advance(time.Second)
@@ -85,10 +52,6 @@ func TestAccountPhotoStaticDoesNotAnimate(t *testing.T) {
 }
 
 func testAnimatedGIF(t *testing.T) []byte {
-	return testAnimatedGIFWithLoops(t, 0)
-}
-
-func testAnimatedGIFWithLoops(t *testing.T, loops int) []byte {
 	t.Helper()
 	palette := color.Palette{color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}}
 	red := image.NewPaletted(image.Rect(0, 0, 4, 4), palette)
@@ -98,9 +61,8 @@ func testAnimatedGIFWithLoops(t *testing.T, loops int) []byte {
 	}
 	var output bytes.Buffer
 	if err := gif.EncodeAll(&output, &gif.GIF{
-		Image:     []*image.Paletted{red, blue},
-		Delay:     []int{1, 1},
-		LoopCount: loops,
+		Image: []*image.Paletted{red, blue},
+		Delay: []int{1, 1},
 	}); err != nil {
 		t.Fatal(err)
 	}

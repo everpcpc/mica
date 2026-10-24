@@ -54,11 +54,7 @@
 - Give an unmeasured embedded document the available viewport height, then honor its measured or cached height. A fixed one-line placeholder made HTML mail open collapsed; the rendering regression test checks both the placeholder and the measured state.
 - Start embedded-document measurement at DOM readiness rather than full page load when slow subresources would otherwise delay the initial layout.
 - A gradient fill does not interpolate like a solid color transition. Keep animated toggles on a solid accent and verify start, middle, and end pixels before replacing them with a gradient.
-
-## Animate image data without blocking the UI
-
-- `ui.Avatar` and `ui.DecodeBitmap` show only the first GIF frame. Multi-frame playback needs an app-owned scheduler, with decoding kept off the UI thread and `Bitmap.Update` called only in the view or through `Window.Update`.
-- Honor Reduce Motion and finite GIF loop counts. Verify actual pixels at the first frame, after a frame delay, and after the final loop.
+- Small account photos use a stable first frame rather than animated frame swaps. A multi-frame GIF must keep the same rendered pixels after its frame delays and schedule no animation frames.
 
 ## Match live theme changes in native and web content
 
