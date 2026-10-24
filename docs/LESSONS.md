@@ -88,6 +88,13 @@
 - Do not fill missing reply headers from the thread's latest message when the caller selected a different message. An explicit resolved-threading marker distinguishes intentional empty headers from unresolved legacy calls.
 - ID-less inline attachments need a stable per-message position key; message ID alone would make their loading and error states collide.
 
+## Bind offline caches to their owner and lifetime
+
+- An empty `storeAccount` is not a storage owner. Use the active account's normalized email as the Demo fallback instead of silently skipping cache reads or attachment writes.
+- Downloads, forwards, and WebView inline images must share one attachment cache boundary. Carry owner, thread, message, and position keys through the real protocol loader, and bind writes to the captured owner generation and the cache drain. Testing only a standalone loader misses a production WebView binding that omits the store; a stale-owner regression and a blocked write must prove deletion fencing and waiting.
+- Bound binary caches by both item size and per-account total size. Evict by the complete primary key, and verify binary bytes after reopening the database, quota eviction, and account cleanup.
+- Perform fallback cache scans before publishing a failed network result. Searching every cached body on the UI callback can stall rendering; a deferred-publish test proves where the work runs.
+
 ## Serialize draft saves and preserve identity
 
 - Persist send intent before any network request, and link the Outbox record and draft snapshot in one transaction. A separate snapshot and Outbox entry can otherwise become two independent send paths after a crash.
