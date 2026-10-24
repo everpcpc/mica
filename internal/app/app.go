@@ -689,7 +689,9 @@ func (a *App) archiveThreads(summaries []mail.ThreadSummary) {
 		a.updateThreadLabels(id, nil, []string{mail.Inbox})
 		a.captureUndoSummary(id)
 	}
-	a.removeThreads(ids)
+	if a.selectedLabel == mail.Inbox {
+		a.removeThreads(ids)
+	}
 	a.notice = locales.ConversationsArchived(len(ids))
 	for _, id := range ids {
 		a.enqueueMutation(mutationJob{
@@ -790,8 +792,27 @@ func (a *App) removeThreads(ids []string) {
 		delete(a.threadCache, id)
 		a.threadSelection.Remove(id)
 	}
-	row := max(a.selectedRow, 0)
 	readerRemoved := removed[a.selectedThread]
+	nextReader := ""
+	if readerRemoved {
+		threads := a.visibleThreads()
+		for i, thread := range threads {
+			if thread.ID != a.selectedThread {
+				continue
+			}
+			for j := i + 1; j < len(threads) && nextReader == ""; j++ {
+				if !removed[threads[j].ID] {
+					nextReader = threads[j].ID
+				}
+			}
+			for j := i - 1; j >= 0 && nextReader == ""; j-- {
+				if !removed[threads[j].ID] {
+					nextReader = threads[j].ID
+				}
+			}
+			break
+		}
+	}
 	remaining := make([]mail.ThreadSummary, 0, len(a.threads))
 	for _, thread := range a.threads {
 		if !removed[thread.ID] {
@@ -807,13 +828,11 @@ func (a *App) removeThreads(ids []string) {
 		return
 	}
 	a.selectedThread = ""
-	threads := a.visibleThreads()
-	if len(threads) == 0 {
+	if nextReader == "" {
 		a.clearThread()
 		return
 	}
-	a.selectedRow = min(row, len(threads)-1)
-	a.selectThread(threads[a.selectedRow].ID)
+	a.selectThread(nextReader)
 }
 
 func (a *App) removeThread(id string) {

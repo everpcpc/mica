@@ -302,6 +302,58 @@ func TestBatchArchiveReaderSelection(t *testing.T) {
 	}
 }
 
+func TestBatchArchiveKeepsNonInboxThreads(t *testing.T) {
+	for _, view := range []string{mail.Starred, mail.All} {
+		t.Run(view, func(t *testing.T) {
+			service := newFakeService()
+			labels := []string{mail.Inbox}
+			if view == mail.Starred {
+				labels = append(labels, mail.Starred)
+			}
+			service.threads[0].LabelIDs = append([]string(nil), labels...)
+			service.threads = append(service.threads, mail.ThreadSummary{ID: "thread-2", Subject: "Second", LabelIDs: append([]string(nil), labels...)})
+			service.thread.LabelIDs = append([]string(nil), labels...)
+			service.threadFunc = func(id string) (mail.Thread, error) {
+				return mail.Thread{ID: id, LabelIDs: append([]string(nil), labels...), Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+			}
+			a := newTestApp(service)
+			a.selectedLabel = view
+			a.selectLabel()
+			a.selectThread("thread-1")
+			a.threadSelection.Add("thread-2")
+			a.archive()
+			if len(a.threads) != 2 || a.selectedThread != "thread-1" {
+				t.Fatalf("batch archive removed matching conversations from %s: %+v", view, a.threads)
+			}
+			for _, thread := range a.threads {
+				if containsLabel(thread.LabelIDs, mail.Inbox) {
+					t.Fatalf("batch archive did not remove INBOX in %s: %+v", view, thread.LabelIDs)
+				}
+			}
+		})
+	}
+}
+
+func TestBatchArchiveSelectsNextSurvivor(t *testing.T) {
+	service := newFakeService()
+	service.threads = nil
+	for _, id := range []string{"A", "B", "C", "D", "E"} {
+		service.threads = append(service.threads, mail.ThreadSummary{ID: id, Subject: id, LabelIDs: []string{mail.Inbox}})
+	}
+	service.threadFunc = func(id string) (mail.Thread, error) {
+		return mail.Thread{ID: id, Messages: []mail.Message{{ID: "message-" + id, ThreadID: id, Text: id + " body"}}}, nil
+	}
+	a := newTestApp(service)
+	a.selectThread("C")
+	a.threadSelection.Clear()
+	a.threadSelection.Add("A")
+	a.threadSelection.Add("C")
+	a.archive()
+	if a.selectedThread != "D" || a.selectedRow != 1 || a.thread.ID != "D" {
+		t.Fatalf("non-contiguous archive selected %q at row %d with detail %q, want D at row 1", a.selectedThread, a.selectedRow, a.thread.ID)
+	}
+}
+
 func TestArchiveKeepsStarredSearchResult(t *testing.T) {
 	service := newFakeService()
 	a := newTestApp(service)
