@@ -34,6 +34,18 @@ func TestDraftEndpointsAndRestore(t *testing.T) {
 				return
 			}
 			writeTestJSON(t, w, apiDraftList{Drafts: []apiDraft{{ID: "draft-1", Message: apiMessage{ID: "message-1", ThreadID: "thread-1"}}}, NextPageToken: "page-2"})
+		case "/users/me/drafts/draft-1":
+			if r.Method != http.MethodGet || r.URL.Query().Get("format") != "full" {
+				t.Errorf("drafts.get = %s %s", r.Method, r.URL.String())
+			}
+			writeTestJSON(t, w, apiDraft{ID: "draft-1", Message: apiMessage{
+				ID: "message-1", ThreadID: "thread-1",
+				Payload: apiPart{
+					MIMEType: "text/plain",
+					Headers:  []apiHeader{{Name: "Subject", Value: "First draft"}},
+					Body:     apiBody{Data: base64.RawURLEncoding.EncodeToString([]byte("First body"))},
+				},
+			}})
 		case "/users/me/drafts/draft-2":
 			if r.Method != http.MethodGet || r.URL.Query().Get("format") != "full" {
 				t.Errorf("drafts.get = %s %s", r.Method, r.URL.String())
@@ -71,6 +83,9 @@ func TestDraftEndpointsAndRestore(t *testing.T) {
 	if err != nil || len(first.Drafts) != 1 || first.NextPageToken != "page-2" {
 		t.Fatalf("first draft page = %+v, %v", first, err)
 	}
+	if first.Drafts[0].Message.Subject != "First draft" || first.Drafts[0].Message.Text != "First body" {
+		t.Fatalf("drafts.list did not hydrate full messages: %+v", first.Drafts[0].Message)
+	}
 	second, err := service.Drafts(ctx, mail.Query{Limit: 1, PageToken: first.NextPageToken})
 	if err != nil || len(second.Drafts) != 1 || second.Drafts[0].ID != "draft-2" || second.NextPageToken != "" {
 		t.Fatalf("second draft page = %+v, %v", second, err)
@@ -95,6 +110,21 @@ func TestDraftEndpointsAndRestore(t *testing.T) {
 	}
 	if err := service.DeleteDraft(ctx, created.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDraftsPassesSearchQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/me/drafts" || r.Method != http.MethodGet || r.URL.Query().Get("q") != "needle" {
+			t.Errorf("draft search request = %s %s", r.Method, r.URL.String())
+		}
+		writeTestJSON(t, w, apiDraftList{NextPageToken: "next"})
+	}))
+	defer server.Close()
+	service := testService(server)
+	page, err := service.Drafts(context.Background(), mail.Query{Search: "needle"})
+	if err != nil || len(page.Drafts) != 0 || page.NextPageToken != "next" {
+		t.Fatalf("draft search page = %+v, %v", page, err)
 	}
 }
 

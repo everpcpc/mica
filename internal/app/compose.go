@@ -33,6 +33,7 @@ type composer struct {
 	revision          uint64
 	savedRevision     uint64
 	saveState         draftSaveState
+	draftSaving       bool
 	pendingAction     composerPendingAction
 	generation        uint64
 	recoveryAccount   string

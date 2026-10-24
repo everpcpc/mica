@@ -103,6 +103,7 @@ func TestSQLiteDraftSnapshotRestoresComposer(t *testing.T) {
 	restarted := New(service)
 	restarted.account = account
 	restarted.storeAccount = account.Email
+	restarted.accountVerified = true
 	restarted.SetMailStore(db)
 	restarted.schedule = func(fn func()) { fn() }
 	restarted.after = func(time.Duration, func()) {}
@@ -124,6 +125,7 @@ func TestSQLiteDraftSnapshotRestoresComposer(t *testing.T) {
 	other := New(service)
 	other.account = account
 	other.storeAccount = account.Email
+	other.accountVerified = true
 	other.SetMailStore(db)
 	other.schedule = func(fn func()) { fn() }
 	other.openCompose(nil)
@@ -173,6 +175,7 @@ func TestSQLiteDraftSnapshotPreservesUnreadAttachmentState(t *testing.T) {
 	restarted := New(service)
 	restarted.account = account
 	restarted.storeAccount = account.Email
+	restarted.accountVerified = true
 	restarted.SetMailStore(db)
 	restarted.schedule = func(fn func()) { fn() }
 	restarted.after = func(time.Duration, func()) {}
@@ -192,5 +195,72 @@ func TestSQLiteDraftSnapshotPreservesUnreadAttachmentState(t *testing.T) {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDraftSnapshotRequiresVerifiedAccount(t *testing.T) {
+	ctx := context.Background()
+	db, err := mailstore.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	snapshot := mail.DraftSnapshot{Compose: mail.Compose{Text: "Recovered"}}
+	if err := db.SaveDraftSnapshot(ctx, "account@example.com", snapshot); err != nil {
+		t.Fatal(err)
+	}
+	service := newDraftTestService()
+	a := New(service)
+	a.store = db
+	a.storeAccount = "account@example.com"
+	a.schedule = func(fn func()) { fn() }
+	a.restoreDraftSnapshot()
+	if a.compose != nil {
+		t.Fatal("snapshot restored before account verification")
+	}
+	a.accountVerified = true
+	a.restoreDraftSnapshot()
+	if a.compose == nil || a.compose.doc.Text().PlainText() != "Recovered" {
+		t.Fatalf("snapshot did not restore after verification: %+v", a.compose)
+	}
+}
+
+func TestDraftSnapshotAccountIsolation(t *testing.T) {
+	ctx := context.Background()
+	db, err := mailstore.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.SaveDraftSnapshot(ctx, "b@example.com", mail.DraftSnapshot{Compose: mail.Compose{Text: "B snapshot"}}); err != nil {
+		t.Fatal(err)
+	}
+	service := newDraftTestService()
+	a := New(service)
+	a.store = db
+	a.storeAccount = "b@example.com"
+	a.account = mail.Account{Email: "b@example.com"}
+	a.schedule = func(fn func()) { fn() }
+	a.openCompose(nil)
+	m := a.compose
+	m.recoveryAccount = "a@example.com"
+	m.revision = 1
+	m.doc.SetText(richtext.NewText("A snapshot"))
+	a.persistAccount(mail.Account{Email: "b@example.com"})
+	snapshot, found, err := db.DraftSnapshot(ctx, "b@example.com")
+	if err != nil || !found || snapshot.Compose.Text != "B snapshot" {
+		t.Fatalf("A overwrote B's snapshot: %+v found=%v err=%v", snapshot, found, err)
+	}
+	if _, ok := a.draftManager(m); ok {
+		t.Fatal("draft manager accepted a different recovery account")
+	}
+	a.pumpDraftSave(m)
+	if service.createCalls != 0 {
+		t.Fatal("A's snapshot was saved through B's account")
+	}
+	a.clearDraftSnapshot(m)
+	snapshot, found, err = db.DraftSnapshot(ctx, "b@example.com")
+	if err != nil || !found || snapshot.Compose.Text != "B snapshot" {
+		t.Fatalf("A deleted B's snapshot: %+v found=%v err=%v", snapshot, found, err)
 	}
 }

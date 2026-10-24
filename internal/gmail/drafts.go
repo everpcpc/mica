@@ -28,17 +28,20 @@ func (s *Service) Drafts(ctx context.Context, query mail.Query) (mail.DraftPage,
 	if query.PageToken != "" {
 		values.Set("pageToken", query.PageToken)
 	}
+	if query.Search != "" {
+		values.Set("q", query.Search)
+	}
 	var response apiDraftList
 	if err := s.doJSON(ctx, http.MethodGet, "/drafts", values, nil, &response); err != nil {
 		return mail.DraftPage{}, err
 	}
 	page := mail.DraftPage{Drafts: make([]mail.DraftRecord, len(response.Drafts)), NextPageToken: response.NextPageToken}
 	for i, draft := range response.Drafts {
-		converted, err := makeDraft(draft)
+		full, err := s.Draft(ctx, draft.ID)
 		if err != nil {
 			return mail.DraftPage{}, err
 		}
-		page.Drafts[i] = converted
+		page.Drafts[i] = full
 	}
 	return page, nil
 }

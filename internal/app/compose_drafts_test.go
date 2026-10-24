@@ -23,6 +23,7 @@ type draftTestService struct {
 	sendErr        error
 	createCalls    int
 	updateCalls    int
+	getCalls       int
 	deleteCalls    int
 	sendDraftCalls int
 	sendCalls      int
@@ -30,6 +31,11 @@ type draftTestService struct {
 
 func newDraftTestService() *draftTestService {
 	return &draftTestService{Demo: mailmodel.NewDemo()}
+}
+
+func (s *draftTestService) Draft(ctx context.Context, id string) (mailmodel.DraftRecord, error) {
+	s.getCalls++
+	return s.Demo.Draft(ctx, id)
 }
 
 func (s *draftTestService) CreateDraft(ctx context.Context, compose mailmodel.Compose) (mailmodel.DraftRecord, error) {
@@ -257,6 +263,55 @@ func TestComposerCloseWaitsForFinalSaveAndFailureKeepsOpen(t *testing.T) {
 	}
 }
 
+func TestComposerCloseReopensUpdatedDraft(t *testing.T) {
+	h := newDraftHarness(t)
+	draft, err := h.service.CreateDraft(context.Background(), mailmodel.Compose{Text: "before"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.app.selectedLabel = mailmodel.Draft
+	h.app.selectedThread = draft.ID
+	h.app.thread = draftThread(draft)
+	h.app.threads = []mailmodel.ThreadSummary{draftSummary(draft)}
+	h.app.openDraftMessage(draft.ID, draft.Message)
+	h.edit("latest")
+	h.app.closeCompose()
+	if h.app.compose == nil {
+		t.Fatal("close did not wait for the update")
+	}
+	h.finishJob()
+	if h.app.compose != nil {
+		t.Fatal("composer did not close after the update")
+	}
+	if h.app.selectedThread != "" || h.app.thread.ID != "" {
+		t.Fatalf("closed draft retained stale detail: selected=%q thread=%q", h.app.selectedThread, h.app.thread.ID)
+	}
+	h.app.selectThread(draft.ID)
+	h.finishJob()
+	if h.service.getCalls != 1 {
+		t.Fatalf("reopen did not full get the draft: %d calls", h.service.getCalls)
+	}
+	if len(h.app.thread.Messages) != 1 || h.app.thread.Messages[0].Text != "latest" {
+		t.Fatalf("reopened detail is stale: %+v", h.app.thread)
+	}
+	h.app.openSelectedDraft()
+	if h.app.compose == nil || h.app.compose.doc.Text().PlainText() != "latest" {
+		t.Fatalf("reopened composer is stale: %+v", h.app.compose)
+	}
+}
+
+func TestComposerCloseKeepsOrdinaryReader(t *testing.T) {
+	h := newDraftHarness(t)
+	h.app.selectedLabel = mailmodel.Inbox
+	h.app.selectedThread = "thread-1"
+	h.app.thread = mailmodel.Thread{ID: "thread-1"}
+	h.app.openCompose(nil)
+	h.app.closeCompose()
+	if h.app.selectedThread != "thread-1" || h.app.thread.ID != "thread-1" {
+		t.Fatalf("ordinary reader was cleared: selected=%q thread=%q", h.app.selectedThread, h.app.thread.ID)
+	}
+}
+
 func TestComposerOnlyDiscardDeletesDraft(t *testing.T) {
 	h := newDraftHarness(t)
 	draft, err := h.service.CreateDraft(context.Background(), mailmodel.Compose{Text: "saved"})
@@ -330,6 +385,57 @@ func TestComposerSendWaitsForExistingDraftUpdate(t *testing.T) {
 	h.finishJob()
 	if h.service.sendDraftCalls != 1 || h.service.sendCalls != 0 || h.app.compose != nil {
 		t.Fatalf("draft send = calls %d/%d compose=%+v", h.service.sendDraftCalls, h.service.sendCalls, h.app.compose)
+	}
+}
+
+func TestComposerSecondDebounceDuringCreateDoesNotDuplicate(t *testing.T) {
+	h := newDraftHarness(t)
+	h.app.openCompose(nil)
+	m := h.app.compose
+	m.to = "to@example.com"
+	h.edit("first")
+	h.startSave()
+	h.edit("latest")
+	h.startSave()
+	if !m.draftSaving || m.saveState != draftSaveScheduled || len(h.jobs) != 1 || h.service.createCalls != 0 {
+		t.Fatalf("second debounce started another create: %+v jobs=%d calls=%d", m, len(h.jobs), h.service.createCalls)
+	}
+	h.finishJob()
+	if h.service.createCalls != 1 || h.service.updateCalls != 0 {
+		t.Fatalf("create completion = calls %d/%d", h.service.createCalls, h.service.updateCalls)
+	}
+	h.finishJob()
+	if h.service.createCalls != 1 || h.service.updateCalls != 1 || m.draftSaving {
+		t.Fatalf("follow-up update = calls %d/%d saving=%v", h.service.createCalls, h.service.updateCalls, m.draftSaving)
+	}
+}
+
+func TestComposerDiscardWaitsForExistingDraftUpdate(t *testing.T) {
+	h := newDraftHarness(t)
+	draft, err := h.service.CreateDraft(context.Background(), mailmodel.Compose{Text: "saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.app.openDraftMessage(draft.ID, draft.Message)
+	h.edit("latest")
+	h.startSave()
+	h.service.deleteErr = errors.New("offline")
+	h.app.discardCompose()
+	m := h.app.compose
+	if m.pendingAction != composerActionDiscard || h.service.deleteCalls != 0 || len(h.jobs) != 1 {
+		t.Fatalf("discard did not wait for update: %+v jobs=%d", m, len(h.jobs))
+	}
+	h.finishJob()
+	if h.service.updateCalls != 1 || h.service.deleteCalls != 0 {
+		t.Fatalf("delete started before update completed: calls %d/%d", h.service.updateCalls, h.service.deleteCalls)
+	}
+	h.finishJob()
+	if h.service.deleteCalls != 1 || m.draftSaving || m.pendingAction != composerActionNone || m.saveState == draftSaveSaving {
+		t.Fatalf("delete failure left saving blocked: %+v", m)
+	}
+	h.app.closeCompose()
+	if h.app.compose != nil {
+		t.Fatal("delete failure permanently blocked Close")
 	}
 }
 

@@ -333,7 +333,8 @@ func (a *App) logoutGmail() {
 func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	recovered := a.compose
 	preserveRecovered := recovered != nil && !recovered.sending && recovered.recoveryAccount != "" && len(cachedAccount) > 0 && strings.EqualFold(recovered.recoveryAccount, cachedAccount[0])
-	if preserveRecovered && recovered.saveState == draftSaveSaving {
+	if preserveRecovered && (recovered.draftSaving || recovered.saveState == draftSaveSaving) {
+		recovered.draftSaving = false
 		recovered.saveState = draftSaveScheduled
 	}
 	a.serviceVersion++

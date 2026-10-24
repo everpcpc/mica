@@ -30,9 +30,12 @@ const (
 	composerActionSend
 )
 
-func (a *App) draftManager() (mailmodel.DraftManager, bool) {
+func (a *App) draftManager(m *composer) (mailmodel.DraftManager, bool) {
 	manager, ok := a.service.(mailmodel.DraftManager)
 	if !ok || a.storeAccount != "" && !strings.EqualFold(a.account.Email, a.storeAccount) {
+		return nil, false
+	}
+	if m != nil && m.recoveryAccount != "" && !strings.EqualFold(m.recoveryAccount, a.account.Email) {
 		return nil, false
 	}
 	return manager, true
@@ -61,10 +64,10 @@ func (a *App) scheduleDraftSave(m *composer) {
 }
 
 func (a *App) pumpDraftSave(m *composer) {
-	if a.compose != m || m.sending || m.pendingAction == composerActionSend || m.pendingAction == composerActionDiscard || m.saveState == draftSaveSaving {
+	if a.compose != m || m.sending || m.pendingAction == composerActionSend || m.pendingAction == composerActionDiscard || m.draftSaving {
 		return
 	}
-	manager, ok := a.draftManager()
+	manager, ok := a.draftManager(m)
 	if !ok {
 		if m.pendingAction == composerActionClose {
 			m.pendingAction = composerActionNone
@@ -76,7 +79,7 @@ func (a *App) pumpDraftSave(m *composer) {
 	if m.revision == m.savedRevision {
 		if m.pendingAction == composerActionClose {
 			m.pendingAction = composerActionNone
-			a.compose = nil
+			a.finishCloseCompose(m)
 		}
 		return
 	}
@@ -94,13 +97,14 @@ func (a *App) pumpDraftSave(m *composer) {
 	if m.draftID == "" && draftComposeEmpty(compose) {
 		m.savedRevision = m.revision
 		m.saveState = draftSaveSaved
-		a.clearDraftSnapshot()
+		a.clearDraftSnapshot(m)
 		if m.pendingAction == composerActionClose {
 			m.pendingAction = composerActionNone
-			a.compose = nil
+			a.finishCloseCompose(m)
 		}
 		return
 	}
+	m.draftSaving = true
 	m.saveState = draftSaveSaving
 	generation, revision, draftID, version := m.generation, m.revision, m.draftID, a.serviceVersion
 	a.schedule(func() {
@@ -118,6 +122,9 @@ func (a *App) pumpDraftSave(m *composer) {
 }
 
 func (a *App) finishDraftSave(m *composer, generation, revision uint64, previousDraftID string, version int, draft mailmodel.DraftRecord, err error) {
+	if a.compose == m && m.generation == generation {
+		m.draftSaving = false
+	}
 	if a.compose != m || m.generation != generation || a.serviceVersion != version {
 		return
 	}
@@ -128,7 +135,7 @@ func (a *App) finishDraftSave(m *composer, generation, revision uint64, previous
 		m.pendingAction = composerActionNone
 		m.sending = false
 		if action == composerActionDiscard && m.draftID == "" {
-			a.clearDraftSnapshot()
+			a.clearDraftSnapshot(m)
 			a.compose = nil
 		}
 		return
@@ -139,7 +146,7 @@ func (a *App) finishDraftSave(m *composer, generation, revision uint64, previous
 	m.savedRevision = revision
 	if m.revision == revision {
 		m.saveState = draftSaveSaved
-		a.clearDraftSnapshot()
+		a.clearDraftSnapshot(m)
 	} else {
 		m.saveState = draftSaveScheduled
 		a.persistDraftSnapshot(m)
@@ -149,7 +156,7 @@ func (a *App) finishDraftSave(m *composer, generation, revision uint64, previous
 	switch action {
 	case composerActionClose:
 		if m.revision == m.savedRevision {
-			a.compose = nil
+			a.finishCloseCompose(m)
 		} else {
 			m.pendingAction = composerActionClose
 			a.pumpDraftSave(m)
@@ -200,24 +207,34 @@ func draftComposeEmpty(compose mailmodel.Compose) bool {
 		strings.TrimSpace(compose.Subject) == "" && strings.TrimSpace(compose.Text) == "" && strings.TrimSpace(emailMarkdown(compose.HTML)) == "" && len(compose.Attachments) == 0
 }
 
+func (a *App) finishCloseCompose(m *composer) {
+	if a.compose != m {
+		return
+	}
+	if m.draftID != "" && a.selectedLabel == mailmodel.Draft && a.selectedThread == m.draftID {
+		a.clearThread()
+	}
+	a.compose = nil
+}
+
 func (a *App) closeCompose() {
 	m := a.compose
 	if m == nil || m.sending || m.pendingAction != composerActionNone {
 		return
 	}
-	if _, ok := a.draftManager(); !ok && m.recoveryAccount == "" {
-		a.clearDraftSnapshot()
+	if _, ok := a.draftManager(m); !ok && m.recoveryAccount == "" {
+		a.clearDraftSnapshot(m)
 		a.compose = nil
 		return
 	}
 	compose, ready := a.composeSnapshot(m)
 	if ready && m.draftID == "" && draftComposeEmpty(compose) {
-		a.clearDraftSnapshot()
+		a.clearDraftSnapshot(m)
 		a.compose = nil
 		return
 	}
-	if m.revision == m.savedRevision && m.saveState != draftSaveSaving {
-		a.compose = nil
+	if m.revision == m.savedRevision && !m.draftSaving {
+		a.finishCloseCompose(m)
 		return
 	}
 	m.pendingAction = composerActionClose
@@ -230,23 +247,24 @@ func (a *App) discardCompose() {
 	if m == nil || m.sending || m.pendingAction != composerActionNone {
 		return
 	}
-	manager, ok := a.draftManager()
+	manager, ok := a.draftManager(m)
 	if !ok {
 		if m.draftID != "" {
 			m.err = locales.DraftDeleteFailedReason("drafts are unavailable")
 			return
 		}
-		a.clearDraftSnapshot()
+		a.clearDraftSnapshot(m)
 		a.compose = nil
 		return
 	}
-	if m.draftID == "" && m.saveState == draftSaveSaving {
+	if m.draftSaving {
 		m.pendingAction = composerActionDiscard
+		m.err = ""
 		return
 	}
 	if m.draftID == "" {
 		m.generation++
-		a.clearDraftSnapshot()
+		a.clearDraftSnapshot(m)
 		a.compose = nil
 		return
 	}
@@ -265,7 +283,7 @@ func (a *App) discardCompose() {
 				m.err = locales.DraftDeleteFailedReason(err.Error())
 				return
 			}
-			a.clearDraftSnapshot()
+			a.clearDraftSnapshot(m)
 			a.compose = nil
 			a.refresh()
 		})
@@ -275,7 +293,7 @@ func (a *App) discardCompose() {
 func (a *App) beginDiscardCompose(m *composer) {
 	if a.compose != m || m.draftID == "" {
 		if a.compose == m {
-			a.clearDraftSnapshot()
+			a.clearDraftSnapshot(m)
 			a.compose = nil
 		}
 		return
@@ -306,7 +324,7 @@ func (a *App) sendComposeWithDraft() {
 		m.err = locales.BodyRequired()
 		return
 	}
-	if m.saveState == draftSaveSaving {
+	if m.draftSaving {
 		m.pendingAction = composerActionSend
 		m.sending = true
 		m.err = ""
@@ -325,7 +343,7 @@ func (a *App) beginSendCompose(m *composer) {
 		m.pendingAction = composerActionNone
 		return
 	}
-	manager, hasDrafts := a.draftManager()
+	manager, hasDrafts := a.draftManager(m)
 	draftID := m.draftID
 	m.generation++
 	m.pendingAction = composerActionSend
@@ -348,13 +366,13 @@ func (a *App) beginSendCompose(m *composer) {
 				m.sending = false
 				m.pendingAction = composerActionNone
 				m.err = locales.SendFailed(err.Error())
-				if _, ok := a.draftManager(); ok && m.revision > m.savedRevision {
+				if _, ok := a.draftManager(m); ok && m.revision > m.savedRevision {
 					m.saveState = draftSaveScheduled
 					a.scheduleDraftSave(m)
 				}
 				return
 			}
-			a.clearDraftSnapshot()
+			a.clearDraftSnapshot(m)
 			a.compose = nil
 			a.notice = locales.SendSucceeded()
 			a.refresh()
@@ -363,7 +381,7 @@ func (a *App) beginSendCompose(m *composer) {
 }
 
 func (a *App) composeSaveStatus(m *composer) string {
-	if _, ok := a.draftManager(); !ok {
+	if _, ok := a.draftManager(m); !ok {
 		return ""
 	}
 	switch m.saveState {

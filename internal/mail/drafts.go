@@ -28,7 +28,9 @@ func (d *Demo) Drafts(_ context.Context, query Query) (DraftPage, error) {
 	}
 	drafts := make([]DraftRecord, 0, len(d.drafts))
 	for _, draft := range d.drafts {
-		drafts = append(drafts, draft.Clone())
+		if draftMatchesSearch(draft, query.Search) {
+			drafts = append(drafts, draft.Clone())
+		}
 	}
 	sort.Slice(drafts, func(i, j int) bool {
 		if drafts[i].Message.Date.Equal(drafts[j].Message.Date) {
@@ -158,4 +160,13 @@ func (d *Demo) deleteDraftAttachments(message Message) {
 	for _, attachment := range message.Attachments {
 		delete(d.attachmentData, message.ID+"\x00"+attachment.ID)
 	}
+}
+
+func draftMatchesSearch(draft DraftRecord, search string) bool {
+	search = strings.ToLower(strings.TrimSpace(search))
+	if search == "" {
+		return true
+	}
+	content := strings.ToLower(draft.Message.Subject + "\n" + draft.Message.Text + "\n" + draft.Message.HTML)
+	return strings.Contains(content, search)
 }

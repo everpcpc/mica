@@ -20,7 +20,7 @@ type draftStore interface {
 func (a *App) restoreDraftSnapshot() {
 	store, ok := a.store.(draftStore)
 	email := a.storeAccount
-	if !ok || email == "" || a.draftRestoreAccount == email {
+	if !ok || !a.accountVerified || email == "" || a.draftRestoreAccount == email {
 		return
 	}
 	a.draftRestoreAccount = email
@@ -29,7 +29,7 @@ func (a *App) restoreDraftSnapshot() {
 		snapshot, found, err := store.DraftSnapshot(context.Background(), email)
 		logCacheError(err)
 		a.publish(func() {
-			if version != a.serviceVersion || email != a.storeAccount || a.compose != nil || err != nil || !found {
+			if version != a.serviceVersion || !a.accountVerified || email != a.storeAccount || a.compose != nil || err != nil || !found {
 				return
 			}
 			a.openRecoveredDraft(snapshot, email)
@@ -37,23 +37,41 @@ func (a *App) restoreDraftSnapshot() {
 	})
 }
 
+func (a *App) draftSnapshotAccount(m *composer) (string, bool) {
+	email := a.storeAccount
+	if email == "" {
+		return "", false
+	}
+	if m != nil && m.recoveryAccount != "" && (!strings.EqualFold(m.recoveryAccount, a.account.Email) || !strings.EqualFold(m.recoveryAccount, email)) {
+		return "", false
+	}
+	return email, true
+}
+
 func (a *App) persistDraftSnapshot(m *composer) {
+	email, ok := a.draftSnapshotAccount(m)
+	if !ok {
+		return
+	}
 	snapshot := mailmodel.DraftSnapshot{DraftID: m.draftID, Compose: composeSnapshotContent(m)}
 	for i, item := range m.attachments {
 		if item.loading || item.err != "" {
 			snapshot.AttachmentErrors = append(snapshot.AttachmentErrors, i)
 		}
 	}
-	a.writeDraftSnapshot(&snapshot)
+	a.writeDraftSnapshot(email, &snapshot)
 }
 
-func (a *App) clearDraftSnapshot() {
-	a.writeDraftSnapshot(nil)
+func (a *App) clearDraftSnapshot(m *composer) {
+	email, ok := a.draftSnapshotAccount(m)
+	if !ok {
+		return
+	}
+	a.writeDraftSnapshot(email, nil)
 }
 
-func (a *App) writeDraftSnapshot(snapshot *mailmodel.DraftSnapshot) {
+func (a *App) writeDraftSnapshot(email string, snapshot *mailmodel.DraftSnapshot) {
 	store, ok := a.store.(draftStore)
-	email := a.storeAccount
 	if !ok || email == "" {
 		return
 	}

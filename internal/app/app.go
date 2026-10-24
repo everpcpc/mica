@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -247,17 +248,23 @@ func (a *App) refresh() {
 func (a *App) currentQuery() mail.Query {
 	labelID, search := mailboxQuery(a.selectedLabel)
 	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
-		labelID, search = "", userSearch
+		if a.selectedLabel == mail.Draft {
+			search = userSearch
+		} else {
+			labelID, search = "", userSearch
+		}
 	}
 	return mail.Query{LabelID: labelID, Search: search, Limit: threadPageSize}
 }
 
 func listThreadPage(ctx context.Context, service mail.Service, query mail.Query) (mail.ThreadPage, error) {
 	if query.LabelID == mail.Draft {
-		if manager, ok := service.(mail.DraftManager); ok {
-			page, err := manager.Drafts(ctx, query)
-			return draftThreadPage(page), err
+		manager, ok := service.(mail.DraftManager)
+		if !ok {
+			return mail.ThreadPage{}, errors.New("mail: drafts are unavailable")
 		}
+		page, err := manager.Drafts(ctx, query)
+		return draftThreadPage(page), err
 	}
 	if pager, ok := service.(mail.ThreadPager); ok {
 		return pager.ListThreadPage(ctx, query)

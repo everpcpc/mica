@@ -272,7 +272,7 @@ func (s *historySynchronizer) sync(start uint64) error {
 		if labelErr == nil {
 			s.app.setLabel(label)
 		}
-		if a := s.app; a.currentQuery().Search != "" {
+		if a := s.app; a.selectedLabel == mail.Draft || a.currentQuery().Search != "" {
 			a.refreshList()
 		} else {
 			a.applyHistoryChanges(changedSummaries, deleted)
