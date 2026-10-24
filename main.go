@@ -133,6 +133,7 @@ func main() {
 			a.RestorePaneWidths()
 			a.RestoreRemoteImagesPreference()
 			mygo.App.OnQuit(func() {
+				a.WaitForCacheWrites()
 				if err := store.Close(); err != nil {
 					log.Printf("close mail cache: %v", err)
 				}

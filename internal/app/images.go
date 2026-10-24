@@ -186,6 +186,9 @@ func messageImageNodeURL(message mail.Message, node *xhtml.Node) string {
 
 func messageImageURL(message mail.Message, source string) string {
 	source = strings.TrimSpace(source)
+	if strings.HasPrefix(source, "//") {
+		source = "https:" + source
+	}
 	if len(source) >= len("data:") && strings.EqualFold(source[:len("data:")], "data:") {
 		return "mica-data:" + source[len("data:"):]
 	}

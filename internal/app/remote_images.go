@@ -77,7 +77,9 @@ func (a *App) saveRemoteImagesPreference() {
 	if store == nil {
 		return
 	}
+	a.cacheState.writes.Add(1)
 	a.schedule(func() {
+		defer a.cacheState.writes.Done()
 		a.cacheState.mu.Lock()
 		defer a.cacheState.mu.Unlock()
 		if generation != a.cacheState.remoteImagesSave {
@@ -90,11 +92,35 @@ func (a *App) saveRemoteImagesPreference() {
 }
 
 func remoteImageSource(source string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(source))
+	source = strings.TrimSpace(source)
+	if strings.HasPrefix(source, "//") {
+		return true
+	}
+	parsed, err := url.Parse(source)
 	if err != nil {
 		return false
 	}
 	return strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https")
+}
+
+func remoteImageStyle(value string) bool {
+	value = strings.ToLower(value)
+	for {
+		start := strings.Index(value, "url(")
+		if start < 0 {
+			return false
+		}
+		value = value[start+4:]
+		end := strings.Index(value, ")")
+		if end < 0 {
+			return false
+		}
+		target := strings.Trim(strings.TrimSpace(value[:end]), `"'`)
+		if remoteImageSource(target) {
+			return true
+		}
+		value = value[end+1:]
+	}
 }
 
 func messageHasRemoteImages(message mail.Message) bool {
@@ -103,24 +129,34 @@ func messageHasRemoteImages(message mail.Message) bool {
 		return false
 	}
 	found := false
-	walkEmailNodes(root, func(node *xhtml.Node) {
-		if found || node.Type != xhtml.ElementNode {
+	var visit func(*xhtml.Node)
+	visit = func(node *xhtml.Node) {
+		if found {
 			return
 		}
-		if remoteImageSource(imageAttribute(node, "src")) {
-			found = true
-			return
-		}
-		for _, attribute := range node.Attr {
-			if attribute.Key != "style" && attribute.Key != "data-bg" {
-				continue
+		if node.Type == xhtml.ElementNode {
+			if emailHidden(node) || trackingImageNode(node) {
+				return
 			}
-			value := strings.ToLower(attribute.Val)
-			if strings.Contains(value, "http://") || strings.Contains(value, "https://") {
+			if remoteImageSource(imageAttribute(node, "src")) {
 				found = true
 				return
 			}
+			for _, attribute := range node.Attr {
+				if attribute.Key == "data-bg" && remoteImageSource(attribute.Val) {
+					found = true
+					return
+				}
+				if attribute.Key == "style" && remoteImageStyle(attribute.Val) {
+					found = true
+					return
+				}
+			}
 		}
-	})
+		for child := node.FirstChild; child != nil && !found; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(root)
 	return found
 }

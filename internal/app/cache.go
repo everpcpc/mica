@@ -172,6 +172,10 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 	}
 }
 
+func (a *App) WaitForCacheWrites() {
+	a.cacheState.writes.Wait()
+}
+
 func (a *App) persistThread(thread mail.Thread) {
 	thread = cloneMailThread(thread)
 	version, revision := a.nextThreadCacheVersion(thread.AccountEmail, thread.ID)

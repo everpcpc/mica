@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"mica/internal/mail"
 
@@ -168,7 +169,11 @@ func TestMessageRemoteImageDetection(t *testing.T) {
 	}{
 		{name: "remote image", html: `<img src="https://images.example/a.png">`, want: true},
 		{name: "remote background", html: `<div style="background:url('https://images.example/bg.png')">Background</div>`, want: true},
+		{name: "protocol relative image", html: `<img src="//cdn.example/a.png">`, want: true},
+		{name: "protocol relative background", html: `<div style="background-image:url(//cdn.example/bg.png)">Background</div>`, want: true},
 		{name: "inline image", html: `<img src="data:image/png;base64,AAAA">`},
+		{name: "hidden remote image", html: `<div style="display:none"><img src="https://images.example/hidden.png"></div>`},
+		{name: "tracking pixel", html: `<img width="1" height="1" src="https://images.example/pixel.png">`},
 		{name: "plain text", html: `<p>Hello</p>`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -176,6 +181,74 @@ func TestMessageRemoteImageDetection(t *testing.T) {
 				t.Fatalf("messageHasRemoteImages() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestProtocolRelativeRemoteImage(t *testing.T) {
+	data := testPNG(t)
+	requested := ""
+	client := &http.Client{Transport: imageTransport(func(request *http.Request) (*http.Response, error) {
+		requested = request.URL.String()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(data)),
+		}, nil
+	})}
+	resources := newEmailResourceStore(newFakeService())
+	resources.loader = &messageImages{service: newFakeService(), client: client}
+	resources.automaticRemote = true
+	token := resources.register(mail.Message{}, "//cdn.example/a.png")
+	response := serveOwnerResource(resources, token)
+	if response.Code != http.StatusOK || requested != "https://cdn.example/a.png" {
+		t.Fatalf("protocol-relative image: status=%d request=%q", response.Code, requested)
+	}
+}
+
+func TestRemoteImagePreferenceQuitWaitsForWrites(t *testing.T) {
+	store := newFakeMailStore()
+	store.preferences[remoteImagesPreference] = "auto"
+	a := New(newFakeService())
+	a.SetMailStore(store)
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.setRemoteImagesAutomatic(false)
+	if len(jobs) != 1 {
+		t.Fatalf("preference jobs = %d, want 1", len(jobs))
+	}
+	done := make(chan struct{})
+	go func() {
+		a.cacheState.writes.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("cache wait returned before the preference was saved")
+	case <-time.After(20 * time.Millisecond):
+	}
+	jobs[0]()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cache wait did not finish after saving")
+	}
+	if got := store.preferences[remoteImagesPreference]; got != "blocked" {
+		t.Fatalf("preference after quit wait = %q", got)
+	}
+}
+
+func TestRemoteImagePermissionDoesNotLeakWithinAccount(t *testing.T) {
+	resources := newEmailResourceStore(newFakeService())
+	a := New(newFakeService())
+	a.emailResources = resources
+	first := mail.Message{ID: "first", ThreadID: "shared-thread", AccountEmail: "a@example.com"}
+	second := mail.Message{ID: "second", ThreadID: "shared-thread", AccountEmail: "a@example.com"}
+	a.allowRemoteImages(first)
+	if !resources.remoteAllowed(readerMessageKey(first), "https://images.example/a.png") {
+		t.Fatal("first message was not allowed")
+	}
+	if resources.remoteAllowed(readerMessageKey(second), "https://images.example/b.png") {
+		t.Fatal("permission leaked to another message in the same account")
 	}
 }
 
