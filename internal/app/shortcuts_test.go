@@ -46,6 +46,39 @@ func TestGmailShortcutsNavigateStarArchiveAndUndo(t *testing.T) {
 	}
 }
 
+func TestShiftedPunctuationDoesNotOverrideSearchInput(t *testing.T) {
+	a := newTestApp(newFakeService())
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("Search mail"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(ui.Shift, ui.KeySlash)
+	if a.helpOpen {
+		t.Fatal("typing Shift+/ in search opened shortcut help")
+	}
+	tt.Type("?")
+	if a.query != "?" {
+		t.Fatalf("search text = %q, want Shift+/ input", a.query)
+	}
+}
+
+func TestShortcutMenuTracksSearchFocus(t *testing.T) {
+	a := newTestApp(newFakeService())
+	var states []bool
+	a.SetShortcutMenuHandler(func(disabled bool) { states = append(states, disabled) })
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("Search mail"); err != nil {
+		t.Fatal(err)
+	}
+	if len(states) == 0 || !states[len(states)-1] {
+		t.Fatalf("shortcut menu states = %v, want disabled for text input", states)
+	}
+	a.PerformShortcut(ui.KeySlash, ui.Shift)
+	if a.helpOpen {
+		t.Fatal("disabled menu shortcut opened help")
+	}
+}
+
 func TestArchiveShortcutTwiceAdvancesSelection(t *testing.T) {
 	service := newFakeService()
 	service.threads = append(service.threads,

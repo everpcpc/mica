@@ -16,8 +16,23 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func appMenu(openSettings func()) *mygo.Menu {
-	return mygo.NewMenu([]*mygo.MenuItem{
+func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Menu, func(bool)) {
+	trash := &mygo.MenuItem{Label: locales.MoveToTrash(), Accelerator: "Shift+3", Click: func(*mygo.MenuItem, *mygo.Window) {
+		if shortcut != nil {
+			shortcut(ui.Key3, ui.Shift)
+		}
+	}}
+	spam := &mygo.MenuItem{Label: locales.ReportSpam(), Accelerator: "Shift+1", Click: func(*mygo.MenuItem, *mygo.Window) {
+		if shortcut != nil {
+			shortcut(ui.Key1, ui.Shift)
+		}
+	}}
+	help := &mygo.MenuItem{Label: locales.ShortcutHelp(), Accelerator: "Shift+/", Click: func(*mygo.MenuItem, *mygo.Window) {
+		if shortcut != nil {
+			shortcut(ui.KeySlash, ui.Shift)
+		}
+	}}
+	menu := mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "Mica", Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
 			updater.MenuItem(),
@@ -30,7 +45,14 @@ func appMenu(openSettings func()) *mygo.Menu {
 		{Role: mygo.RoleEditMenu},
 		{Role: mygo.RoleFormatMenu},
 		{Role: mygo.RoleWindowMenu},
+		{Label: locales.ShortcutActions(), Submenu: []*mygo.MenuItem{trash, spam}},
+		{Role: mygo.RoleHelp, Submenu: []*mygo.MenuItem{help}},
 	})
+	return menu, func(enabled bool) {
+		for _, item := range []*mygo.MenuItem{trash, spam, help} {
+			item.SetEnabled(enabled)
+		}
+	}
 }
 
 func main() {
@@ -46,7 +68,12 @@ func main() {
 		}
 		a.OpenSettings()
 	}
-	mygo.App.OnLocaleChanged(func(string) { mygo.App.SetMenu(appMenu(openSettings)) })
+	installMenu := func() {
+		menu, setEnabled := appMenu(openSettings, a.PerformShortcut)
+		a.SetShortcutMenuHandler(func(disabled bool) { setEnabled(!disabled) })
+		mygo.App.SetMenu(menu)
+	}
+	mygo.App.OnLocaleChanged(func(string) { installMenu() })
 	a.SetNotificationHandlers(mygo.App.SetBadgeCount, func(id, title, body string) {
 		go func() {
 			err := mygo.NewNotification(mygo.NotificationOptions{ID: id, Group: "mail", Title: title, Body: body}).Show()
@@ -69,7 +96,7 @@ func main() {
 		}
 	})
 	mygo.App.WhenReady(func() {
-		mygo.App.SetMenu(appMenu(openSettings))
+		installMenu()
 		win = mygo.NewWindow(mygo.WindowOptions{
 			Title:          "Mica",
 			Width:          1280,

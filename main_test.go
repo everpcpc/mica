@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 
 	"mica/internal/app"
@@ -11,6 +12,12 @@ import (
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 )
+
+var testUpdaterOnce sync.Once
+
+func useTestUpdater() {
+	testUpdaterOnce.Do(func() { mygo.Use(updater.New(updater.Options{Language: "en"})) })
+}
 
 func TestView(t *testing.T) {
 	a := app.New(mail.NewDemo())
@@ -27,11 +34,11 @@ func TestView(t *testing.T) {
 }
 
 func TestAppMenuIncludesSettings(t *testing.T) {
-	mygo.Use(updater.New(updater.Options{Language: "en"}))
+	useTestUpdater()
 	i18n.SetLocaleFunc(func() string { return "en" })
 	t.Cleanup(func() { i18n.SetLocaleFunc(nil) })
 	opened := false
-	menu := appMenu(func() { opened = true })
+	menu, _ := appMenu(func() { opened = true }, nil)
 	var settings *mygo.MenuItem
 	for _, item := range menu.Items()[0].Submenu {
 		if item.Label == "Settings…" {
@@ -48,6 +55,45 @@ func TestAppMenuIncludesSettings(t *testing.T) {
 	settings.Click(settings, nil)
 	if !opened {
 		t.Fatal("Settings did not invoke its action")
+	}
+}
+
+func TestAppMenuShiftedGmailShortcuts(t *testing.T) {
+	useTestUpdater()
+	i18n.SetLocaleFunc(func() string { return "en" })
+	t.Cleanup(func() { i18n.SetLocaleFunc(nil) })
+	var keys []ui.Key
+	menu, setEnabled := appMenu(nil, func(key ui.Key, _ ui.Modifiers) { keys = append(keys, key) })
+	var items []*mygo.MenuItem
+	for _, top := range menu.Items() {
+		if top.Label == "Conversation actions" || top.Role == mygo.RoleHelp {
+			items = append(items, top.Submenu...)
+		}
+	}
+	if len(items) != 3 {
+		t.Fatalf("shifted shortcut menu items = %d, want 3", len(items))
+	}
+	for i, want := range []struct {
+		label, accelerator string
+		key                ui.Key
+	}{
+		{label: "Move to Trash", accelerator: "Shift+3", key: ui.Key3},
+		{label: "Report spam", accelerator: "Shift+1", key: ui.Key1},
+		{label: "Keyboard shortcuts", accelerator: "Shift+/", key: ui.KeySlash},
+	} {
+		item := items[i]
+		if item.Label != want.label || item.Accelerator != want.accelerator {
+			t.Errorf("menu item %d = %q %q, want %q %q", i, item.Label, item.Accelerator, want.label, want.accelerator)
+		}
+		setEnabled(false)
+		if item.IsEnabled() {
+			t.Errorf("%s remained enabled with text input", item.Label)
+		}
+		setEnabled(true)
+		item.Click(item, nil)
+		if len(keys) != i+1 || keys[i] != want.key {
+			t.Errorf("%s invoked %v, want %v", item.Label, keys, want.key)
+		}
 	}
 }
 

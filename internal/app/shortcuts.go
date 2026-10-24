@@ -41,7 +41,40 @@ var applicationShortcuts = []shortcutBinding{
 	{name: "sent", key: ui.KeyT, email: true},
 }
 
+func (a *App) SetShortcutMenuHandler(handler func(bool)) {
+	a.shortcutMenu = handler
+	a.shortcutMenuDisabled = a.shortcutsDisabled()
+	if handler != nil {
+		handler(a.shortcutMenuDisabled)
+	}
+}
+
+func (a *App) shortcutsDisabled() bool {
+	return a.searchFocused || a.compose != nil || (a.settings != nil && a.settings.open) || a.helpOpen || (a.labelDialog != nil && a.labelDialog.open)
+}
+
+func (a *App) syncShortcutMenu() {
+	disabled := a.shortcutsDisabled()
+	if disabled == a.shortcutMenuDisabled {
+		return
+	}
+	a.shortcutMenuDisabled = disabled
+	if a.shortcutMenu != nil {
+		a.shortcutMenu(disabled)
+	}
+}
+
+func (a *App) PerformShortcut(key ui.Key, mods ui.Modifiers) {
+	if a.shortcutsDisabled() {
+		return
+	}
+	a.performShortcut(key, mods)
+}
+
 func (a *App) shortcuts(c *ui.Context) {
+	if a.searchFocused {
+		return
+	}
 	for _, binding := range applicationShortcuts {
 		if !c.Shortcut(binding.mods, binding.key) {
 			continue

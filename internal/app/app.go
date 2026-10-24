@@ -55,6 +55,9 @@ type App struct {
 
 	list                 ui.ListState
 	search               ui.Handle
+	searchFocused        bool
+	shortcutMenu         func(bool)
+	shortcutMenuDisabled bool
 	emailResources       *emailResourceStore
 	emailPages           map[string]*emailPage
 	emailHeights         map[string]float32
