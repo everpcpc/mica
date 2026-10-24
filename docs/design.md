@@ -37,7 +37,7 @@ The language selector stores locale codes but presents readable names in both it
 - Hidden images and tracking images with both dimensions at most 1px are omitted, and narrow readers scale images down proportionally. Hidden inline metadata is removed before document generation and text previews.
 - Older read messages in a thread collapse to an accessible sender, preview, and date row; unread and latest messages stay expanded, and manual expansion state follows message IDs.
 - The account name and photo come from Google UserInfo. Existing Gmail-only sessions can request the added OpenID scopes once instead of repeatedly prompting.
-- Account photos support animated GIFs with frame delays and finite loop handling. Static images and Reduce Motion show the first frame.
+- Account photos are static; animated images use their first frame without scheduling playback.
 - Gmail-style filled importance markers appear in both the conversation list and reader.
 - Account metadata, labels, exact query snapshots, and loaded conversations are stored in `~/Library/Application Support/Mica/mail.db` through MyGo's SQLite plugin, with account-scoped records and transactional writes.
 - Cached content appears before network revalidation, while fresh in-memory conversations still avoid duplicate requests during the same session. Network failures leave cached content visible, and background body updates preserve the reading position. Attachment binaries and remote images remain on demand; only attachment metadata is persisted.
