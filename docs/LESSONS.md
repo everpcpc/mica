@@ -55,6 +55,8 @@
 - Empty-draft checks must include HTML and attachments, not only plain text.
 - Disable composer inputs while send, close, or discard is pending. Otherwise users can create edits that the current revision and close path never save.
 - Restore snapshots by cached account identity rather than network verification; an offline profile failure must not block local recovery. A mismatched account must never synchronize that snapshot.
+- Cached identity permits local recovery and editing, not remote writes. Require a verified matching account for draft saves, deletion, and recovered sends; never fall back to `messages/send` when the recovered account fails that check.
+- Guard file picking and drops while close or discard is pending. Disabling the visible button alone does not reject dropped files or a file-picker result that arrives after the action starts.
 
 ## Verify visuals through real rendering
 
