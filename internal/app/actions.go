@@ -91,8 +91,20 @@ func (a *App) captureUndoSummary(id string) {
 	}
 }
 
+func (a *App) canMutateThread(id string) bool {
+	if a.serviceForThreadKey(id) != nil {
+		return true
+	}
+	a.notice = locales.ActionFailed(errAccountClientUnavailable.Error())
+	return false
+}
+
 func (a *App) restoreUndo(action *undoAction) {
 	search := a.currentQuery().Search != ""
+	if a.compositeThreads && a.unified != nil && !search {
+		a.restoreUnifiedUndo(action)
+		return
+	}
 	summaries := make([]mail.ThreadSummary, 0, len(action.items))
 	for _, item := range action.items {
 		a.updateThreadLabels(item.id, item.add, item.remove)
@@ -159,6 +171,17 @@ func (a *App) waitForMutations(fn func()) {
 }
 
 func (a *App) enqueueMutation(job mutationJob) {
+	if job.service == nil && job.runFunc == nil {
+		if job.done != nil {
+			job.done(errAccountClientUnavailable)
+		}
+		if job.failure != nil {
+			a.notice = job.failure(errAccountClientUnavailable.Error())
+		} else {
+			a.notice = locales.ActionFailed(errAccountClientUnavailable.Error())
+		}
+		return
+	}
 	if a.accountTransition != nil {
 		if job.done != nil {
 			job.done(errAccountTransition)
@@ -309,6 +332,9 @@ func (a *App) notSpam() {
 	if len(targets) == 1 {
 		summary := targets[0]
 		id := a.summaryKey(summary)
+		if !a.canMutateThread(id) {
+			return
+		}
 		a.recordUndo(id, []string{mail.Spam}, []string{mail.Inbox})
 		a.updateThreadLabels(id, []string{mail.Inbox}, []string{mail.Spam})
 		a.captureUndoSummary(id)

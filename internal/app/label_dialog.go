@@ -206,7 +206,8 @@ func (a *App) removeLabelDefinition(id string) {
 		a.persistLabels(labels)
 	}
 	for _, thread := range a.threads {
-		if containsLabel(thread.LabelIDs, id) {
+		owner := normalizedEmail(thread.AccountEmail)
+		if (owner == "" || owner == normalizedEmail(a.storeAccount)) && containsLabel(thread.LabelIDs, id) {
 			a.updateThreadLabels(a.summaryKey(thread), nil, []string{id})
 		}
 	}

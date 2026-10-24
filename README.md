@@ -32,6 +32,7 @@
 - **Label management.** Assign, create, recolor, and delete custom Gmail labels.
 - **Comfortable reading.** Sanitized HTML mail, inline images, collapsible messages, light and dark appearances, and reduced-motion support.
 - **Multiple Gmail accounts.** Add, switch between, reauthorize, and remove accounts without mixing their credentials, caches, drafts, or notifications.
+- **Unified Inbox.** Merge multiple Gmail inboxes with independent per-account pagination, owner-aware reading, replies, drafts, and actions.
 - **Offline access and notifications.** A local SQLite cache keeps loaded mail available offline, while Gmail watch and history synchronization keep it current.
 - **English and Simplified Chinese.** Follow the system language or choose one in Settings.
 - **A complete demo mailbox.** Explore the workflow without connecting a Google account.

@@ -245,6 +245,7 @@ func (a *App) removeAccount(email string) {
 					s.removeEmail = ""
 					a.notice = locales.AccountRemoved(email)
 					a.refreshAccountList()
+					a.refreshUnifiedAfterAccountRemoval(email)
 					return
 				}
 				if next == nil {

@@ -141,9 +141,17 @@ func labelUnread(labels []mail.Label, id string) int {
 	return 0
 }
 
+func (a *App) unifiedUnread() int {
+	count := labelUnread(a.labels, mail.Inbox)
+	for email := range a.accountClients {
+		count += labelUnread(a.ownerLabels(email), mail.Inbox)
+	}
+	return count
+}
+
 func hiddenSystemLabel(id string) bool {
 	switch id {
-	case mail.Inbox, mail.Starred, mail.Snoozed, mail.Sent, mail.Draft, mail.Important,
+	case mail.Inbox, mail.Starred, mail.Snoozed, mail.Sent, mail.Draft, mail.Important, mail.Unified,
 		mail.All, mail.Spam, mail.Trash, mail.Unread, "CHAT", "YELLOW_STAR":
 		return true
 	}

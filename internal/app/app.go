@@ -25,6 +25,9 @@ type App struct {
 	accountGenerations       map[string]uint64
 	accountClientLoads       map[string]uint64
 	accountClientPending     map[string][]func(error)
+	unified                  *unifiedState
+	listVersions             listCacheVersions
+	accountCount             int
 	storeAccount             string
 	account                  mail.Account
 	accountPhoto             *ui.Bitmap
@@ -166,11 +169,16 @@ func (a *App) Start() {
 		if store != nil && email != "" {
 			cachedAccount, accountFound, accountCacheErr := store.Account(context.Background(), email)
 			cachedLabels, labelsFound, labelsCacheErr := store.Labels(context.Background(), email)
+			cachedAccounts, accountsErr := store.Accounts(context.Background())
 			logCacheError(accountCacheErr)
 			logCacheError(labelsCacheErr)
+			logCacheError(accountsErr)
 			a.publish(func() {
 				if version != a.serviceVersion || email != a.storeAccount {
 					return
+				}
+				if accountsErr == nil {
+					a.accountCount = len(cachedAccounts)
 				}
 				if accountCacheErr == nil && accountFound && normalizedEmail(cachedAccount.Email) == normalizedEmail(email) && !a.accountVerified {
 					a.account = cachedAccount
@@ -270,6 +278,12 @@ func (a *App) refresh() {
 }
 
 func (a *App) currentQuery() mail.Query {
+	if a.selectedLabel == mail.Unified {
+		if search := strings.TrimSpace(a.query); search != "" {
+			return mail.Query{Search: search, Limit: threadPageSize}
+		}
+		return mail.Query{LabelID: mail.Inbox, Limit: threadPageSize}
+	}
 	labelID, search := mailboxQuery(a.selectedLabel)
 	if userSearch := strings.TrimSpace(a.query); userSearch != "" {
 		if a.selectedLabel == mail.Draft {
@@ -301,6 +315,10 @@ func listThreadPage(ctx context.Context, service mail.Service, query mail.Query)
 }
 
 func (a *App) refreshList() {
+	if a.selectedLabel == mail.Unified {
+		a.refreshUnified()
+		return
+	}
 	a.request++
 	request := a.request
 	a.nextPageToken = ""
@@ -345,6 +363,10 @@ func (a *App) refreshList() {
 }
 
 func (a *App) loadMoreThreads() {
+	if a.selectedLabel == mail.Unified {
+		a.loadMoreUnified()
+		return
+	}
 	if a.nextPageToken == "" || a.loading || a.loadingMore || a.err != "" {
 		return
 	}
@@ -389,9 +411,11 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 	for _, thread := range threads {
 		visible[a.summaryKey(thread)] = true
 	}
-	for id := range a.threadSelection.All() {
-		if !visible[id] {
-			a.threadSelection.Remove(id)
+	if !a.compositeThreads {
+		for id := range a.threadSelection.All() {
+			if !visible[id] {
+				a.threadSelection.Remove(id)
+			}
 		}
 	}
 	if a.selectedThread == "" {
@@ -444,14 +468,11 @@ func (a *App) historyThreadKey(id string) string {
 
 func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string) {
 	if a.compositeThreads {
-		for i := range changed {
-			changed[i].AccountEmail = normalizedEmail(changed[i].AccountEmail)
-			if changed[i].AccountEmail == "" {
-				changed[i].AccountEmail = a.storeAccount
-			}
-		}
+		a.refreshUnified()
+		return
 	}
 	changes := make(map[string]mail.ThreadSummary, len(changed))
+
 	for _, summary := range changed {
 		changes[a.summaryKey(summary)] = summary
 	}
@@ -499,6 +520,17 @@ func historyListContains(query mail.Query, summary mail.ThreadSummary) bool {
 }
 
 func (a *App) selectLabel() {
+	if a.compositeThreads != (a.selectedLabel == mail.Unified) {
+		a.undo = nil
+		if a.noticeToastID != "" {
+			a.expiredNoticeID = a.noticeToastID
+			a.noticeToastID = ""
+		}
+	}
+	if a.compositeThreads {
+		a.compositeThreads = false
+		a.unified = nil
+	}
 	a.query = ""
 	a.clearThread()
 	a.refresh()
@@ -663,7 +695,7 @@ func (a *App) selectedSummary() *mail.ThreadSummary {
 }
 
 func (a *App) markRead(id string) {
-	if a.accountTransition != nil {
+	if a.accountTransition != nil || !a.canMutateThread(id) {
 		return
 	}
 	a.updateThreadLabels(id, nil, []string{mail.Unread})
@@ -760,6 +792,10 @@ func (a *App) actionSummaries() []mail.ThreadSummary {
 	return nil
 }
 
+func (a *App) inboxView() bool {
+	return a.selectedLabel == mail.Inbox || a.selectedLabel == mail.Unified
+}
+
 func (a *App) archive() {
 	summaries := a.actionSummaries()
 	if len(summaries) == 0 {
@@ -768,7 +804,7 @@ func (a *App) archive() {
 	if len(summaries) == 1 {
 		summary := summaries[0]
 		a.recordUndo(a.summaryKey(summary), []string{mail.Inbox}, nil)
-		a.mutate(a.summaryKey(summary), nil, []string{mail.Inbox}, a.selectedLabel == mail.Inbox, locales.Archived)
+		a.mutate(a.summaryKey(summary), nil, []string{mail.Inbox}, a.inboxView(), locales.Archived)
 		return
 	}
 	a.archiveThreads(summaries)
@@ -799,6 +835,11 @@ func (a *App) mutateThreads(summaries []mail.ThreadSummary, mutation batchMutati
 	if len(summaries) == 0 {
 		return
 	}
+	for _, summary := range summaries {
+		if !a.canMutateThread(a.summaryKey(summary)) {
+			return
+		}
+	}
 	action := &undoAction{items: make([]undoItem, 0, len(summaries))}
 	a.undo = action
 	ids := make([]string, 0, len(summaries))
@@ -815,7 +856,7 @@ func (a *App) mutateThreads(summaries []mail.ThreadSummary, mutation batchMutati
 	var removeIDs []string
 	switch mutation.removal {
 	case batchRemoveInbox:
-		if a.selectedLabel == mail.Inbox {
+		if a.inboxView() {
 			removeIDs = ids
 		}
 	case batchRemoveAll:
@@ -887,6 +928,9 @@ func (a *App) trash() {
 	if len(targets) == 1 {
 		summary := targets[0]
 		id := a.summaryKey(summary)
+		if !a.canMutateThread(id) {
+			return
+		}
 		a.recordUndoKind(id, mutationUntrash, nil, []string{mail.Trash})
 		a.updateThreadLabels(id, []string{mail.Trash}, []string{mail.Inbox})
 		a.captureUndoSummary(id)
@@ -922,6 +966,9 @@ func (a *App) untrash() {
 	if len(targets) == 1 {
 		summary := targets[0]
 		id := a.summaryKey(summary)
+		if !a.canMutateThread(id) {
+			return
+		}
 		a.recordUndoKind(id, mutationTrash, []string{mail.Trash}, []string{mail.Inbox})
 		a.updateThreadLabels(id, nil, []string{mail.Trash})
 		a.captureUndoSummary(id)
@@ -944,6 +991,10 @@ func (a *App) untrash() {
 }
 
 func (a *App) mutate(id string, add, remove []string, removeFromList bool, message func() string) {
+	if !a.canMutateThread(id) {
+		a.undo = nil
+		return
+	}
 	a.updateThreadLabels(id, add, remove)
 	a.captureUndoSummary(id)
 	if removeFromList {
@@ -976,6 +1027,7 @@ func (a *App) removeThreads(ids []string) {
 	removed := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		removed[id] = true
+		a.removeUnifiedThread(id)
 		delete(a.threadCache, id)
 		a.threadSelection.Remove(id)
 	}
@@ -1035,6 +1087,7 @@ func (a *App) removeThread(id string) {
 	if removed < 0 {
 		return
 	}
+	a.removeUnifiedThread(id)
 	if a.accountVerified || a.compositeThreads {
 		a.persistList(a.currentQuery(), a.threads)
 	}
@@ -1075,6 +1128,7 @@ func (a *App) updateThreadLabels(id string, add, remove []string) {
 			a.thread.Messages[i].LabelIDs = modifyLabelIDs(a.thread.Messages[i].LabelIDs, add, remove)
 		}
 	}
+	a.syncUnifiedSummary(id)
 	a.syncThreadSelection(false)
 	if !a.ownerVerified(parseThreadRef(id).AccountEmail) && !a.compositeThreads {
 		return
@@ -1113,6 +1167,8 @@ func containsLabel(labels []string, target string) bool {
 
 func (a *App) labelName(id string) string {
 	switch id {
+	case mail.Unified:
+		return locales.UnifiedInbox()
 	case mail.Inbox:
 		return locales.Inbox()
 	case mail.Starred:

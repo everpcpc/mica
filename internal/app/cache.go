@@ -7,10 +7,31 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mica/internal/mail"
 )
+
+type listCacheKey struct {
+	email string
+	query mail.Query
+}
+
+type listCacheVersions map[listCacheKey]*atomic.Uint64
+
+func (a *App) nextListCacheVersion(email string, query mail.Query) (*atomic.Uint64, uint64) {
+	if a.listVersions == nil {
+		a.listVersions = make(listCacheVersions)
+	}
+	key := listCacheKey{email: normalizedEmail(email), query: query}
+	version := a.listVersions[key]
+	if version == nil {
+		version = &atomic.Uint64{}
+		a.listVersions[key] = version
+	}
+	return version, version.Add(1)
+}
 
 type cacheState struct {
 	mu         sync.Mutex
@@ -84,6 +105,10 @@ func (a *App) persistLabelsForAccount(accountEmail string, labels []mail.Label) 
 }
 
 func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
+	if a.compositeThreads && a.unified != nil {
+		a.persistUnifiedLists()
+		return
+	}
 	threads = cloneThreadSummaries(threads)
 	groups := make(map[string][]mail.ThreadSummary)
 	for _, thread := range threads {
@@ -106,7 +131,11 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 			continue
 		}
 		seen[email] = true
+		version, revision := a.nextListCacheVersion(email, query)
 		a.persistForAccount(email, func(store mailStore, email string) error {
+			if version.Load() != revision {
+				return nil
+			}
 			return store.SaveThreadList(context.Background(), email, query, groups[email])
 		})
 	}
