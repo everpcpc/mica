@@ -5,7 +5,7 @@
 - An internal virtual label is not necessarily a real label on the server.
 - All Mail in Gmail should use a global query without a `labelId`, not the unsupported `ALL` value.
 - When changing query mappings, verify request parameters, cache keys, and list filtering together instead of fixing only the visible UI.
-- An OAuth exchange does not establish account ownership. Verify the Gmail identity, commit an account token and an active-account marker, and rebuild the client from the formal store so later refreshes cannot write the pending or legacy store. Keep the marker independent of SQLite and token form, retire legacy tokens after a formal restore, and make logout a credential-layer closed state so late refresh and reauthorization writes fail instead of resurrecting the session. Cancel in-flight authentication on logout and service replacement.
+- An OAuth exchange does not establish account ownership. Verify the Gmail identity, commit an account token and an active-account marker, and rebuild the client from the formal store so later refreshes cannot write the pending or legacy store. Keep the marker independent of SQLite and token form, retire legacy tokens after a formal restore, and make logout a credential-layer closed state so late refresh and reauthorization writes fail instead of resurrecting the session. Cancel in-flight authentication on logout and service replacement, and bind reopening to the current credential generation so a cancelled operation cannot reopen credentials. Authentication callbacks must clear cancel state only for their own operation ID.
 
 ## Design optimistic updates together with request ordering
 
