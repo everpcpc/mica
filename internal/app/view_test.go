@@ -204,6 +204,32 @@ func TestThreadListSelectionHasDividerSpacing(t *testing.T) {
 	}
 }
 
+func TestIconButtonHoverIsCircular(t *testing.T) {
+	var hover ui.Color
+	tt := ui.NewTester(func(c *ui.Context) {
+		hover = c.Theme().SurfaceHover
+		ui.Column(c).Padding(20).Children(func() {
+			iconButton(c, "Archive", iconArchive, func() {})
+		})
+	}, 400, 100)
+	button, ok := tt.Find("Archive")
+	if !ok {
+		t.Fatal("icon button not found")
+	}
+	tt.Move(button.X+button.W/2, button.Y+button.H/2)
+	tt.Frame()
+	scale := float32(tt.Image().Bounds().Dx()) / 400
+	corner := tt.Image().RGBAAt(int((button.X+1)*scale), int((button.Y+1)*scale))
+	edge := tt.Image().RGBAAt(int((button.X+1)*scale), int((button.Y+button.H/2)*scale))
+	base := tt.Image().RGBAAt(0, 0)
+	if corner.R != base.R || corner.G != base.G || corner.B != base.B || corner.A != base.A {
+		t.Fatalf("hover paints the rounded corner: corner=%v base=%v", corner, base)
+	}
+	if edge.R != hover.R || edge.G != hover.G || edge.B != hover.B || edge.A != hover.A {
+		t.Fatalf("hover edge color = %v, want %v", edge, hover)
+	}
+}
+
 func TestThreadListMultiSelection(t *testing.T) {
 	service := newFakeService()
 	service.threads = append(service.threads,
