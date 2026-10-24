@@ -83,6 +83,7 @@ func (a *App) resetMessageViews() {
 	}
 	a.emailResources.activeVersion = a.currentCacheVersion
 	a.emailResources.mu.Unlock()
+	a.syncRemoteImagePolicy()
 }
 
 func prepareMessageHTML(message mail.Message) string {

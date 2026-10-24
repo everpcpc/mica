@@ -73,6 +73,10 @@ type App struct {
 	shortcutMenuTrash    string
 	shortcutMenuSpam     string
 	emailResources       *emailResourceStore
+
+	remoteImagesAutomatic  bool
+	remoteImagePermissions map[string]bool
+
 	emailPages           map[string]*emailPage
 	emailHeights         map[string]float32
 	attachmentDownloads  map[string]attachmentDownload

@@ -32,16 +32,20 @@ type emailResource struct {
 }
 
 type emailResourceStore struct {
-	loader        *messageImages
-	ownerService  func(string) (mail.Service, uint64)
-	ownerClient   func(string) *accountClient
-	activeVersion func() int
-	mu            sync.RWMutex
-	resources     map[string]emailResource
+	loader          *messageImages
+	ownerService    func(string) (mail.Service, uint64)
+	ownerClient     func(string) *accountClient
+	activeVersion   func() int
+	automaticRemote bool
+	allowedRemote   map[string]bool
+	mu              sync.RWMutex
+	resources       map[string]emailResource
 }
 
 func newEmailResourceStore(service mail.Service) *emailResourceStore {
-	return &emailResourceStore{loader: newMessageImageLoader(service), resources: make(map[string]emailResource)}
+	return &emailResourceStore{
+		loader: newMessageImageLoader(service), resources: make(map[string]emailResource), allowedRemote: make(map[string]bool),
+	}
 }
 
 func (s *emailResourceStore) bindingFor(message mail.Message) emailResourceBinding {
@@ -114,6 +118,15 @@ func (s *emailResourceStore) valid(resource emailResource) bool {
 	return activeVersion != nil && uint64(activeVersion()) == resource.binding.generation
 }
 
+func (s *emailResourceStore) remoteAllowed(messageKey, source string) bool {
+	if !remoteImageSource(source) {
+		return true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.automaticRemote || s.allowedRemote[messageKey]
+}
+
 func (s *emailResourceStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	resource, ok := s.resources[r.URL.Host]
@@ -123,6 +136,10 @@ func (s *emailResourceStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RUnlock()
 	if !ok || loader == nil || !s.valid(resource) {
+		http.NotFound(w, r)
+		return
+	}
+	if !s.remoteAllowed(resource.messageKey, resource.source) {
 		http.NotFound(w, r)
 		return
 	}

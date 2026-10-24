@@ -95,6 +95,7 @@ func (a *App) settingsView(c *ui.Context) {
 					}
 				})
 			})
+			a.remoteImageSettings(c)
 			a.gmailSettings(c, s)
 			ui.Divider(c)
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -115,6 +116,22 @@ func (a *App) settingsView(c *ui.Context) {
 	if !s.open {
 		a.closeSettings()
 	}
+}
+
+func (a *App) remoteImageSettings(c *ui.Context) {
+	t := c.Theme()
+	sectionPanel(c).Children(func() {
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
+				ui.Text(c, locales.RemoteImages()).Bold()
+				ui.Text(c, locales.RemoteImagesHint()).FontSize(11).LineHeight(1.4).TextColor(t.TextMuted)
+			})
+			toggle := ui.Toggle(c.Key("remote-images"), &a.remoteImagesAutomatic, "").Label(locales.LoadRemoteImages())
+			if toggle.Changed() {
+				a.setRemoteImagesAutomatic(a.remoteImagesAutomatic)
+			}
+		})
+	})
 }
 
 func settingsField(c *ui.Context, label string, value *string, placeholder string, password, disabled bool) {

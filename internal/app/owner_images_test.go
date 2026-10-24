@@ -80,6 +80,7 @@ func TestEmailResourcesUseMessageOwner(t *testing.T) {
 	serviceB := &imageAttachmentService{fakeService: newFakeService(), data: dataB}
 	a := newOwnerResourceApp(serviceA)
 	a.registerAccountClient(serviceB, mail.Account{Email: "b@example.com"}, nil, true)
+	a.setRemoteImagesAutomatic(true)
 	var remoteRequests []string
 	a.emailResources.loader.client = &http.Client{Transport: imageTransport(func(request *http.Request) (*http.Response, error) {
 		remoteRequests = append(remoteRequests, request.URL.String())

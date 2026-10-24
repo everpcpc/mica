@@ -68,6 +68,8 @@ type cacheState struct {
 	version    int
 	widthSave  int
 	draftWrite uint64
+
+	remoteImagesSave uint64
 }
 
 type mailStore interface {
