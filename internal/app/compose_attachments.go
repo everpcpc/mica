@@ -89,17 +89,27 @@ func (a *App) pumpComposeAttachments(m *composer) {
 		}
 		m.readingAttachment = true
 		remaining := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
-		id, path := item.id, item.path
-		a.schedule(func() {
-			attachment, err := readOutgoingAttachmentLimit(path, remaining)
-			a.publish(func() {
-				m.readingAttachment = false
-				a.finishComposeAttachment(m, id, attachment, err)
-				a.pumpComposeAttachments(m)
-			})
-		})
+		a.readComposeAttachment(m, item.id, item.path, remaining)
 		return
 	}
+}
+
+func (a *App) readComposeAttachment(m *composer, id uint64, path string, remaining int64) {
+	a.schedule(func() {
+		attachment, err := readOutgoingAttachmentLimit(path, remaining)
+		a.publish(func() {
+			if errors.Is(err, errComposeAttachmentTooLarge) && a.compose == m {
+				latest := mailmodel.MaxComposeAttachmentBytes - m.composeAttachmentBytes()
+				if latest > remaining {
+					a.readComposeAttachment(m, id, path, latest)
+					return
+				}
+			}
+			m.readingAttachment = false
+			a.finishComposeAttachment(m, id, attachment, err)
+			a.pumpComposeAttachments(m)
+		})
+	})
 }
 
 func (a *App) finishComposeAttachment(m *composer, id uint64, attachment mailmodel.OutgoingAttachment, err error) {

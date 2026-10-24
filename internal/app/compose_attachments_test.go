@@ -228,6 +228,28 @@ func TestComposeRemovedAttachmentDoesNotConsumeAllowance(t *testing.T) {
 	}
 }
 
+func TestComposeRemovingLoadedAttachmentRetriesRead(t *testing.T) {
+	path := writeComposeAttachment(t, "six.bin", make([]byte, 6<<20))
+	a := newTestApp(newFakeService())
+	a.openCompose(nil)
+	m := a.compose
+	m.attachments = []composerAttachment{{id: 1, attachment: mailmodel.OutgoingAttachment{Name: "loaded.bin", Data: make([]byte, 20<<20)}}}
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.addComposeAttachments([]string{path})
+	a.removeComposeAttachment(1)
+	for len(jobs) > 0 {
+		runNextComposeJob(t, &jobs)
+	}
+	if len(m.attachments) != 1 {
+		t.Fatalf("attachments = %+v, want only the new file", m.attachments)
+	}
+	item := m.attachments[0]
+	if item.err != "" || len(item.attachment.Data) != 6<<20 {
+		t.Fatalf("removing a loaded attachment did not release its allowance: %+v", item)
+	}
+}
+
 func TestComposeSendFailurePreservesAttachments(t *testing.T) {
 	path := writeComposeAttachment(t, "binary.bin", []byte{0, 1, '\r', '\n', 255})
 	service := newFakeService()
