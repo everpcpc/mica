@@ -192,7 +192,7 @@ func (s *pendingTokenStore) Delete() error {
 	return nil
 }
 
-func loginGmailService(ctx context.Context, clientID, clientSecret, projectID, expectedEmail string) (mail.Service, string, error) {
+func loginGmailService(ctx context.Context, store mailStore, clientID, clientSecret, projectID, expectedEmail string) (mail.Service, string, error) {
 	pending := &pendingTokenStore{}
 	oauth := gmail.NewOAuthWithProjectAndStore(clientID, clientSecret, projectID, pending)
 	client, err := oauth.Login(ctx)
@@ -213,12 +213,23 @@ func loginGmailService(ctx context.Context, clientID, clientSecret, projectID, e
 	if pending.token == nil {
 		return nil, "", gmail.ErrNoSession
 	}
-	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
-	if err := formal.SaveToken(pending.token); err != nil {
+	if store == nil {
+		legacy := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
+		if err := legacy.SaveToken(pending.token); err != nil {
+			return nil, "", err
+		}
+		client, err = legacy.Restore(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		service, err = legacy.Service(client)
+		return service, account.Email, err
+	}
+	if err := store.SaveAccount(ctx, account); err != nil {
 		return nil, "", err
 	}
-	alias := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
-	if err := alias.SaveToken(pending.token); err != nil {
+	formal := gmail.NewOAuthForAccount(clientID, clientSecret, projectID, account.Email)
+	if err := formal.SaveToken(pending.token); err != nil {
 		return nil, "", err
 	}
 	client, err = formal.Restore(ctx)
@@ -258,7 +269,7 @@ func (a *App) connectGmailWith(clientID, clientSecret, projectID string, custom 
 				return
 			}
 		}
-		service, email, err := loginGmailService(ctx, clientID, clientSecret, projectID, "")
+		service, email, err := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, "")
 		a.publish(func() {
 			if a.settings != s {
 				return
@@ -309,7 +320,7 @@ func (a *App) restoreGmail() {
 		}
 		email := cachedEmail
 		if service == nil && err == nil {
-			service, email, err = migrateLegacyGmail(context.Background(), clientID, clientSecret, projectID, cachedEmail)
+			service, email, err = migrateLegacyGmail(context.Background(), store, clientID, clientSecret, projectID)
 		}
 		a.publish(func() {
 			if version != a.serviceVersion {
@@ -337,7 +348,7 @@ func restoreAccountGmail(ctx context.Context, clientID, clientSecret, projectID,
 	return oauth.Service(client)
 }
 
-func migrateLegacyGmail(ctx context.Context, clientID, clientSecret, projectID, expectedEmail string) (mail.Service, string, error) {
+func migrateLegacyGmail(ctx context.Context, store mailStore, clientID, clientSecret, projectID string) (mail.Service, string, error) {
 	legacy := gmail.NewOAuthWithProject(clientID, clientSecret, projectID)
 	client, err := legacy.Restore(ctx)
 	if err != nil {
@@ -351,8 +362,11 @@ func migrateLegacyGmail(ctx context.Context, clientID, clientSecret, projectID, 
 	if err != nil {
 		return nil, "", err
 	}
-	if expectedEmail != "" && !strings.EqualFold(account.Email, expectedEmail) {
-		return nil, "", fmt.Errorf("gmail: restored %s, expected %s", account.Email, expectedEmail)
+	if store == nil {
+		return service, account.Email, nil
+	}
+	if err := store.SaveAccount(ctx, account); err != nil {
+		return nil, "", err
 	}
 	source, err := legacy.TokenSource(ctx)
 	if err != nil {
@@ -377,6 +391,9 @@ func migrateLegacyGmail(ctx context.Context, clientID, clientSecret, projectID, 
 	if err != nil {
 		return nil, "", err
 	}
+	if err := legacy.Logout(ctx); err != nil {
+		return nil, "", err
+	}
 	return service, account.Email, nil
 }
 
@@ -392,7 +409,7 @@ func (a *App) reauthorizeGmail() {
 	version := a.serviceVersion
 	expectedEmail := a.account.Email
 	a.schedule(func() {
-		service, email, err := loginGmailService(context.Background(), clientID, clientSecret, projectID, expectedEmail)
+		service, email, err := loginGmailService(context.Background(), a.store, clientID, clientSecret, projectID, expectedEmail)
 		a.publish(func() {
 			if version != a.serviceVersion {
 				return
