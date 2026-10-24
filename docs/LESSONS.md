@@ -130,6 +130,16 @@
 - Account verification is not a draft capability check. If verification blocks a close-time save, keep the local snapshot and composer open instead of treating the composer as one without draft support.
 - Guard file picking and drops while close or discard is pending. Disabling the visible button alone does not reject dropped files or a file-picker result that arrives after the action starts.
 
+## Keep scheduled sends on one path
+
+- A scheduled Outbox row and its linked snapshot are not two independent send paths. Restore the timer without automatically opening a composer; only uncertain entries need manual reconciliation. A regression proved that editing the restored composer could send once while the original schedule sent again.
+- Preserve an explicit Send now through every pre-claim retry. Passing the ordinary timer's due-time check into that retry silently strands a future record without sending it now or restoring its original timer.
+- Invalidate a schedule before canceling it, and keep scheduled entries off generic deletion paths that check only attempt. Cancel through exact scheduled-state CAS, restore the complete draft, and use the existing draft-discard flow for permanent deletion.
+- Scope state guards to the action rather than a shared record lookup. Retry and Delete have similar lookups, but a guard intended only for Delete can otherwise disable Send now; cover both dispatch paths independently.
+- Admit the complete claim-send-final-write operation before starting background work, and read the quitting flag under its mutex. Waiting only for SQLite does not cover a blocked remote send, and an asynchronous publication can otherwise race the drain.
+- Advance the fake clock to a timer's due time when firing it manually. Forcing the claim to compensate for an early test clock would bypass the production due-date guard.
+- Assert wall-clock values in the fixture's explicit zone, not the machine's local zone. A fixed UTC+8 preset that was asserted with `Local().Hour()` passed locally and failed in a UTC CI runner; naming the fixture zone checks the contract in both environments.
+
 ## Verify visuals through real rendering
 
 - Do not validate animation only by its parameters. Inspect start, middle, and end frames for jumps, ghosting, and blank screens.

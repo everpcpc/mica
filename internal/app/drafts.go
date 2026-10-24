@@ -80,15 +80,26 @@ func (a *App) restoreDraftSnapshot() {
 	a.draftRestoreAccount = email
 	a.draftRestorePending = true
 	version := a.serviceVersion
+	outbox := a.outbox
 	a.schedule(func() {
 		snapshot, found, err := store.DraftSnapshot(context.Background(), email)
 		logCacheError(err)
+		skipRecovery := false
+		if err == nil && found && snapshot.OutboxID != "" && outbox != nil {
+			record, recordFound, recordErr := outbox.OutboxMessage(context.Background(), email, snapshot.OutboxID)
+			if recordErr != nil {
+				logCacheError(recordErr)
+				skipRecovery = true
+			} else {
+				skipRecovery = recordFound && record.State == mailmodel.OutboxScheduled
+			}
+		}
 		a.publish(func() {
 			if version != a.serviceVersion {
 				return
 			}
 			a.draftRestorePending = false
-			if a.accountTransition != nil || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found {
+			if a.accountTransition != nil || !strings.EqualFold(a.account.Email, email) || email != a.storeAccount || a.compose != nil || err != nil || !found || skipRecovery {
 				a.openPendingMailto()
 				return
 			}

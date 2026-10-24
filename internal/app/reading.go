@@ -134,8 +134,13 @@ func (a *App) threadContent(c *ui.Context) {
 				}
 				ui.Row(c).Gap(10).Children(func() {
 					if a.selectedLabel == mail.Outbox {
-						threadAction(c, locales.Retry(), iconSent, a.retryOutbox, a.outboxBusy != "" || a.compose != nil)
-						threadAction(c, locales.OutboxDelete(), iconTrash, a.requestDeleteOutbox, a.outboxBusy != "" || a.compose != nil)
+						if record, found := a.outboxRecords[outboxRecordKey(a.selectedThread)]; found && record.State == mail.OutboxScheduled {
+							threadAction(c, locales.SendNow(), iconSent, a.retryOutbox, a.outboxBusy != "" || a.compose != nil)
+							threadAction(c, locales.CancelSchedule(), iconSnoozed, a.cancelScheduledOutbox, a.outboxBusy != "" || a.compose != nil)
+						} else {
+							threadAction(c, locales.Retry(), iconSent, a.retryOutbox, a.outboxBusy != "" || a.compose != nil)
+							threadAction(c, locales.OutboxDelete(), iconTrash, a.requestDeleteOutbox, a.outboxBusy != "" || a.compose != nil)
+						}
 					} else if a.selectedLabel == mail.Draft {
 						threadAction(c, locales.ContinueDraft(), iconCompose, a.openSelectedDraft)
 					} else {

@@ -10,6 +10,7 @@ type OutboxState string
 const (
 	OutboxSending   OutboxState = "sending"
 	OutboxUncertain OutboxState = "uncertain"
+	OutboxScheduled OutboxState = "scheduled"
 )
 
 type OutboxMessage struct {
@@ -19,6 +20,7 @@ type OutboxMessage struct {
 	Compose      Compose
 	State        OutboxState
 	Attempt      uint64
+	SendAt       time.Time
 	Created      time.Time
 	Updated      time.Time
 	LastError    string

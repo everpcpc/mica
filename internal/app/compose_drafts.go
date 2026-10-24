@@ -29,6 +29,7 @@ const (
 	composerActionClose
 	composerActionDiscard
 	composerActionSend
+	composerActionSchedule
 )
 
 func (a *App) draftManager(m *composer) (mailmodel.DraftManager, bool) {
@@ -48,7 +49,7 @@ func (a *App) draftManager(m *composer) (mailmodel.DraftManager, bool) {
 }
 
 func (a *App) markComposerEdited(m *composer) {
-	if a.compose != m || m.sending || m.pendingAction == composerActionSend || m.pendingAction == composerActionDiscard {
+	if a.compose != m || m.sending || m.pendingAction == composerActionSend || m.pendingAction == composerActionSchedule || m.pendingAction == composerActionDiscard {
 		return
 	}
 	if m.outboxID != "" {
@@ -76,7 +77,7 @@ func (a *App) scheduleDraftSave(m *composer) {
 }
 
 func (a *App) pumpDraftSave(m *composer) {
-	if a.compose != m || m.sending || m.pendingAction == composerActionSend || m.pendingAction == composerActionDiscard || m.draftSaving {
+	if a.compose != m || m.sending || m.pendingAction == composerActionSend || m.pendingAction == composerActionSchedule || m.pendingAction == composerActionDiscard || m.draftSaving {
 		return
 	}
 	manager, ok := a.draftManager(m)
@@ -179,6 +180,8 @@ func (a *App) finishDraftSave(m *composer, generation, revision uint64, previous
 		a.beginDiscardCompose(m)
 	case composerActionSend:
 		a.beginSendCompose(m)
+	case composerActionSchedule:
+		a.beginScheduleCompose(m, m.scheduledAt)
 	default:
 		if m.revision > m.savedRevision {
 			a.pumpDraftSave(m)
@@ -332,10 +335,9 @@ func (a *App) beginDiscardCompose(m *composer) {
 	a.discardCompose()
 }
 
-func (a *App) sendComposeWithDraft() {
-	m := a.compose
+func (a *App) prepareComposeForSend(m *composer) bool {
 	if m == nil || m.sending || m.pendingAction != composerActionNone {
-		return
+		return false
 	}
 	if loading, failed := m.composeAttachmentsState(); loading || failed {
 		if loading {
@@ -343,14 +345,22 @@ func (a *App) sendComposeWithDraft() {
 		} else {
 			m.err = locales.AttachmentsReadFailed()
 		}
-		return
+		return false
 	}
 	if err := validateRecipients(m.to, m.cc, m.bcc); err != nil {
 		m.err = err.Error()
-		return
+		return false
 	}
 	if strings.TrimSpace(m.doc.Text().PlainText()) == "" {
 		m.err = locales.BodyRequired()
+		return false
+	}
+	return true
+}
+
+func (a *App) sendComposeWithDraft() {
+	m := a.compose
+	if !a.prepareComposeForSend(m) {
 		return
 	}
 	if m.draftSaving {
@@ -360,6 +370,129 @@ func (a *App) sendComposeWithDraft() {
 		return
 	}
 	a.beginSendCompose(m)
+}
+
+func (a *App) scheduleCompose(sendAt time.Time) {
+	m := a.compose
+	if !a.prepareComposeForSend(m) {
+		return
+	}
+	if m.outboxAttempted {
+		m.err = locales.ScheduleReviewRequired()
+		return
+	}
+	if !sendAt.After(a.currentTime()) {
+		m.err = locales.ScheduleTimeInvalid()
+		return
+	}
+	if m.draftSaving {
+		m.pendingAction = composerActionSchedule
+		m.scheduledAt = sendAt
+		m.sending = true
+		m.err = ""
+		return
+	}
+	a.beginScheduleCompose(m, sendAt)
+}
+
+func (a *App) beginScheduleCompose(m *composer, sendAt time.Time) {
+	if a.compose != m {
+		return
+	}
+	if !sendAt.After(a.currentTime()) {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.ScheduleTimeInvalid()
+		return
+	}
+	owner := a.composerOwner(m)
+	if m.outboxAttempted {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.ScheduleReviewRequired()
+		return
+	}
+	if m.recoveryAccount != "" && (!a.composeOwnerVerified(owner) || !strings.EqualFold(m.recoveryAccount, owner)) {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.DraftSaveFailedReason("account is not verified")
+		return
+	}
+	_, hasDrafts := a.draftManager(m)
+	service, ownerGeneration := a.ownerService(owner)
+	if service == nil || m.draftID != "" && !hasDrafts {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.DraftSaveFailedReason("drafts are unavailable")
+		return
+	}
+	store := a.outbox
+	if store == nil {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.ScheduleSendFailed(errOutboxUnavailable.Error())
+		return
+	}
+	a.invalidateDraftSnapshotWrites(owner)
+	if err := ensureOutboxIdentity(m, owner); err != nil {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		m.err = locales.ScheduleSendFailed(err.Error())
+		return
+	}
+	compose, ready := a.composeSnapshot(m)
+	if !ready {
+		m.sending = false
+		m.pendingAction = composerActionNone
+		return
+	}
+	draftID, outboxID := m.draftID, m.outboxID
+	m.generation++
+	m.pendingAction = composerActionSchedule
+	m.saveState = draftSaveIdle
+	m.sending = true
+	m.err = ""
+	a.cacheState.writes.Add(1)
+	a.schedule(func() {
+		defer a.cacheState.writes.Done()
+		previous, found, err := store.OutboxMessage(context.Background(), owner, outboxID)
+		var record mailmodel.OutboxMessage
+		if err == nil {
+			switch {
+			case found && previous.State != mailmodel.OutboxScheduled:
+				err = errors.New("mail: scheduled send requires an unsent draft")
+			default:
+				record = outboxRecordForCompose(outboxID, owner, draftID, compose, previous, found, false)
+				record.State = mailmodel.OutboxScheduled
+				record.Attempt = 1
+				record.SendAt = sendAt.UTC()
+				record.LastError = ""
+				snapshot := mailmodel.DraftSnapshot{DraftID: draftID, OutboxID: outboxID, Compose: compose}
+				err = store.EnqueueOutbox(context.Background(), owner, record, snapshot)
+			}
+		}
+		a.publish(func() {
+			if a.compose != m || !a.ownerOperationCurrent(owner, ownerGeneration) {
+				return
+			}
+			m.sending = false
+			m.pendingAction = composerActionNone
+			if err != nil {
+				m.err = locales.ScheduleSendFailed(err.Error())
+				if _, ok := a.draftManager(m); ok && m.revision > m.savedRevision {
+					m.saveState = draftSaveScheduled
+					a.scheduleDraftSave(m)
+				}
+				return
+			}
+			a.armScheduledOutbox(record)
+			a.compose = nil
+			a.notice = locales.ScheduleSendUntil(snoozeTime(record.SendAt))
+			if a.composeOwnerIsActive(owner) {
+				a.refresh()
+			}
+		})
+	})
 }
 
 func (a *App) beginSendCompose(m *composer) {
