@@ -118,6 +118,7 @@ type App struct {
 	focusedMessage       int
 	messageScroll        int
 	readerScroll         ui.ScrollState
+	readerReply          ui.Handle
 	undo                 *undoAction
 	request              int
 	threadCall           int

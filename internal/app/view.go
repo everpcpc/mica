@@ -221,7 +221,7 @@ func (a *App) threadList(c *ui.Context) {
 			if a.unreadOnly {
 				filterLabel = locales.ShowAllMail()
 			}
-			filter := ui.Toggle(c.Key("unread-filter"), &a.unreadOnly, "").Label(filterLabel).Tooltip(filterLabel).Padding(5, 6).Transition(ui.ElementTransition{
+			filter := ui.Toggle(c.Key("unread-filter"), &a.unreadOnly, "").Label(filterLabel).Tooltip(filterLabel).Padding(5, 6).Radius(999).Transition(ui.ElementTransition{
 				Colors: true, Duration: 140 * time.Millisecond,
 			}).Children(func() {
 				ui.Icon(c, iconFilter).Size(16, 16)
@@ -352,7 +352,15 @@ func (a *App) emptyList(c *ui.Context) {
 }
 
 func iconButton(c *ui.Context, label string, svg *ui.SVG, action func()) ui.Element {
+	return iconButtonStyle(c, label, svg).OnClick(action)
+}
+
+func iconMenuButton(c *ui.Context, label string, svg *ui.SVG, build func(*ui.Menu)) ui.Element {
+	return iconButtonStyle(c, label, svg).Menu(build)
+}
+
+func iconButtonStyle(c *ui.Context, label string, svg *ui.SVG) ui.Element {
 	return ui.Button(c, "").Label(label).Tooltip(label).Padding(5, 6).Radius(999).Children(func() {
 		ui.Icon(c, svg).Size(16, 16)
-	}).OnClick(action)
+	})
 }

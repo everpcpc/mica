@@ -1,7 +1,10 @@
 package app
 
 import (
+	"image/color"
 	"testing"
+
+	"mica/internal/mail"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -38,6 +41,63 @@ func TestPrimaryActionsUseGradient(t *testing.T) {
 			if delta < 4 {
 				t.Fatalf("primary action %q uses a flat fill: left=%v right=%v", tc.label, left, right)
 			}
+		})
+	}
+}
+
+func controlPixel(tt *ui.Tester, button ui.Rect, x, y float32) (color.RGBA, color.RGBA) {
+	scaleX := float32(tt.Image().Bounds().Dx()) / 1280
+	scaleY := float32(tt.Image().Bounds().Dy()) / 800
+	corner := tt.Image().RGBAAt(int((button.X+x)*scaleX), int((button.Y+y)*scaleY))
+	outside := tt.Image().RGBAAt(int((button.X+x)*scaleX), int((button.Y-2)*scaleY))
+	return corner, outside
+}
+
+func assertRoundedControl(t *testing.T, tt *ui.Tester, button ui.Rect, hover bool) {
+	t.Helper()
+	if button.W <= 0 || button.H <= 0 {
+		t.Fatal("control has no committed bounds")
+	}
+	if hover {
+		tt.Move(button.X+button.W/2, button.Y+button.H/2)
+		tt.Frame()
+	}
+	corner, outside := controlPixel(tt, button, 1, 4)
+	if corner != outside {
+		t.Fatalf("control has a rectangular corner: corner=%v outside=%v button=%+v", corner, outside, button)
+	}
+}
+
+func TestReaderControlsUseRoundedShapes(t *testing.T) {
+	t.Run("reply", func(t *testing.T) {
+		a := newTestApp(newFakeService())
+		a.selectThread("thread-1")
+		a.selectedLabel = mail.Inbox
+		var button ui.Rect
+		tt := ui.NewTester(func(c *ui.Context) {
+			a.View(c)
+			button = a.readerReply.Bounds(c)
+		}, 1280, 800)
+		tt.SetScale(2)
+		tt.Frame()
+		assertRoundedControl(t, tt, button, true)
+	})
+	for _, label := range []string{"Snooze", "Edit labels", "Message actions", "Filter unread"} {
+		t.Run(label, func(t *testing.T) {
+			a := newTestApp(newFakeService())
+			a.selectThread("thread-1")
+			if label == "Message actions" {
+				if a.expandedMessages == nil {
+					a.expandedMessages = make(map[string]bool)
+				}
+				a.expandedMessages[readerMessageKey(a.thread.Messages[0])] = false
+			}
+			tt := ui.NewTester(a.View, 1280, 800)
+			button, ok := tt.Find(label)
+			if !ok {
+				t.Fatalf("control %q not found", label)
+			}
+			assertRoundedControl(t, tt, button, true)
 		})
 	}
 }
