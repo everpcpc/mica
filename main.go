@@ -16,7 +16,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Menu, func(bool, string, string)) {
+func appMenu(openSettings, openFilters func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Menu, func(bool, string, string), func(bool)) {
 	trash := &mygo.MenuItem{Label: locales.MoveToTrash(), Accelerator: "Shift+3", Click: func(*mygo.MenuItem, *mygo.Window) {
 		if shortcut != nil {
 			shortcut(ui.Key3, ui.Shift)
@@ -32,6 +32,11 @@ func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Me
 			shortcut(ui.KeySlash, ui.Shift)
 		}
 	}}
+	filters := &mygo.MenuItem{Label: locales.FilterDialogTitle() + "…", Click: func(*mygo.MenuItem, *mygo.Window) {
+		if openFilters != nil {
+			openFilters()
+		}
+	}}
 	menu := mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "Mica", Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
@@ -42,6 +47,7 @@ func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Me
 			{Role: mygo.RoleQuit},
 		}},
 		{Role: mygo.RoleFileMenu},
+		{Label: locales.Mailbox(), Submenu: []*mygo.MenuItem{filters}},
 		{Role: mygo.RoleEditMenu},
 		{Role: mygo.RoleFormatMenu},
 		{Role: mygo.RoleWindowMenu},
@@ -54,7 +60,7 @@ func appMenu(openSettings func(), shortcut func(ui.Key, ui.Modifiers)) (*mygo.Me
 		for _, item := range []*mygo.MenuItem{trash, spam, help} {
 			item.SetEnabled(enabled)
 		}
-	}
+	}, filters.SetEnabled
 }
 
 func main() {
@@ -70,11 +76,18 @@ func main() {
 		}
 		a.OpenSettings()
 	}
+	openFilters := func() {
+		if win != nil {
+			win.Show()
+		}
+		a.OpenFilters()
+	}
 	installMenu := func() {
-		menu, setEnabled := appMenu(openSettings, a.PerformShortcut)
+		menu, setEnabled, setFilterEnabled := appMenu(openSettings, openFilters, a.PerformShortcut)
 		a.SetShortcutMenuHandler(func(disabled bool, trashLabel, spamLabel string) {
 			setEnabled(!disabled, trashLabel, spamLabel)
 		})
+		a.SetFilterMenuHandler(setFilterEnabled)
 		mygo.App.SetMenu(menu)
 	}
 	mygo.App.OnLocaleChanged(func(string) { installMenu() })

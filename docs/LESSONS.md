@@ -196,6 +196,11 @@
 - Review the complete diff for each group to ensure that no functionality from a later group has leaked in, then run the tests.
 - Changes touching many shared files should land in dependency order, one PR at a time, instead of parallel branches that conflict with each other.
 
+## Feature lifecycle follows the feature, not its launcher
+
+- Moving an action out of a preferences panel also requires removing the panel's ownership of its state. The Filters move exposed close-time coupling that discarded the dialog and blocked Settings on filter writes; cover the primary entry, repeated opening, modal availability, and independent close behavior with rendered tests.
+- Opening a feature and restoring its existing window are different availability contracts. Keep the Mailbox action enabled while Filters is open without reloading it, and carry authentication guards independently of Settings; state-based regressions reproduced enabled writes and reopening during authentication, plus a disabled restoration action with an open dialog.
+
 ## Validate release metadata early
 
 - `mygo build` requires a `## <version>` section for the current version in `CHANGELOG.md`; prepare the release notes before the version PR.

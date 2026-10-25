@@ -50,15 +50,56 @@ type filterLabelOption struct {
 
 func (o filterLabelOption) String() string { return o.name }
 
+func (a *App) OpenFilters() {
+	a.publish(func() { a.openFilters() })
+}
+
+func (a *App) filtersAccountReady() bool {
+	return a.filterOwner() != "" && a.accountTransition == nil && a.authCancel == nil
+}
+
+func (a *App) filtersAvailable() bool {
+	return a.filtersAccountReady() && a.compose == nil &&
+		(a.settings == nil || !a.settings.open) && !a.helpOpen &&
+		(a.labelDialog == nil || !a.labelDialog.open) &&
+		(a.filterDialog == nil || !a.filterDialog.open) &&
+		!a.outboxDeleteOpen && !a.outboxReviewOpen
+}
+
+func (a *App) filtersMenuAvailable() bool {
+	if !a.filtersAccountReady() {
+		return false
+	}
+	if a.filterDialog != nil && a.filterDialog.open {
+		return true
+	}
+	return a.filtersAvailable()
+}
+
+func (a *App) SetFilterMenuHandler(handler func(bool)) {
+	a.filterMenu = handler
+	a.filterMenuDisabled = !a.filtersMenuAvailable()
+	if handler != nil {
+		handler(!a.filterMenuDisabled)
+	}
+}
+
+func (a *App) syncFilterMenu() {
+	disabled := !a.filtersMenuAvailable()
+	if disabled == a.filterMenuDisabled {
+		return
+	}
+	a.filterMenuDisabled = disabled
+	if a.filterMenu != nil {
+		a.filterMenu(!disabled)
+	}
+}
+
 func (a *App) openFilters() {
-	if a.account.Demo || a.accountTransition != nil {
+	if !a.filtersAvailable() {
 		return
 	}
-	owner := a.filterOwner()
-	if owner == "" {
-		return
-	}
-	s := &filterDialogState{open: true, owner: owner}
+	s := &filterDialogState{open: true, owner: a.filterOwner()}
 	a.filterDialog = s
 	a.loadFilters(s)
 }
@@ -87,7 +128,7 @@ func (a *App) filterDialogCurrent(s *filterDialogState, owner string, version in
 }
 
 func (a *App) filterControlsDisabled(s *filterDialogState) bool {
-	return a.account.Demo || s.loading || s.busy != "" || a.accountTransition != nil || a.settings != nil && a.settings.busy
+	return !a.filtersAccountReady() || s.loading || s.busy != "" || a.settings != nil && a.settings.busy
 }
 
 func (a *App) loadFilters(s *filterDialogState) {

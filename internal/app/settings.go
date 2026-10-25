@@ -165,15 +165,11 @@ func settingsField(c *ui.Context, label string, value *string, placeholder strin
 }
 
 func (a *App) closeSettings() {
-	if a.filterDialog != nil && a.filterDialog.busy != "" {
-		return
-	}
 	if a.settings != nil && a.settings.cancel != nil {
 		a.settings.cancel()
 		a.cancelAccountInboxRequest()
 	}
 	a.settings = nil
-	a.filterDialog = nil
 	a.openPendingMailto()
 }
 

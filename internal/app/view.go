@@ -66,6 +66,7 @@ func (a *App) View(c *ui.Context) {
 	}
 	a.showNotice(c)
 	a.syncShortcutMenu()
+	a.syncFilterMenu()
 }
 
 func (a *App) showNotice(c *ui.Context) {
@@ -173,6 +174,15 @@ func (a *App) sidebar(c *ui.Context) {
 		}).Grow(1).Label(locales.SidebarLabels())
 		if mailboxList.Changed() {
 			a.selectLabel()
+		}
+		if !a.account.Demo {
+			ui.Divider(c)
+			ui.Row(c).Padding(8).Shrink(0).Children(func() {
+				ui.Button(c.Key("gmail-filters"), "").Label(locales.Filters()).Tooltip(locales.FilterDialogTitle()).WidthPercent(100).Padding(8, 12).Gap(8).Justify(ui.Start).Disabled(!a.filtersAccountReady()).OnClick(a.openFilters).Children(func() {
+					ui.Icon(c, iconFilter).Size(16, 16).TextColor(t.TextMuted)
+					ui.Text(c, locales.Filters())
+				})
+			})
 		}
 	})
 }

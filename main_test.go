@@ -38,7 +38,7 @@ func TestAppMenuIncludesSettings(t *testing.T) {
 	i18n.SetLocaleFunc(func() string { return "en" })
 	t.Cleanup(func() { i18n.SetLocaleFunc(nil) })
 	opened := false
-	menu, _ := appMenu(func() { opened = true }, nil)
+	menu, _, _ := appMenu(func() { opened = true }, nil, nil)
 	var settings *mygo.MenuItem
 	for _, item := range menu.Items()[0].Submenu {
 		if item.Label == "Settings…" {
@@ -58,12 +58,42 @@ func TestAppMenuIncludesSettings(t *testing.T) {
 	}
 }
 
+func TestAppMenuIncludesMailboxFilters(t *testing.T) {
+	useTestUpdater()
+	i18n.SetLocaleFunc(func() string { return "en" })
+	t.Cleanup(func() { i18n.SetLocaleFunc(nil) })
+	opened := false
+	menu, _, setEnabled := appMenu(nil, func() { opened = true }, nil)
+	var filters *mygo.MenuItem
+	for _, top := range menu.Items() {
+		if top.Label == "Mailbox" && len(top.Submenu) == 1 {
+			filters = top.Submenu[0]
+			break
+		}
+	}
+	if filters == nil || filters.Label != "Gmail filters…" {
+		t.Fatalf("Mailbox menu has no Gmail Filters action: %+v", filters)
+	}
+	setEnabled(false)
+	if filters.IsEnabled() {
+		t.Fatal("Gmail Filters remained enabled while unavailable")
+	}
+	setEnabled(true)
+	if !filters.IsEnabled() {
+		t.Fatal("Gmail Filters did not become available")
+	}
+	filters.Click(filters, nil)
+	if !opened {
+		t.Fatal("Gmail Filters did not invoke its action")
+	}
+}
+
 func TestAppMenuShiftedGmailShortcuts(t *testing.T) {
 	useTestUpdater()
 	i18n.SetLocaleFunc(func() string { return "en" })
 	t.Cleanup(func() { i18n.SetLocaleFunc(nil) })
 	var keys []ui.Key
-	menu, setEnabled := appMenu(nil, func(key ui.Key, _ ui.Modifiers) { keys = append(keys, key) })
+	menu, setEnabled, _ := appMenu(nil, nil, func(key ui.Key, _ ui.Modifiers) { keys = append(keys, key) })
 	var items []*mygo.MenuItem
 	for _, top := range menu.Items() {
 		if top.Label == "Conversation actions" || top.Role == mygo.RoleHelp {

@@ -107,6 +107,8 @@ type App struct {
 	draftRestoreAccount  string
 	labelDialog          *labelDialogState
 	filterDialog         *filterDialogState
+	filterMenu           func(bool)
+	filterMenuDisabled   bool
 	settings             *settingsState
 	accountTransition    *accountTransition
 	accountService       func(context.Context, string) (mail.Service, error)
