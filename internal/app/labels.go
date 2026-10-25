@@ -1,8 +1,10 @@
 package app
 
 import (
+	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"mica/internal/mail"
 	"mica/locales"
@@ -16,20 +18,38 @@ type sidebarLabel struct {
 }
 
 type labelColorOption struct {
-	name  func() string
-	color mail.LabelColor
+	name   func() string
+	swatch string
+	color  mail.LabelColor
 }
 
 var labelColorOptions = []labelColorOption{
-	{name: locales.ColorRed, color: mail.LabelColor{Background: "#fb4c2f", Text: "#ffffff"}},
-	{name: locales.ColorOrange, color: mail.LabelColor{Background: "#ffad47", Text: "#000000"}},
-	{name: locales.ColorYellow, color: mail.LabelColor{Background: "#fad165", Text: "#000000"}},
-	{name: locales.ColorGreen, color: mail.LabelColor{Background: "#16a766", Text: "#ffffff"}},
-	{name: locales.ColorTeal, color: mail.LabelColor{Background: "#43d692", Text: "#000000"}},
-	{name: locales.ColorBlue, color: mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}},
-	{name: locales.ColorPurple, color: mail.LabelColor{Background: "#a479e2", Text: "#ffffff"}},
-	{name: locales.ColorPink, color: mail.LabelColor{Background: "#f691b3", Text: "#000000"}},
-	{name: locales.ColorGray, color: mail.LabelColor{Background: "#666666", Text: "#ffffff"}},
+	{name: locales.ColorRed, swatch: "🔴", color: mail.LabelColor{Background: "#fb4c2f", Text: "#ffffff"}},
+	{name: locales.ColorOrange, swatch: "🟠", color: mail.LabelColor{Background: "#ffad47", Text: "#000000"}},
+	{name: locales.ColorYellow, swatch: "🟡", color: mail.LabelColor{Background: "#fad165", Text: "#000000"}},
+	{name: locales.ColorGreen, swatch: "🟢", color: mail.LabelColor{Background: "#16a766", Text: "#ffffff"}},
+	{name: locales.ColorTeal, swatch: "🩵", color: mail.LabelColor{Background: "#43d692", Text: "#000000"}},
+	{name: locales.ColorBlue, swatch: "🔵", color: mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}},
+	{name: locales.ColorPurple, swatch: "🟣", color: mail.LabelColor{Background: "#a479e2", Text: "#ffffff"}},
+	{name: locales.ColorPink, swatch: "🩷", color: mail.LabelColor{Background: "#f691b3", Text: "#000000"}},
+	{name: locales.ColorGray, swatch: "⚫", color: mail.LabelColor{Background: "#666666", Text: "#ffffff"}},
+}
+
+// The empty slot keeps the label aligned while Image draws the swatch in its own colors.
+var labelColorSlot = icon("")
+var labelColorIcons sync.Map
+
+func labelColorIcon(background string) *ui.SVG {
+	if background == "" {
+		return iconLabel
+	}
+	if cached, ok := labelColorIcons.Load(background); ok {
+		return cached.(*ui.SVG)
+	}
+	color := ui.Hex(background)
+	glyph := ui.MustParseSVG([]byte(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#%02x%02x%02x"/></svg>`, color.R, color.G, color.B)))
+	actual, _ := labelColorIcons.LoadOrStore(background, glyph)
+	return actual.(*ui.SVG)
 }
 
 var mailboxLabels = []sidebarLabel{
@@ -95,7 +115,7 @@ func mailboxQuery(id string) (labelID, search string) {
 func (a *App) labelContextMenu(m *ui.Menu, label mail.Label) {
 	m.Submenu(locales.LabelColor(), func(m *ui.Menu) {
 		for _, option := range labelColorOptions {
-			if m.Item(option.name()).Checked(label.Color == option.color).Chosen() {
+			if m.Item(option.swatch + " " + option.name()).Checked(label.Color == option.color).Chosen() {
 				a.updateLabelColor(label, option.color)
 			}
 		}

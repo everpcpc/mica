@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"testing"
 
 	"mica/internal/mail"
@@ -171,7 +172,7 @@ func TestSidebarEditsLabelColor(t *testing.T) {
 	if err := tt.RightClick("Receipts"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.ChooseMenuItem("Label color", "Blue"); err != nil {
+	if err := tt.ChooseMenuItem("Label color", "🔵 Blue"); err != nil {
 		t.Fatal(err)
 	}
 	want := mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}
@@ -184,6 +185,32 @@ func TestSidebarEditsLabelColor(t *testing.T) {
 		}
 	}
 	t.Fatalf("updated color is missing from app state: %+v", a.labels)
+}
+
+func TestSidebarLabelColorUsesLeadingCircle(t *testing.T) {
+	service := newFakeService()
+	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts", Color: mail.LabelColor{Background: "#4a86e8", Text: "#ffffff"}})
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	tt.SetScale(2)
+	tt.Frame()
+	r, ok := tt.Find("Receipts")
+	if !ok {
+		t.Fatalf("colored sidebar label not found: %q", tt.Texts())
+	}
+	scale := float32(tt.Image().Bounds().Dx()) / 1280
+	pixel := func(x, y float32) color.RGBA {
+		return tt.Image().RGBAAt(int(x*scale), int(y*scale))
+	}
+	centerX, centerY := r.X-16, r.Y+r.H/2
+	background := pixel(centerX-10, centerY)
+	if edge := pixel(centerX-4, centerY-5.5); edge != background {
+		t.Fatalf("label icon is not a circle: edge=%v background=%v", edge, background)
+	}
+	want := color.RGBA{R: 0x4a, G: 0x86, B: 0xe8, A: 255}
+	if center := pixel(centerX, centerY); center != want {
+		t.Fatalf("label circle center = %v, want %v", center, want)
+	}
 }
 
 func TestSidebarDeletesCustomLabelAfterConfirmation(t *testing.T) {
