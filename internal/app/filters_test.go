@@ -73,9 +73,7 @@ func (f *filterTestService) DeleteFilter(_ context.Context, id string) error {
 }
 
 func newFilterTestApp(service *filterTestService) *App {
-	a := newTestApp(service)
-	a.settings = &settingsState{open: true, accounts: []mail.Account{service.account}}
-	return a
+	return newTestApp(service)
 }
 
 func openTestFilters(t *testing.T, a *App) *ui.Tester {
@@ -87,7 +85,89 @@ func openTestFilters(t *testing.T, a *App) *ui.Tester {
 	return tt
 }
 
-func TestSettingsFiltersListAndAdvancedSummary(t *testing.T) {
+func TestFiltersPrimaryEntryOutsideSettings(t *testing.T) {
+	service := newFilterTestService()
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 800)
+	entry, ok := tt.Find("Filters")
+	if !ok || entry.W <= 0 || entry.H <= 0 {
+		t.Fatalf("main window has no Filters feature entry: %+v", entry)
+	}
+	if entry.X >= a.sidebarWidth || entry.Y+entry.H < 760 {
+		t.Fatalf("Filters is not a fixed sidebar footer entry: %+v", entry)
+	}
+	if err := tt.Click("Filters"); err != nil {
+		t.Fatal(err)
+	}
+	if a.filterDialog == nil || service.listCalls != 1 {
+		t.Fatalf("sidebar Filters did not load the active account: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+	}
+}
+
+func TestFiltersPrimaryEntryStaysVisibleWithLongSidebar(t *testing.T) {
+	service := newFilterTestService()
+	for i := 1; i <= 40; i++ {
+		service.labels = append(service.labels, mail.Label{ID: fmt.Sprintf("Label_sidebar_%d", i), Name: fmt.Sprintf("Sidebar label %d", i)})
+	}
+	a := newTestApp(service)
+	tt := ui.NewTester(a.View, 1280, 600)
+	entry, ok := tt.Find("Filters")
+	if !ok || entry.W <= 0 || entry.H <= 0 || entry.Y+entry.H < 560 {
+		t.Fatalf("Filters footer is not visible at the minimum window height: %+v", entry)
+	}
+	if err := tt.Click("Filters"); err != nil {
+		t.Fatal(err)
+	}
+	if a.filterDialog == nil || service.listCalls != 1 {
+		t.Fatalf("minimum-height Filters entry is not usable: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+	}
+}
+
+func TestFilterMenuTracksFeatureAvailability(t *testing.T) {
+	service := newFilterTestService()
+	a := newTestApp(service)
+	var states []bool
+	a.SetFilterMenuHandler(func(enabled bool) { states = append(states, enabled) })
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.OpenFilters()
+	tt.Frame()
+	opened := a.filterDialog
+	a.OpenFilters()
+	tt.Frame()
+	if opened == nil || a.filterDialog != opened || service.listCalls != 1 {
+		t.Fatalf("reopening replaced the dialog or reloaded filters: dialog=%p old=%p calls=%d", a.filterDialog, opened, service.listCalls)
+	}
+	a.closeFilterDialog(opened)
+	tt.Frame()
+	a.settings = &settingsState{open: true}
+	tt.Frame()
+	a.OpenFilters()
+	tt.Frame()
+	if a.filterDialog != nil || service.listCalls != 1 {
+		t.Fatalf("Settings allowed Filters to open: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+	}
+	want := []bool{true, false, true, false}
+	if len(states) != len(want) {
+		t.Fatalf("menu states = %v, want %v", states, want)
+	}
+	for i := range want {
+		if states[i] != want[i] {
+			t.Fatalf("menu states = %v, want %v", states, want)
+		}
+	}
+}
+
+func TestSettingsHasNoFilterEntry(t *testing.T) {
+	service := newFilterTestService()
+	a := newTestApp(service)
+	a.settings = &settingsState{open: true, accounts: []mail.Account{service.account}}
+	tt := ui.NewTester(a.settingsView, 1280, 800)
+	if tt.HasText("Filters") {
+		t.Fatalf("Settings still contains the Filters feature: %q", tt.Texts())
+	}
+}
+
+func TestFiltersListAndAdvancedSummary(t *testing.T) {
 	service := newFilterTestService()
 	service.filters = []mail.Filter{{
 		ID: "filter-existing",
@@ -163,7 +243,7 @@ func TestCaptureFilters(t *testing.T) {
 	captureFrame(t, tt, "filters")
 }
 
-func TestSettingsFiltersEmptyState(t *testing.T) {
+func TestFiltersEmptyState(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	tt := openTestFilters(t, a)
@@ -172,7 +252,7 @@ func TestSettingsFiltersEmptyState(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersCreateCapturesRealInputAndServerID(t *testing.T) {
+func TestFiltersCreateCapturesRealInputAndServerID(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	tt := openTestFilters(t, a)
@@ -237,7 +317,7 @@ func TestSettingsFiltersCreateCapturesRealInputAndServerID(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersReauthorizeFitsMinimumWindow(t *testing.T) {
+func TestFiltersReauthorizeFitsMinimumWindow(t *testing.T) {
 	service := newFilterTestService()
 	service.createErr = &gmail.APIError{StatusCode: http.StatusForbidden, Reason: "insufficientPermissions", Message: "scope required"}
 	a := newFilterTestApp(service)
@@ -265,7 +345,7 @@ func TestSettingsFiltersReauthorizeFitsMinimumWindow(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersLabelNamedNoLabelUsesID(t *testing.T) {
+func TestFiltersLabelNamedNoLabelUsesID(t *testing.T) {
 	service := newFilterTestService()
 	service.labels = append(service.labels, mail.Label{ID: "Label_no_label", Name: "No label", Hide: true})
 	a := newFilterTestApp(service)
@@ -294,7 +374,7 @@ func TestSettingsFiltersLabelNamedNoLabelUsesID(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersLongLabelListScrollsToLast(t *testing.T) {
+func TestFiltersLongLabelListScrollsToLast(t *testing.T) {
 	service := newFilterTestService()
 	for i := 1; i <= 30; i++ {
 		id := fmt.Sprintf("Label_%02d", i)
@@ -333,7 +413,7 @@ func TestSettingsFiltersLongLabelListScrollsToLast(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersCreateBusyCannotDismiss(t *testing.T) {
+func TestFiltersCreateBusyCannotDismiss(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	a.openFilters()
@@ -345,9 +425,13 @@ func TestSettingsFiltersCreateBusyCannotDismiss(t *testing.T) {
 	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
 	a.createFilter()
 	tt := ui.NewTester(a.View, 1280, 800)
+	a.settings = &settingsState{open: true}
 	a.closeSettings()
+	if a.settings != nil {
+		t.Fatal("busy Filters kept the unrelated Settings window open")
+	}
 	if a.filterDialog != s || !s.open {
-		t.Fatal("busy create allowed Settings to close")
+		t.Fatal("closing Settings dismissed a busy Filters operation")
 	}
 	if err := tt.Click("Close"); err != nil {
 		t.Logf("busy Close is disabled: %v", err)
@@ -370,7 +454,7 @@ func TestSettingsFiltersCreateBusyCannotDismiss(t *testing.T) {
 	}
 }
 
-func TestSettingsFilterCreateWaitsForAccountTransition(t *testing.T) {
+func TestFilterCreateWaitsForAccountTransition(t *testing.T) {
 	h := newAccountTransitionHarness()
 	service := newFilterTestService()
 	a := h.app
@@ -399,7 +483,7 @@ func TestSettingsFilterCreateWaitsForAccountTransition(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersValidationMakesNoWriteRequests(t *testing.T) {
+func TestFiltersValidationMakesNoWriteRequests(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	tt := openTestFilters(t, a)
@@ -434,7 +518,7 @@ func TestSettingsFiltersValidationMakesNoWriteRequests(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersDeleteRequiresConfirmation(t *testing.T) {
+func TestFiltersDeleteRequiresConfirmation(t *testing.T) {
 	service := newFilterTestService()
 	service.filters = []mail.Filter{{ID: "filter-delete", Criteria: mail.FilterCriteria{From: "sender@example.com"}}}
 	a := newFilterTestApp(service)
@@ -459,7 +543,7 @@ func TestSettingsFiltersDeleteRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersCreateErrorPreservesInputListAndBusyRecovery(t *testing.T) {
+func TestFiltersCreateErrorPreservesInputListAndBusyRecovery(t *testing.T) {
 	service := newFilterTestService()
 	service.filters = []mail.Filter{{ID: "filter-existing", Criteria: mail.FilterCriteria{From: "existing@example.com"}}}
 	a := newFilterTestApp(service)
@@ -505,7 +589,7 @@ func TestSettingsFiltersCreateErrorPreservesInputListAndBusyRecovery(t *testing.
 	}
 }
 
-func TestSettingsFiltersListErrorKeepsRulesAndForm(t *testing.T) {
+func TestFiltersListErrorKeepsRulesAndForm(t *testing.T) {
 	service := newFilterTestService()
 	service.filters = []mail.Filter{{ID: "filter-existing", Criteria: mail.FilterCriteria{From: "existing@example.com"}}}
 	a := newFilterTestApp(service)
@@ -530,7 +614,7 @@ func TestSettingsFiltersListErrorKeepsRulesAndForm(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersDeleteErrorRestoresBusyAndKeepsRule(t *testing.T) {
+func TestFiltersDeleteErrorRestoresBusyAndKeepsRule(t *testing.T) {
 	service := newFilterTestService()
 	service.filters = []mail.Filter{{ID: "filter-delete", Criteria: mail.FilterCriteria{From: "sender@example.com"}}}
 	a := newFilterTestApp(service)
@@ -557,7 +641,7 @@ func TestSettingsFiltersDeleteErrorRestoresBusyAndKeepsRule(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersDemoAndUnsupportedServicesDoNotWrite(t *testing.T) {
+func TestFiltersDemoAndUnsupportedServicesDoNotWrite(t *testing.T) {
 	t.Run("demo", func(t *testing.T) {
 		service := newFilterTestService()
 		service.account.Demo = true
@@ -600,7 +684,7 @@ func TestSettingsFiltersDemoAndUnsupportedServicesDoNotWrite(t *testing.T) {
 	})
 }
 
-func TestSettingsFiltersLateListResponseIsolatedAfterClose(t *testing.T) {
+func TestFiltersLateListResponseIsolatedAfterClose(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	var jobs []func()
@@ -637,7 +721,7 @@ func TestSettingsFiltersLateListResponseIsolatedAfterClose(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersLateCreateResponseIsolatedAfterClose(t *testing.T) {
+func TestFiltersLateCreateResponseIsolatedAfterClose(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	a.openFilters()
@@ -658,7 +742,7 @@ func TestSettingsFiltersLateCreateResponseIsolatedAfterClose(t *testing.T) {
 	}
 }
 
-func TestSettingsFiltersLateResponseIsolatedAfterAccountSwitch(t *testing.T) {
+func TestFiltersLateResponseIsolatedAfterAccountSwitch(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)
 	a.openFilters()
@@ -695,15 +779,20 @@ func TestSettingsFiltersLateResponseIsolatedAfterAccountSwitch(t *testing.T) {
 	}
 }
 
-func TestSettingsCloseInvalidatesFilterDialog(t *testing.T) {
+func TestSettingsCloseKeepsFilterDialog(t *testing.T) {
 	service := newFilterTestService()
-	a := newFilterTestApp(service)
+	a := newTestApp(service)
 	a.openFilters()
+	opened := a.filterDialog
+	a.settings = &settingsState{open: true}
 	a.closeSettings()
-	if a.filterDialog != nil {
-		t.Fatal("Settings close retained filter state")
+	if a.settings != nil {
+		t.Fatal("Settings remained open")
 	}
-	if a.shortcutsDisabled() {
-		t.Fatal("Settings close left shortcuts disabled")
+	if opened == nil || a.filterDialog != opened || !opened.open {
+		t.Fatal("Settings close dismissed the independent Filters feature")
+	}
+	if !a.shortcutsDisabled() {
+		t.Fatal("the open Filters dialog no longer protects mail shortcuts")
 	}
 }

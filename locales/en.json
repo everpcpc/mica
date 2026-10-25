@@ -239,6 +239,7 @@
   "mailtoDraftExists": "Finish the current draft before opening another one.",
   "mailtoInvalid": "This mailto link is invalid.",
   "gmail": "Gmail",
+  "mailbox": "Mailbox",
   "unifiedInbox": "All Inboxes",
   "toggleUnifiedAccounts": "Show or hide accounts",
   "gmailSetup": "Mica opens Google sign-in in your browser and connects directly to Gmail.",

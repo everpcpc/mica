@@ -2026,6 +2026,16 @@ func (msgs Messages) Gmail() string {
 	return Catalog.Format(msgs.locale, "gmail", nil)
 }
 
+// Mailbox says "Mailbox"
+// in the language the app shows.
+func Mailbox() string { return In(i18n.Locale()).Mailbox() }
+
+// Mailbox says "Mailbox"
+// in the language of msgs.
+func (msgs Messages) Mailbox() string {
+	return Catalog.Format(msgs.locale, "mailbox", nil)
+}
+
 // UnifiedInbox says "All Inboxes"
 // in the language the app shows.
 func UnifiedInbox() string { return In(i18n.Locale()).UnifiedInbox() }
