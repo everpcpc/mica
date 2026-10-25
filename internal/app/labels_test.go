@@ -363,6 +363,64 @@ func TestThreadLabelChipColorAndPadding(t *testing.T) {
 	}
 }
 
+func TestThreadLabelTextIsOpticallyBalanced(t *testing.T) {
+	for _, name := range []string{"github", "Receipts", "Product", "Launch"} {
+		t.Run(name, func(t *testing.T) {
+			label := mail.Label{
+				Name:  name,
+				Color: mail.LabelColor{Background: "#16a766", Text: "#ffffff"},
+			}
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Column(c).Padding(20).Children(func() {
+					threadLabel(c, label, false)
+				})
+			}, 200, 100)
+			tt.SetScale(2)
+			r, ok := tt.Find(name)
+			if !ok || r.W == 0 || r.H == 0 {
+				t.Fatalf("label text has no rendered bounds: %q", tt.Texts())
+			}
+			img := tt.Image()
+			scale := float32(img.Bounds().Dx()) / 200
+			background := color.RGBA{R: 0x16, G: 0xa7, B: 0x66, A: 255}
+			chipTop, chipBottom := img.Bounds().Dy(), -1
+			for y := range img.Bounds().Dy() {
+				for x := range img.Bounds().Dx() {
+					if img.RGBAAt(x, y) != background {
+						continue
+					}
+					chipTop = min(chipTop, y)
+					chipBottom = max(chipBottom, y)
+				}
+			}
+			textTop, textBottom := -1, -1
+			for y := int(r.Y * scale); y < int((r.Y+r.H)*scale); y++ {
+				for x := int(r.X * scale); x < int((r.X+r.W)*scale); x++ {
+					p := img.RGBAAt(x, y)
+					if p.R < 245 || p.G < 245 || p.B < 245 {
+						continue
+					}
+					if textTop == -1 {
+						textTop = y
+					}
+					textBottom = y
+				}
+			}
+			if chipTop > chipBottom || textTop == -1 {
+				t.Fatalf("missing chip or text pixels: chip=%d..%d text=%d..%d", chipTop, chipBottom, textTop, textBottom)
+			}
+			top, bottom := textTop-chipTop, chipBottom-textBottom
+			difference := top - bottom
+			if difference < 0 {
+				difference = -difference
+			}
+			if difference > 3 {
+				t.Fatalf("label text is off-center: top=%d bottom=%d chip=%d..%d text=%d..%d", top, bottom, chipTop, chipBottom, textTop, textBottom)
+			}
+		})
+	}
+}
+
 func newManyThreadLabelsApp() *App {
 	service := newFakeService()
 	for i := range 12 {
