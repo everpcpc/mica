@@ -237,6 +237,129 @@ func TestSettingsFiltersCreateCapturesRealInputAndServerID(t *testing.T) {
 	}
 }
 
+func TestSettingsFiltersReauthorizeFitsMinimumWindow(t *testing.T) {
+	service := newFilterTestService()
+	service.createErr = &gmail.APIError{StatusCode: http.StatusForbidden, Reason: "insufficientPermissions", Message: "scope required"}
+	a := newFilterTestApp(service)
+	a.openFilters()
+	s := a.filterDialog
+	s.creating = true
+	s.from = "sender@example.com"
+	s.starred = true
+	a.createFilter()
+	if !s.reauthorize {
+		t.Fatal("permission fixture did not enable reauthorization")
+	}
+	tt := ui.NewTester(a.View, 1280, 600)
+	for _, name := range []string{"Reauthorize", "Create filter", "Close"} {
+		r, ok := tt.Find(name)
+		if !ok || r.W <= 0 || r.H <= 0 || r.Y < 0 || r.Y+r.H > 600 {
+			t.Fatalf("%s is outside the 600pt window: %+v", name, r)
+		}
+	}
+	if err := tt.Click("Close"); err != nil {
+		t.Fatal(err)
+	}
+	if a.filterDialog != nil {
+		t.Fatal("footer Close was not usable at the minimum height")
+	}
+}
+
+func TestSettingsFiltersLabelNamedNoLabelUsesID(t *testing.T) {
+	service := newFilterTestService()
+	service.labels = append(service.labels, mail.Label{ID: "Label_no_label", Name: "No label", Hide: true})
+	a := newFilterTestApp(service)
+	tt := openTestFilters(t, a)
+	if err := tt.Click("New filter"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Sender or address list"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("sender@example.com")
+	if err := tt.Click("No label"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyEnter)
+	if a.filterDialog == nil {
+		t.Fatalf("choosing the same-named option closed the dialog: %q", tt.Texts())
+	}
+	if got := a.filterDialog.labelID; got != "Label_no_label" {
+		t.Fatalf("label named No label was not selected by ID: %q", got)
+	}
+	a.createFilter()
+	if len(service.created) != 1 || !equalStrings(service.created[0].Action.AddLabelIDs, []string{"Label_no_label"}) {
+		t.Fatalf("created action did not include the same-named label: %+v", service.created)
+	}
+}
+
+func TestSettingsFiltersCreateBusyCannotDismiss(t *testing.T) {
+	service := newFilterTestService()
+	a := newFilterTestApp(service)
+	a.openFilters()
+	s := a.filterDialog
+	s.creating = true
+	s.from = "sender@example.com"
+	s.starred = true
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.createFilter()
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.closeSettings()
+	if a.filterDialog != s || !s.open {
+		t.Fatal("busy create allowed Settings to close")
+	}
+	if err := tt.Click("Close"); err != nil {
+		t.Logf("busy Close is disabled: %v", err)
+	}
+	if a.filterDialog != s || !s.open {
+		t.Fatal("busy create allowed the footer Close action")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.filterDialog != s || !s.open {
+		t.Fatal("busy create allowed Escape to dismiss the dialog")
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("create jobs = %d, want 1", len(jobs))
+	}
+	jobs[0]()
+	tt.Frame()
+	if s.busy != "" || s.creating || len(s.filters) != 1 {
+		t.Fatalf("create did not complete after the dismissal checks: %+v", s)
+	}
+}
+
+func TestSettingsFilterCreateWaitsForAccountTransition(t *testing.T) {
+	h := newAccountTransitionHarness()
+	service := newFilterTestService()
+	a := h.app
+	a.service = service
+	a.account = service.account
+	a.storeAccount = service.account.Email
+	a.filterDialog = &filterDialogState{open: true, owner: service.account.Email, creating: true, from: "sender@example.com", starred: true}
+	a.createFilter()
+	a.transitionToService(h.target, h.target.account.Email, false, "")
+	if len(h.jobs) != 2 {
+		t.Fatalf("scheduled jobs = %d, want create and notification drain", len(h.jobs))
+	}
+	h.runJobAt(t, 1)
+	h.runUpdate(t)
+	if a.service != service || !a.mutationRunning {
+		t.Fatalf("account changed before Create completed: service=%p running=%v", a.service, a.mutationRunning)
+	}
+	h.runJobAt(t, 0)
+	if len(service.created) != 1 {
+		t.Fatalf("Create did not finish on the old account: %+v", service.created)
+	}
+	h.runUpdate(t)
+	h.finishTransition(t)
+	if a.service != h.target || len(service.created) != 1 {
+		t.Fatalf("transition completed without the old account Create: service=%p created=%d", a.service, len(service.created))
+	}
+}
+
 func TestSettingsFiltersValidationMakesNoWriteRequests(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)

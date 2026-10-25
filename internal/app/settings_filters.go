@@ -42,6 +42,13 @@ type filterDialogState struct {
 	markRead      bool
 }
 
+type filterLabelOption struct {
+	id   string
+	name string
+}
+
+func (o filterLabelOption) String() string { return o.name }
+
 func (a *App) openFilters() {
 	if a.account.Demo || a.accountTransition != nil {
 		return
@@ -168,12 +175,19 @@ func (a *App) createFilter() {
 	s.busy = "create"
 	s.err = ""
 	s.reauthorize = false
-	a.schedule(func() {
-		created, err := manager.CreateFilter(context.Background(), mail.Filter{Criteria: criteria, Action: action})
-		if err == nil && created.ID == "" {
-			err = errCreatedFilterID
-		}
-		a.publish(func() {
+	var created mail.Filter
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		owner:   owner,
+		runFunc: func() error {
+			var err error
+			created, err = manager.CreateFilter(context.Background(), mail.Filter{Criteria: criteria, Action: action})
+			if err == nil && created.ID == "" {
+				err = errCreatedFilterID
+			}
+			return err
+		},
+		done: func(err error) {
 			if !a.filterDialogCurrent(s, owner, version) || s.busy != "create" {
 				return
 			}
@@ -189,7 +203,7 @@ func (a *App) createFilter() {
 			s.hasAttachment = false
 			s.labelID = ""
 			s.starred, s.skipInbox, s.markRead = false, false, false
-		})
+		},
 	})
 }
 
@@ -218,9 +232,13 @@ func (a *App) deleteFilter(id string) {
 	s.busy = busy
 	s.err = ""
 	s.reauthorize = false
-	a.schedule(func() {
-		err := manager.DeleteFilter(context.Background(), id)
-		a.publish(func() {
+	a.enqueueMutation(mutationJob{
+		service: a.service,
+		owner:   owner,
+		runFunc: func() error {
+			return manager.DeleteFilter(context.Background(), id)
+		},
+		done: func(err error) {
 			if !a.filterDialogCurrent(s, owner, version) || s.busy != busy {
 				return
 			}
@@ -237,7 +255,7 @@ func (a *App) deleteFilter(id string) {
 			}
 			s.filters = filters
 			s.deleteID = ""
-		})
+		},
 	})
 }
 
@@ -267,7 +285,8 @@ func (a *App) filterDialogView(c *ui.Context) {
 	s := a.filterDialog
 	t := c.Theme()
 	dismissed := ui.Modal(c, &s.open, func() {
-		ui.Column(c).Width(620).Gap(12).Children(func() {
+		// The scroll region must leave room for the footer at the minimum window height.
+		ui.Column(c).Width(620).Gap(12).MaxHeight(520).Children(func() {
 			ui.Text(c, locales.FilterDialogTitle()).FontSize(19).Bold()
 			ui.Text(c, locales.FilterDialogHint()).FontSize(12).LineHeight(1.4).TextColor(t.TextMuted)
 			disabled := a.filterControlsDisabled(s)
@@ -285,7 +304,7 @@ func (a *App) filterDialogView(c *ui.Context) {
 					ui.Text(c, locales.Processing()).FontSize(12).TextColor(t.TextMuted)
 				}
 			})
-			ui.Scroll(c.Key("filter-content")).Height(390).Children(func() {
+			ui.Scroll(c.Key("filter-content")).Height(390).Shrink(1).Children(func() {
 				ui.Column(c).Gap(10).Padding(2).Children(func() {
 					if s.loading && !s.loaded {
 						ui.Text(c, locales.LoadingFilters()).TextColor(t.TextMuted)
@@ -318,11 +337,14 @@ func (a *App) filterDialogView(c *ui.Context) {
 				if s.reauthorize {
 					ui.Button(c, locales.ReauthorizeAccount()).Disabled(disabled).OnClick(a.reauthorizeGmail)
 				}
-				ui.Button(c, locales.Close()).OnClick(func() { a.closeFilterDialog(s) })
+				ui.Button(c, locales.Close()).Disabled(s.busy != "").OnClick(func() { a.closeFilterDialog(s) })
 			})
 		})
 	}).Dismissed()
-	if dismissed || !s.open {
+	if dismissed && s.busy != "" {
+		s.open = true
+	}
+	if !s.open && s.busy == "" && a.filterDialog == s {
 		a.closeFilterDialog(s)
 	}
 }
@@ -363,26 +385,52 @@ func (a *App) filterCreateForm(c *ui.Context, s *filterDialogState, disabled boo
 		ui.Checkbox(c.Key("filter-has-attachment"), &s.hasAttachment, locales.FilterHasAttachment()).Disabled(disabled)
 		ui.Text(c, locales.FilterActions()).FontSize(12).Bold().TextColor(t.TextMuted).Padding(6, 0, 0, 0)
 		labels := assignableLabels(a.labels)
-		options := make([]string, 0, len(labels)+1)
-		options = append(options, locales.FilterNoLabel())
-		selection := locales.FilterNoLabel()
+		selection := filterLabelOption{name: locales.FilterNoLabel()}
 		for _, label := range labels {
-			options = append(options, label.Name)
 			if label.ID == s.labelID {
-				selection = label.Name
+				selection = filterLabelOption{id: label.ID, name: label.Name}
+				break
 			}
 		}
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, locales.FilterAddLabel()).Width(100).Shrink(0)
-			selector := ui.Select(c.Key("filter-label"), &selection, options).Label(locales.FilterAddLabel()).Grow(1).Disabled(disabled)
-			if selector.Changed() {
-				s.labelID = ""
-				for _, label := range labels {
-					if label.Name == selection {
-						s.labelID = label.ID
-						break
-					}
+			selector := ui.SelectBase(c.Key("filter-label"), &selection)
+			trigger := selector.Trigger
+			face := t.Surface
+			if !disabled {
+				switch {
+				case trigger.Pressed():
+					face = t.SurfacePressed
+				case trigger.Hovered():
+					face = t.SurfaceHover
 				}
+			}
+			trigger.Label(locales.FilterAddLabel()).Padding(t.Space(1.5), t.Space(3.5)).Gap(t.Space(1.5)).Radius(t.Radius).Background(face).TextColor(t.Text).MinWidth(t.Space(35)).Grow(1).Disabled(disabled).Justify(ui.SpaceBetween).Children(func() {
+				ui.Text(c, selection.name).SingleLine()
+				ui.Icon(c, iconChevronDown).Size(10, 10).TextColor(t.TextMuted)
+			})
+			if t.Border.A > 0 {
+				trigger.Border(1, t.Border)
+			}
+			selector.Popup(func(panel ui.Element) {
+				panel.Margin(t.Space(1), 0, 0, 0).Padding(4).Radius(t.Radius+2).Background(t.Background).Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.18))
+				if t.Border.A > 0 {
+					panel.Border(1, t.Border)
+				}
+				option := func(value filterLabelOption) {
+					item := selector.Item(value).Padding(t.Space(1.5), t.Space(2.5)).Radius(t.Radius)
+					if item.Highlighted() {
+						item.Background(t.Accent).TextColor(t.AccentText)
+					}
+					item.Children(func() { ui.Text(c, value.name).SingleLine() })
+				}
+				option(filterLabelOption{name: locales.FilterNoLabel()})
+				for _, label := range labels {
+					option(filterLabelOption{id: label.ID, name: label.Name})
+				}
+			})
+			if selector.Trigger.Changed() {
+				s.labelID = selection.id
 			}
 		})
 		ui.Row(c).Gap(14).Children(func() {
