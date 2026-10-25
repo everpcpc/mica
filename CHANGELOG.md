@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0 - 2026-10-25
+
+- Added server-side Gmail filter list, creation, and confirmed deletion for the active account, with common criteria, label/star/Inbox/read actions, and an explicit settings-permission reauthorization flow.
+- Added readable advanced filter summaries, English and Simplified Chinese text, reliable small-window and busy behavior, duplicate-name-safe label selection, and long-label scrolling.
+- Added circular color swatches to label color menus and actual-color circular icons for colored sidebar labels.
+
 ## 0.16.3 - 2026-10-25
 
 - Fixed Gmail label creation by using `show` for message-list visibility while preserving `labelShow` for label-list visibility.
