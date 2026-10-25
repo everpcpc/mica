@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.2 - 2026-10-25
+
+- Prefetched the next page in conversation lists, so reaching the end can display ready results without another request.
+- Preserved cached mail across refreshes and offline pagination, including entries displaced by new mail.
+- Prevented repeated cache reads at exhaustion and kept completed Snoozed conversations out of cached results.
+
 ## 0.16.1 - 2026-10-25
 
 - Fixed the Remote images control to use a real switch with a visible state knob, preserving the existing privacy preference behavior.
