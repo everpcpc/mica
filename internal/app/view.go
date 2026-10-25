@@ -25,7 +25,7 @@ func (a *App) View(c *ui.Context) {
 	if c.Vibrancy() {
 		c.Root().Background(ui.Transparent)
 	}
-	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen && (a.labelDialog == nil || !a.labelDialog.open) && !a.outboxDeleteOpen && !a.outboxReviewOpen {
+	if a.compose == nil && (a.settings == nil || !a.settings.open) && !a.helpOpen && (a.labelDialog == nil || !a.labelDialog.open) && (a.filterDialog == nil || !a.filterDialog.open) && !a.outboxDeleteOpen && !a.outboxReviewOpen {
 		a.shortcuts(c)
 	}
 	sidebarSplit := ui.Split(c, &a.sidebarWidth, func() {
@@ -46,7 +46,7 @@ func (a *App) View(c *ui.Context) {
 	if a.compose != nil && a.compose.open {
 		a.composeView(c)
 	}
-	if a.settings != nil && a.settings.open {
+	if a.settings != nil && a.settings.open && (a.filterDialog == nil || !a.filterDialog.open) {
 		a.settingsView(c)
 	}
 	if a.helpOpen {
@@ -54,6 +54,9 @@ func (a *App) View(c *ui.Context) {
 	}
 	if a.labelDialog != nil && a.labelDialog.open {
 		a.labelDialogView(c)
+	}
+	if a.filterDialog != nil && a.filterDialog.open {
+		a.filterDialogView(c)
 	}
 	if a.outboxDeleteOpen {
 		a.outboxDeleteView(c)

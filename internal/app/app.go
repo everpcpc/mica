@@ -106,6 +106,7 @@ type App struct {
 	compose              *composer
 	draftRestoreAccount  string
 	labelDialog          *labelDialogState
+	filterDialog         *filterDialogState
 	settings             *settingsState
 	accountTransition    *accountTransition
 	accountService       func(context.Context, string) (mail.Service, error)

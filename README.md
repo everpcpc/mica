@@ -34,6 +34,7 @@
 - **Persistent Snooze.** Archive conversations until a local wake time, see them in Snoozed, reschedule or cancel, and restore them after restarts. Gmail changes stay ordered through the same background queue.
 - **Email links.** Open `mailto:` links into a draft, with an explicit default email app setting in macOS.
 - **Label management.** Assign, create, recolor, and delete custom Gmail labels.
+- **Gmail filters.** List server-side filters for the active Gmail account, create rules from sender, recipient, subject, search, and attachment conditions, and delete rules after confirmation. Apply custom labels, stars, Inbox skipping, and read state to new incoming messages. Existing advanced criteria and forwarding actions remain readable; Mica does not replay filters against old mail.
 - **Comfortable reading.** Sanitized HTML mail, inline images, collapsible messages, light and dark appearances, and reduced-motion support.
 - **Remote image privacy.** Remote images are blocked by default. Allow them for one message or enable automatic loading in Settings.
 - **Multiple Gmail accounts.** Add, switch between, reauthorize, and remove accounts without mixing their credentials, caches, drafts, or notifications.

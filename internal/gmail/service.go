@@ -490,8 +490,8 @@ func (s *Service) doJSON(ctx context.Context, method, path string, query url.Val
 		sleep = sleepContext
 	}
 	attempts := maxAttempts
-	if path == "/messages/send" || path == "/drafts/send" {
-		// Send endpoints are not idempotent; the caller must reconcile response failures.
+	if path == "/messages/send" || path == "/drafts/send" || method == http.MethodPost && path == "/settings/filters" {
+		// Creation and send endpoints are not idempotent; the caller must reconcile response failures.
 		attempts = 1
 	}
 	for attempt := 1; attempt <= attempts; attempt++ {

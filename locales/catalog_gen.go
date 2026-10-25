@@ -2753,3 +2753,479 @@ func ColorGray() string { return In(i18n.Locale()).ColorGray() }
 func (msgs Messages) ColorGray() string {
 	return Catalog.Format(msgs.locale, "colorGray", nil)
 }
+
+// Filters says "Filters"
+// in the language the app shows.
+func Filters() string { return In(i18n.Locale()).Filters() }
+
+// Filters says "Filters"
+// in the language of msgs.
+func (msgs Messages) Filters() string {
+	return Catalog.Format(msgs.locale, "filters", nil)
+}
+
+// FilterDialogTitle says "Gmail filters"
+// in the language the app shows.
+func FilterDialogTitle() string { return In(i18n.Locale()).FilterDialogTitle() }
+
+// FilterDialogTitle says "Gmail filters"
+// in the language of msgs.
+func (msgs Messages) FilterDialogTitle() string {
+	return Catalog.Format(msgs.locale, "filterDialogTitle", nil)
+}
+
+// FilterDialogHint says "Gmail applies these server-side filters to individual messages, not whole conversations."
+// in the language the app shows.
+func FilterDialogHint() string { return In(i18n.Locale()).FilterDialogHint() }
+
+// FilterDialogHint says "Gmail applies these server-side filters to individual messages, not whole conversations."
+// in the language of msgs.
+func (msgs Messages) FilterDialogHint() string {
+	return Catalog.Format(msgs.locale, "filterDialogHint", nil)
+}
+
+// NewFilter says "New filter"
+// in the language the app shows.
+func NewFilter() string { return In(i18n.Locale()).NewFilter() }
+
+// NewFilter says "New filter"
+// in the language of msgs.
+func (msgs Messages) NewFilter() string {
+	return Catalog.Format(msgs.locale, "newFilter", nil)
+}
+
+// CreateFilter says "Create filter"
+// in the language the app shows.
+func CreateFilter() string { return In(i18n.Locale()).CreateFilter() }
+
+// CreateFilter says "Create filter"
+// in the language of msgs.
+func (msgs Messages) CreateFilter() string {
+	return Catalog.Format(msgs.locale, "createFilter", nil)
+}
+
+// FilterRefresh says "Refresh filters"
+// in the language the app shows.
+func FilterRefresh() string { return In(i18n.Locale()).FilterRefresh() }
+
+// FilterRefresh says "Refresh filters"
+// in the language of msgs.
+func (msgs Messages) FilterRefresh() string {
+	return Catalog.Format(msgs.locale, "filterRefresh", nil)
+}
+
+// LoadingFilters says "Loading filters…"
+// in the language the app shows.
+func LoadingFilters() string { return In(i18n.Locale()).LoadingFilters() }
+
+// LoadingFilters says "Loading filters…"
+// in the language of msgs.
+func (msgs Messages) LoadingFilters() string {
+	return Catalog.Format(msgs.locale, "loadingFilters", nil)
+}
+
+// EmptyFilters says "No Gmail filters"
+// in the language the app shows.
+func EmptyFilters() string { return In(i18n.Locale()).EmptyFilters() }
+
+// EmptyFilters says "No Gmail filters"
+// in the language of msgs.
+func (msgs Messages) EmptyFilters() string {
+	return Catalog.Format(msgs.locale, "emptyFilters", nil)
+}
+
+// EmptyFiltersHint says "Create a filter to organize new incoming mail in Gmail."
+// in the language the app shows.
+func EmptyFiltersHint() string { return In(i18n.Locale()).EmptyFiltersHint() }
+
+// EmptyFiltersHint says "Create a filter to organize new incoming mail in Gmail."
+// in the language of msgs.
+func (msgs Messages) EmptyFiltersHint() string {
+	return Catalog.Format(msgs.locale, "emptyFiltersHint", nil)
+}
+
+// FilterCriteria says "Matching conditions"
+// in the language the app shows.
+func FilterCriteria() string { return In(i18n.Locale()).FilterCriteria() }
+
+// FilterCriteria says "Matching conditions"
+// in the language of msgs.
+func (msgs Messages) FilterCriteria() string {
+	return Catalog.Format(msgs.locale, "filterCriteria", nil)
+}
+
+// FilterActions says "Actions"
+// in the language the app shows.
+func FilterActions() string { return In(i18n.Locale()).FilterActions() }
+
+// FilterActions says "Actions"
+// in the language of msgs.
+func (msgs Messages) FilterActions() string {
+	return Catalog.Format(msgs.locale, "filterActions", nil)
+}
+
+// FilterMatchAll says "Match all messages"
+// in the language the app shows.
+func FilterMatchAll() string { return In(i18n.Locale()).FilterMatchAll() }
+
+// FilterMatchAll says "Match all messages"
+// in the language of msgs.
+func (msgs Messages) FilterMatchAll() string {
+	return Catalog.Format(msgs.locale, "filterMatchAll", nil)
+}
+
+// FilterNoActions says "No actions"
+// in the language the app shows.
+func FilterNoActions() string { return In(i18n.Locale()).FilterNoActions() }
+
+// FilterNoActions says "No actions"
+// in the language of msgs.
+func (msgs Messages) FilterNoActions() string {
+	return Catalog.Format(msgs.locale, "filterNoActions", nil)
+}
+
+// FilterFrom says "From"
+// in the language the app shows.
+func FilterFrom() string { return In(i18n.Locale()).FilterFrom() }
+
+// FilterFrom says "From"
+// in the language of msgs.
+func (msgs Messages) FilterFrom() string {
+	return Catalog.Format(msgs.locale, "filterFrom", nil)
+}
+
+// FilterFromPlaceholder says "Sender or address list"
+// in the language the app shows.
+func FilterFromPlaceholder() string { return In(i18n.Locale()).FilterFromPlaceholder() }
+
+// FilterFromPlaceholder says "Sender or address list"
+// in the language of msgs.
+func (msgs Messages) FilterFromPlaceholder() string {
+	return Catalog.Format(msgs.locale, "filterFromPlaceholder", nil)
+}
+
+// FilterToPlaceholder says "Recipient or address list"
+// in the language the app shows.
+func FilterToPlaceholder() string { return In(i18n.Locale()).FilterToPlaceholder() }
+
+// FilterToPlaceholder says "Recipient or address list"
+// in the language of msgs.
+func (msgs Messages) FilterToPlaceholder() string {
+	return Catalog.Format(msgs.locale, "filterToPlaceholder", nil)
+}
+
+// FilterStarMessage says "Star message"
+// in the language the app shows.
+func FilterStarMessage() string { return In(i18n.Locale()).FilterStarMessage() }
+
+// FilterStarMessage says "Star message"
+// in the language of msgs.
+func (msgs Messages) FilterStarMessage() string {
+	return Catalog.Format(msgs.locale, "filterStarMessage", nil)
+}
+
+// FilterQuery says "Query"
+// in the language the app shows.
+func FilterQuery() string { return In(i18n.Locale()).FilterQuery() }
+
+// FilterQuery says "Query"
+// in the language of msgs.
+func (msgs Messages) FilterQuery() string {
+	return Catalog.Format(msgs.locale, "filterQuery", nil)
+}
+
+// FilterQueryPlaceholder says "Gmail search syntax"
+// in the language the app shows.
+func FilterQueryPlaceholder() string { return In(i18n.Locale()).FilterQueryPlaceholder() }
+
+// FilterQueryPlaceholder says "Gmail search syntax"
+// in the language of msgs.
+func (msgs Messages) FilterQueryPlaceholder() string {
+	return Catalog.Format(msgs.locale, "filterQueryPlaceholder", nil)
+}
+
+// FilterHasAttachment says "Has attachment"
+// in the language the app shows.
+func FilterHasAttachment() string { return In(i18n.Locale()).FilterHasAttachment() }
+
+// FilterHasAttachment says "Has attachment"
+// in the language of msgs.
+func (msgs Messages) FilterHasAttachment() string {
+	return Catalog.Format(msgs.locale, "filterHasAttachment", nil)
+}
+
+// FilterExcludeChats says "Exclude chats"
+// in the language the app shows.
+func FilterExcludeChats() string { return In(i18n.Locale()).FilterExcludeChats() }
+
+// FilterExcludeChats says "Exclude chats"
+// in the language of msgs.
+func (msgs Messages) FilterExcludeChats() string {
+	return Catalog.Format(msgs.locale, "filterExcludeChats", nil)
+}
+
+// FilterAddLabel says "Add label"
+// in the language the app shows.
+func FilterAddLabel() string { return In(i18n.Locale()).FilterAddLabel() }
+
+// FilterAddLabel says "Add label"
+// in the language of msgs.
+func (msgs Messages) FilterAddLabel() string {
+	return Catalog.Format(msgs.locale, "filterAddLabel", nil)
+}
+
+// FilterNoLabel says "No label"
+// in the language the app shows.
+func FilterNoLabel() string { return In(i18n.Locale()).FilterNoLabel() }
+
+// FilterNoLabel says "No label"
+// in the language of msgs.
+func (msgs Messages) FilterNoLabel() string {
+	return Catalog.Format(msgs.locale, "filterNoLabel", nil)
+}
+
+// FilterSkipInbox says "Skip Inbox"
+// in the language the app shows.
+func FilterSkipInbox() string { return In(i18n.Locale()).FilterSkipInbox() }
+
+// FilterSkipInbox says "Skip Inbox"
+// in the language of msgs.
+func (msgs Messages) FilterSkipInbox() string {
+	return Catalog.Format(msgs.locale, "filterSkipInbox", nil)
+}
+
+// FilterMarkRead says "Mark as read"
+// in the language the app shows.
+func FilterMarkRead() string { return In(i18n.Locale()).FilterMarkRead() }
+
+// FilterMarkRead says "Mark as read"
+// in the language of msgs.
+func (msgs Messages) FilterMarkRead() string {
+	return Catalog.Format(msgs.locale, "filterMarkRead", nil)
+}
+
+// FilterUnreadName says "Unread"
+// in the language the app shows.
+func FilterUnreadName() string { return In(i18n.Locale()).FilterUnreadName() }
+
+// FilterUnreadName says "Unread"
+// in the language of msgs.
+func (msgs Messages) FilterUnreadName() string {
+	return Catalog.Format(msgs.locale, "filterUnreadName", nil)
+}
+
+// FilterFromValue says "From: {value}"
+// in the language the app shows.
+func FilterFromValue(value string) string { return In(i18n.Locale()).FilterFromValue(value) }
+
+// FilterFromValue says "From: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterFromValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterFromValue", map[string]any{"value": value})
+}
+
+// FilterToValue says "To: {value}"
+// in the language the app shows.
+func FilterToValue(value string) string { return In(i18n.Locale()).FilterToValue(value) }
+
+// FilterToValue says "To: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterToValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterToValue", map[string]any{"value": value})
+}
+
+// FilterSubjectValue says "Subject contains: {value}"
+// in the language the app shows.
+func FilterSubjectValue(value string) string { return In(i18n.Locale()).FilterSubjectValue(value) }
+
+// FilterSubjectValue says "Subject contains: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterSubjectValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterSubjectValue", map[string]any{"value": value})
+}
+
+// FilterQueryValue says "Query: {value}"
+// in the language the app shows.
+func FilterQueryValue(value string) string { return In(i18n.Locale()).FilterQueryValue(value) }
+
+// FilterQueryValue says "Query: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterQueryValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterQueryValue", map[string]any{"value": value})
+}
+
+// FilterNegatedQueryValue says "Does not match query: {value}"
+// in the language the app shows.
+func FilterNegatedQueryValue(value string) string {
+	return In(i18n.Locale()).FilterNegatedQueryValue(value)
+}
+
+// FilterNegatedQueryValue says "Does not match query: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterNegatedQueryValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterNegatedQueryValue", map[string]any{"value": value})
+}
+
+// FilterSizeLarger says "Larger than {size}"
+// in the language the app shows.
+func FilterSizeLarger(size string) string { return In(i18n.Locale()).FilterSizeLarger(size) }
+
+// FilterSizeLarger says "Larger than {size}"
+// in the language of msgs.
+func (msgs Messages) FilterSizeLarger(size string) string {
+	return Catalog.Format(msgs.locale, "filterSizeLarger", map[string]any{"size": size})
+}
+
+// FilterSizeSmaller says "Smaller than {size}"
+// in the language the app shows.
+func FilterSizeSmaller(size string) string { return In(i18n.Locale()).FilterSizeSmaller(size) }
+
+// FilterSizeSmaller says "Smaller than {size}"
+// in the language of msgs.
+func (msgs Messages) FilterSizeSmaller(size string) string {
+	return Catalog.Format(msgs.locale, "filterSizeSmaller", map[string]any{"size": size})
+}
+
+// FilterSize says "Size ({comparison}): {size}"
+// in the language the app shows.
+func FilterSize(comparison string, size string) string {
+	return In(i18n.Locale()).FilterSize(comparison, size)
+}
+
+// FilterSize says "Size ({comparison}): {size}"
+// in the language of msgs.
+func (msgs Messages) FilterSize(comparison string, size string) string {
+	return Catalog.Format(msgs.locale, "filterSize", map[string]any{"comparison": comparison, "size": size})
+}
+
+// FilterAddLabelValue says "Add label: {value}"
+// in the language the app shows.
+func FilterAddLabelValue(value string) string { return In(i18n.Locale()).FilterAddLabelValue(value) }
+
+// FilterAddLabelValue says "Add label: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterAddLabelValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterAddLabelValue", map[string]any{"value": value})
+}
+
+// FilterRemoveLabelValue says "Remove label: {value}"
+// in the language the app shows.
+func FilterRemoveLabelValue(value string) string {
+	return In(i18n.Locale()).FilterRemoveLabelValue(value)
+}
+
+// FilterRemoveLabelValue says "Remove label: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterRemoveLabelValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterRemoveLabelValue", map[string]any{"value": value})
+}
+
+// FilterForwardValue says "Forward to: {value}"
+// in the language the app shows.
+func FilterForwardValue(value string) string { return In(i18n.Locale()).FilterForwardValue(value) }
+
+// FilterForwardValue says "Forward to: {value}"
+// in the language of msgs.
+func (msgs Messages) FilterForwardValue(value string) string {
+	return Catalog.Format(msgs.locale, "filterForwardValue", map[string]any{"value": value})
+}
+
+// DeleteFilter says "Delete…"
+// in the language the app shows.
+func DeleteFilter() string { return In(i18n.Locale()).DeleteFilter() }
+
+// DeleteFilter says "Delete…"
+// in the language of msgs.
+func (msgs Messages) DeleteFilter() string {
+	return Catalog.Format(msgs.locale, "deleteFilter", nil)
+}
+
+// DeleteFilterConfirmation says "Delete this Gmail filter permanently? This cannot be undone."
+// in the language the app shows.
+func DeleteFilterConfirmation() string { return In(i18n.Locale()).DeleteFilterConfirmation() }
+
+// DeleteFilterConfirmation says "Delete this Gmail filter permanently? This cannot be undone."
+// in the language of msgs.
+func (msgs Messages) DeleteFilterConfirmation() string {
+	return Catalog.Format(msgs.locale, "deleteFilterConfirmation", nil)
+}
+
+// DeleteFilterConfirm says "Delete permanently"
+// in the language the app shows.
+func DeleteFilterConfirm() string { return In(i18n.Locale()).DeleteFilterConfirm() }
+
+// DeleteFilterConfirm says "Delete permanently"
+// in the language of msgs.
+func (msgs Messages) DeleteFilterConfirm() string {
+	return Catalog.Format(msgs.locale, "deleteFilterConfirm", nil)
+}
+
+// FilterCriterionRequired says "Add at least one matching condition."
+// in the language the app shows.
+func FilterCriterionRequired() string { return In(i18n.Locale()).FilterCriterionRequired() }
+
+// FilterCriterionRequired says "Add at least one matching condition."
+// in the language of msgs.
+func (msgs Messages) FilterCriterionRequired() string {
+	return Catalog.Format(msgs.locale, "filterCriterionRequired", nil)
+}
+
+// FilterActionRequired says "Choose at least one action."
+// in the language the app shows.
+func FilterActionRequired() string { return In(i18n.Locale()).FilterActionRequired() }
+
+// FilterActionRequired says "Choose at least one action."
+// in the language of msgs.
+func (msgs Messages) FilterActionRequired() string {
+	return Catalog.Format(msgs.locale, "filterActionRequired", nil)
+}
+
+// FilterLabelUnavailable says "The selected label is no longer available."
+// in the language the app shows.
+func FilterLabelUnavailable() string { return In(i18n.Locale()).FilterLabelUnavailable() }
+
+// FilterLabelUnavailable says "The selected label is no longer available."
+// in the language of msgs.
+func (msgs Messages) FilterLabelUnavailable() string {
+	return Catalog.Format(msgs.locale, "filterLabelUnavailable", nil)
+}
+
+// FilterListFailed says "Couldn't load filters: {error}"
+// in the language the app shows.
+func FilterListFailed(error string) string { return In(i18n.Locale()).FilterListFailed(error) }
+
+// FilterListFailed says "Couldn't load filters: {error}"
+// in the language of msgs.
+func (msgs Messages) FilterListFailed(error string) string {
+	return Catalog.Format(msgs.locale, "filterListFailed", map[string]any{"error": error})
+}
+
+// FilterCreateFailed says "Couldn't create filter: {error}"
+// in the language the app shows.
+func FilterCreateFailed(error string) string { return In(i18n.Locale()).FilterCreateFailed(error) }
+
+// FilterCreateFailed says "Couldn't create filter: {error}"
+// in the language of msgs.
+func (msgs Messages) FilterCreateFailed(error string) string {
+	return Catalog.Format(msgs.locale, "filterCreateFailed", map[string]any{"error": error})
+}
+
+// FilterDeleteFailed says "Couldn't delete filter: {error}"
+// in the language the app shows.
+func FilterDeleteFailed(error string) string { return In(i18n.Locale()).FilterDeleteFailed(error) }
+
+// FilterDeleteFailed says "Couldn't delete filter: {error}"
+// in the language of msgs.
+func (msgs Messages) FilterDeleteFailed(error string) string {
+	return Catalog.Format(msgs.locale, "filterDeleteFailed", map[string]any{"error": error})
+}
+
+// FilterReauthorizeHint says "Reauthorization closes this dialog. Reopen Filters to continue managing rules."
+// in the language the app shows.
+func FilterReauthorizeHint() string { return In(i18n.Locale()).FilterReauthorizeHint() }
+
+// FilterReauthorizeHint says "Reauthorization closes this dialog. Reopen Filters to continue managing rules."
+// in the language of msgs.
+func (msgs Messages) FilterReauthorizeHint() string {
+	return Catalog.Format(msgs.locale, "filterReauthorizeHint", nil)
+}

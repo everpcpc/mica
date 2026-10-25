@@ -140,6 +140,7 @@ func NewOAuthWithStore(clientID, clientSecret string, store TokenStore) *OAuth {
 				"email",
 				"https://www.googleapis.com/auth/gmail.modify",
 				"https://www.googleapis.com/auth/gmail.send",
+				"https://www.googleapis.com/auth/gmail.settings.basic",
 				"https://www.googleapis.com/auth/pubsub",
 			},
 			Endpoint: oauth2.Endpoint{AuthURL: googleAuthURL, TokenURL: googleTokenURL},
