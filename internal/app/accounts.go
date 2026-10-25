@@ -165,6 +165,9 @@ func (a *App) drainAccountTransition(transition *accountTransition) {
 }
 
 func (a *App) setAccountTransition(transition *accountTransition) {
+	if transition != nil {
+		a.filterDialog = nil
+	}
 	a.cacheState.mu.Lock()
 	a.accountTransition = transition
 	a.cacheState.attachmentWritesBlocked = transition != nil

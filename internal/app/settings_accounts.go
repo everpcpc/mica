@@ -101,6 +101,9 @@ func (a *App) accountSettingsRow(c *ui.Context, s *settingsState, account mail.A
 			})
 			if active {
 				ui.Text(c, locales.Connected()).FontSize(12).TextColor(t.Success)
+				if !a.account.Demo {
+					ui.Button(c, locales.Filters()).Disabled(s.busy || a.accountTransition != nil).OnClick(a.openFilters)
+				}
 				ui.Button(c, locales.ReauthorizeAccount()).Disabled(s.busy).OnClick(func() { a.reauthorizeAccountFromSettings(email) })
 			} else {
 				ui.Button(c, locales.SwitchAccount()).Disabled(s.busy).OnClick(func() { a.switchAccountFromSettings(email) })

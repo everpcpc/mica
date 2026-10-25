@@ -88,6 +88,9 @@ func TestOAuthLoginLoopbackStateAndPKCE(t *testing.T) {
 		if !strings.Contains(query.Get("scope"), "gmail.modify") || !strings.Contains(query.Get("scope"), "gmail.send") {
 			t.Errorf("scope = %q", query.Get("scope"))
 		}
+		if !strings.Contains(query.Get("scope"), "https://www.googleapis.com/auth/gmail.settings.basic") {
+			t.Errorf("filter settings scope is missing: %q", query.Get("scope"))
+		}
 		if !strings.Contains(query.Get("scope"), "openid") || !strings.Contains(query.Get("scope"), "profile") || !strings.Contains(query.Get("scope"), "email") {
 			t.Errorf("profile scopes are missing: %q", query.Get("scope"))
 		}

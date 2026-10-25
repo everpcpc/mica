@@ -170,6 +170,7 @@ func (a *App) closeSettings() {
 		a.cancelAccountInboxRequest()
 	}
 	a.settings = nil
+	a.filterDialog = nil
 	a.openPendingMailto()
 }
 
@@ -641,6 +642,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.draftRestoreAccount = ""
 	a.draftRestorePending = false
 	a.labelDialog = nil
+	a.filterDialog = nil
 	a.threadCache = nil
 	a.resetMessageViews()
 	a.clearThread()
