@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.3 - 2026-10-25
+
+- Fixed Gmail label creation by using `show` for message-list visibility while preserving `labelShow` for label-list visibility.
+
 ## 0.16.2 - 2026-10-25
 
 - Prefetched the next page in conversation lists, so reaching the end can display ready results without another request.
