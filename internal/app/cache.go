@@ -203,7 +203,7 @@ func (a *App) persistLabelsForAccount(accountEmail string, labels []mail.Label) 
 	})
 }
 
-func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
+func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary, preserveTail ...bool) {
 	if a.compositeThreads && a.unified != nil {
 		a.persistUnifiedLists()
 		return
@@ -225,6 +225,8 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 	}
 	slices.Sort(owners)
 	seen := make(map[string]bool, len(owners))
+	// Snoozed membership also depends on the current local records.
+	keepTail := len(preserveTail) > 0 && preserveTail[0] && query.Search != "in:snoozed"
 	for _, email := range owners {
 		if email == "" || seen[email] {
 			continue
@@ -235,9 +237,35 @@ func (a *App) persistList(query mail.Query, threads []mail.ThreadSummary) {
 			if version.Load() != revision {
 				return nil
 			}
-			return store.SaveThreadList(context.Background(), email, query, groups[email])
+			threads := groups[email]
+			if keepTail {
+				cached, found, err := store.ThreadList(context.Background(), email, query)
+				if err != nil {
+					return err
+				}
+				if found {
+					threads = mergeCachedThreadTail(threads, cached, query)
+				}
+			}
+			return store.SaveThreadList(context.Background(), email, query, threads)
 		})
 	}
+}
+
+func mergeCachedThreadTail(current, cached []mail.ThreadSummary, query mail.Query) []mail.ThreadSummary {
+	merged := cloneThreadSummaries(current)
+	seen := make(map[string]bool, len(current))
+	for _, summary := range current {
+		seen[summary.ID] = true
+	}
+	for _, summary := range cached {
+		if seen[summary.ID] || !historyListContains(query, summary) {
+			continue
+		}
+		seen[summary.ID] = true
+		merged = append(merged, summary)
+	}
+	return merged
 }
 
 func (a *App) WaitForCacheWrites() {

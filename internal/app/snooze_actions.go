@@ -92,7 +92,7 @@ func (a *App) applySnoozeState(id string, add, remove []string, wakeAt time.Time
 	if !a.compositeThreads {
 		a.request++
 		a.loading = false
-		a.loadingMore = false
+		a.resetNextPage()
 	}
 	for i := range a.threads {
 		if a.summaryKey(a.threads[i]) == id {

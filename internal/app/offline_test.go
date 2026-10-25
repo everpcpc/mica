@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"mica/internal/mail"
+	mailstore "mica/internal/mail/store"
 )
 
 func fakeAttachmentCacheBegin() func() { return func() {} }
@@ -38,6 +40,119 @@ func TestOfflineSearchFallsBackToCachedBodies(t *testing.T) {
 	a.refresh()
 	if len(a.threads) != 1 || a.threads[0].ID != "t-offline" || a.err != "Offline: showing cached results" {
 		t.Fatalf("offline search did not use cached bodies: threads=%+v err=%q", a.threads, a.err)
+	}
+}
+
+type failingNextPageService struct {
+	*pagingService
+	failed int
+}
+
+func (s *failingNextPageService) ListThreadPage(ctx context.Context, query mail.Query) (mail.ThreadPage, error) {
+	if query.PageToken == "next" {
+		s.failed++
+		return mail.ThreadPage{}, errOffline
+	}
+	return s.pagingService.ListThreadPage(ctx, query)
+}
+
+func TestInitialOfflinePaginationUsesCache(t *testing.T) {
+	service := &offlineSearchService{fakeService: newFakeService()}
+	store := newFakeMailStore()
+	cached := append(pagingPage("cached", 100), pagingPage("older", 50)...)
+	if err := store.SaveThreadList(context.Background(), "demo@example.com", mail.Query{LabelID: mail.Inbox, Limit: threadPageSize}, cached); err != nil {
+		t.Fatal(err)
+	}
+	a := newTestApp(service)
+	a.SetMailStore(store)
+	a.refreshList()
+	if len(a.threads) != 25 || a.err != "Offline: showing cached results" {
+		t.Fatalf("offline fixture did not start with one cached page: threads=%d err=%q", len(a.threads), a.err)
+	}
+	a.err = "translated offline results"
+	for range 2 {
+		a.loadMoreThreads()
+	}
+	if len(a.threads) != 50 {
+		t.Fatalf("offline pagination did not consume cached pages: %d", len(a.threads))
+	}
+	a.loadMoreThreads()
+	if len(a.threads) != 50 {
+		t.Fatalf("offline pagination duplicated cached rows: %d", len(a.threads))
+	}
+}
+
+func TestMergeCachedThreadTailKeepsDisplacedRow(t *testing.T) {
+	cached := pagingPage("cached", 100)
+	current := append([]mail.ThreadSummary{{ID: "fresh", LabelIDs: []string{mail.Inbox}}}, cached[:24]...)
+	merged := mergeCachedThreadTail(current, cached, mail.Query{LabelID: mail.Inbox})
+	if len(merged) != 26 || merged[25].ID != "cached-y" {
+		t.Fatalf("a new remote row displaced a cached row: rows=%d last=%q", len(merged), merged[len(merged)-1].ID)
+	}
+}
+
+func TestNextPageFailureUsesCache(t *testing.T) {
+	ctx := context.Background()
+	first := pagingPage("cached", 100)
+	first = append([]mail.ThreadSummary{{ID: "fresh", Subject: "Fresh", LabelIDs: []string{mail.Inbox}, Updated: time.Unix(1000, 0)}}, first[:24]...)
+	service := &failingNextPageService{pagingService: &pagingService{fakeService: newFakeService(), pages: []mail.ThreadPage{
+		{Threads: first, NextPageToken: "next"},
+		{Threads: pagingPage("second", 50)},
+	}}}
+	path := filepath.Join(t.TempDir(), "mail.db")
+	store, err := mailstore.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if store != nil {
+			_ = store.Close()
+		}
+	})
+	query := mail.Query{LabelID: mail.Inbox, Limit: threadPageSize}
+	cached := append(pagingPage("cached", 100), pagingPage("older", 50)...)
+	if err := store.SaveThreadList(ctx, "demo@example.com", query, cached); err != nil {
+		t.Fatal(err)
+	}
+	a := New(service)
+	a.storeAccount = "demo@example.com"
+	a.accountVerified = true
+	a.schedule = func(fn func()) { fn() }
+	a.SetMailStore(store)
+	a.refreshList()
+	if len(a.threads) != 25 || a.threads[0].ID != "fresh" || a.err != "" {
+		t.Fatalf("page failure interrupted the first page early: threads=%d err=%q", len(a.threads), a.err)
+	}
+	stored, found, err := store.ThreadList(ctx, "demo@example.com", query)
+	shifted := false
+	for _, thread := range stored {
+		if thread.ID == "cached-y" {
+			shifted = true
+		}
+	}
+	if err != nil || !found || len(stored) != 51 || !shifted {
+		t.Fatalf("refresh dropped a cached thread displaced by new mail: found=%v threads=%d shifted=%v err=%v", found, len(stored), shifted, err)
+	}
+	for range 2 {
+		a.loadMoreThreads()
+	}
+	if len(a.threads) != 51 || a.err != "Offline: showing cached results" {
+		t.Fatalf("failed page did not use the cached snapshot: threads=%d err=%q", len(a.threads), a.err)
+	}
+	if service.failed != 1 {
+		t.Fatalf("failed page was requested %d times, want one", service.failed)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store = nil
+	store, err = mailstore.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached, found, err = store.ThreadList(ctx, "demo@example.com", query)
+	if err != nil || !found || len(cached) != 51 {
+		t.Fatalf("cached pages after reopening: found=%v threads=%d err=%v", found, len(cached), err)
 	}
 }
 

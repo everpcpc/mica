@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -395,5 +396,90 @@ func TestScrollToEndLoadsNextThreadPage(t *testing.T) {
 	}
 	if len(service.queries) != 2 || service.queries[1].PageToken != "next" {
 		t.Fatalf("page queries = %+v, want a second query with next token", service.queries)
+	}
+}
+
+func pagingPage(prefix string, updated int64) []mail.ThreadSummary {
+	threads := make([]mail.ThreadSummary, 25)
+	for i := range 25 {
+		threads[i] = mail.ThreadSummary{
+			ID: prefix + "-" + string(rune('a'+i)), Subject: prefix, LabelIDs: []string{mail.Inbox},
+			Updated: time.Unix(updated-int64(i), 0),
+		}
+	}
+	return threads
+}
+
+func TestNextPageIsPrefetchedBeforeScroll(t *testing.T) {
+	service := &pagingService{fakeService: newFakeService(), pages: []mail.ThreadPage{
+		{Threads: pagingPage("first", 100), NextPageToken: "next"},
+		{Threads: pagingPage("second", 50)},
+	}}
+	a := New(service)
+	a.schedule = func(fn func()) { fn() }
+	a.refreshList()
+	if len(a.threads) != 25 {
+		t.Fatalf("prefetch displayed the next page early: %d", len(a.threads))
+	}
+	if len(service.queries) != 2 {
+		t.Fatalf("next page was not prefetched: queries=%+v", service.queries)
+	}
+	a.loadMoreThreads()
+	if len(a.threads) != 50 {
+		t.Fatalf("ready page was not consumed: %d", len(a.threads))
+	}
+	if len(service.queries) != 2 {
+		t.Fatalf("consuming the ready page made another request: queries=%+v", service.queries)
+	}
+}
+
+func TestRefreshInvalidatesPrefetchedPage(t *testing.T) {
+	service := &pagingService{fakeService: newFakeService(), pages: []mail.ThreadPage{
+		{Threads: pagingPage("first", 100), NextPageToken: "next"},
+		{Threads: pagingPage("second", 50)},
+	}}
+	a := New(service)
+	a.startupSelectionDone = true
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	a.refreshList()
+	jobs[0]()
+	updates[0]()
+	a.refreshList()
+	jobs[2]()
+	updates[1]()
+	jobs[1]()
+	jobs[3]()
+	updates[3]()
+	updates[2]()
+	a.loadMoreThreads()
+	if len(a.threads) != 50 {
+		t.Fatalf("stale prefetch replaced the current page: threads=%d", len(a.threads))
+	}
+}
+
+func TestCachedNextThreadsStopsWhenExhausted(t *testing.T) {
+	service := &pagingService{fakeService: newFakeService(), pages: []mail.ThreadPage{{Threads: pagingPage("first", 100)}}}
+	store := newFakeMailStore()
+	if err := store.SaveThreadList(context.Background(), "demo@example.com", mail.Query{LabelID: mail.Inbox, Limit: threadPageSize}, pagingPage("first", 100)); err != nil {
+		t.Fatal(err)
+	}
+	a := New(service)
+	a.storeAccount = "demo@example.com"
+	a.startupSelectionDone = true
+	a.schedule = func(fn func()) { fn() }
+	a.SetMailStore(store)
+	a.refreshList()
+	var jobs []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.loadMoreThreads()
+	if len(jobs) != 1 {
+		t.Fatalf("cache continuation jobs = %d, want one", len(jobs))
+	}
+	jobs[0]()
+	a.loadMoreThreads()
+	if len(jobs) != 1 {
+		t.Fatalf("cache continuation repeated after exhaustion: %d", len(jobs))
 	}
 }

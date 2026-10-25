@@ -77,8 +77,7 @@ func (a *App) refreshUnifiedAfterAccountRemoval(email string) {
 func (a *App) refreshUnified() {
 	a.request++
 	request := a.request
-	a.nextPageToken = ""
-	a.loadingMore = false
+	a.resetNextPage()
 	a.loading = true
 	a.err = ""
 	a.compositeThreads = true

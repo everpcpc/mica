@@ -622,8 +622,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.thread = mail.Thread{}
 	a.query = ""
 	a.unreadOnly = false
-	a.nextPageToken = ""
-	a.loadingMore = false
+	a.resetNextPage()
 	a.selectedLabel = mail.Inbox
 	if accountInboxLabel(inboxLabel) == a.storeAccount && a.storeAccount != "" {
 		a.selectedLabel = accountInboxPrefix + a.storeAccount
