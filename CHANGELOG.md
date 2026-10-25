@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.1 - 2026-10-25
+
+- Fixed the Remote images control to use a real switch with a visible state knob, preserving the existing privacy preference behavior.
+- Unified the toolbar Reply with the reader's capsule actions and aligned Snooze, label, and message menus plus the unread filter with circular hover feedback.
+- Added rendered regressions for switch and control shapes, refreshed the affected English screenshots, and documented the styling contract.
+
 ## 0.16.0 - 2026-10-25
 
 - Added offline fallback search across loaded summaries and bodies, with bounded account-scoped attachment caching for downloads, forwards, and inline images.
