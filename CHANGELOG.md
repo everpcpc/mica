@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.1 - 2026-10-25
+
+- Added a fixed Filters action to the main sidebar and Gmail Filters… to the Mailbox application menu.
+- Removed filter management from Settings and made the filter dialog independent of Settings.
+- Guarded filter actions during authentication and kept the Mailbox action available to restore an open dialog.
+
 ## 0.17.0 - 2026-10-25
 
 - Added server-side Gmail filter list, creation, and confirmed deletion for the active account, with common criteria, label/star/Inbox/read actions, and an explicit settings-permission reauthorization flow.
