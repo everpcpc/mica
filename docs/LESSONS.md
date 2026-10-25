@@ -20,6 +20,7 @@
 - Do not call MyGo onMain-backed system handlers from a view. A direct default-handler query deadlocked Settings; query and register in the background and render cached state.
 - Preserve literal `+` in mailto values with path unescaping, and open links only after account and draft-snapshot restoration so they cannot replace an existing draft. Decode `URL.Path` only once because Go has already decoded it.
 - Every authentication or account-transition exit must release pending deep links. A failed restore must clear `authCancel`, and service replacement must clear the old draft-restore pending state; otherwise a link can remain blocked forever. Retry the draft snapshot before opening a pending link so a skipped callback cannot make the link overwrite the older draft.
+- Recovery copy must match the complete lifecycle, not only the error callback. A filter permission error preserved its form, but successful reauthorization replaced the service and closed the dialog; tell the user to reopen it rather than implying the form survives.
 
 ## Design optimistic updates together with request ordering
 
@@ -159,6 +160,7 @@
 - UI capture helpers must not call production credential-loading paths. Build modal state directly, or a screenshot run can block on the real macOS Keychain instead of rendering.
 - Call `Tester.Frame()` after changing app state directly; `Advance` only runs frames already scheduled. A Settings capture that omitted the rebuild rendered the previous mailbox instead.
 - `Tester.Find` returns logical coordinates, while `Tester.Image` contains physically scaled pixels. Scale crop bounds accordingly and inspect the result; an unscaled 2x crop showed an unrelated conversation row and pane.
+- Finding an element does not prove that it is visible or that its label is unique. A clipped filter Create button had empty bounds and clicking its computed center dismissed the modal; duplicate `From`, `Star`, and `Sync` labels also targeted text or underlying mailbox controls instead of the intended inputs. Keep primary dialog actions in a fixed footer, scroll other targets into view, use descriptive control labels, and assert non-zero bounds and bound values so the test drives the intended control.
 - Drive capture timers with a controllable callback and verify the final content. `Tester.Advance` does not run `time.AfterFunc`, so a toast capture still showed the notice in its end frame until the test invoked expiration explicitly.
 - Give an unmeasured embedded document the available viewport height, then honor its measured or cached height. A fixed one-line placeholder made HTML mail open collapsed; the rendering regression test checks both the placeholder and the measured state.
 - Start embedded-document measurement at DOM readiness rather than full page load when slow subresources would otherwise delay the initial layout.
