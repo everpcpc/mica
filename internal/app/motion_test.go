@@ -23,7 +23,7 @@ func TestUnreadFilterButtonTransition(t *testing.T) {
 		t.Fatal("unread filter button not found")
 	}
 	pixel := func() color.RGBA {
-		return tt.Image().RGBAAt(int(r.X+4), int(r.Y+4))
+		return tt.Image().RGBAAt(int(r.X+r.W/2), int(r.Y+3))
 	}
 	matches := func(got color.RGBA, want ui.Color) bool {
 		return got.R == want.R && got.G == want.G && got.B == want.B && got.A == want.A
@@ -38,6 +38,8 @@ func TestUnreadFilterButtonTransition(t *testing.T) {
 		t.Fatalf("filter button is not transitioning to the active color: before=%v mid=%v accent=%v", before, mid, accent)
 	}
 	tt.Advance(200 * time.Millisecond)
+	tt.Move(0, 0)
+	tt.Frame()
 	if got := pixel(); !matches(got, accent) {
 		t.Fatalf("active filter background = %v, want accent %v", got, accent)
 	}

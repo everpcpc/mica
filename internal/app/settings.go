@@ -129,7 +129,7 @@ func (a *App) remoteImageSettings(c *ui.Context) {
 				ui.Text(c, locales.RemoteImages()).Bold()
 				ui.Text(c, locales.RemoteImagesHint()).FontSize(11).LineHeight(1.4).TextColor(t.TextMuted)
 			})
-			toggle := ui.Toggle(c.Key("remote-images"), &a.remoteImagesAutomatic, "").Label(locales.LoadRemoteImages())
+			toggle := ui.Switch(c.Key("remote-images"), &a.remoteImagesAutomatic).Label(locales.LoadRemoteImages())
 			if toggle.Changed() {
 				a.setRemoteImagesAutomatic(a.remoteImagesAutomatic)
 			}

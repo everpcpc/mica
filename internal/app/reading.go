@@ -51,12 +51,8 @@ func (a *App) reader(c *ui.Context) {
 			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(len(actionTargets) == 0 || compositionView)
 			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(len(actionTargets) == 0 || compositionView)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(len(actionTargets) == 0 || compositionView)
-			ui.Button(c, "").Label(locales.SnoozeAction()).Tooltip(locales.SnoozeAction()).Disabled(len(actionTargets) == 0 || compositionView).Padding(5, 6).Children(func() {
-				ui.Icon(c, iconSnoozed).Size(16, 16)
-			}).Menu(a.snoozeMenu)
-			ui.Button(c, "").Label(locales.EditLabels()).Tooltip(locales.EditLabels()).Disabled(compositionView).Padding(5, 6).Children(func() {
-				ui.Icon(c, iconLabel).Size(16, 16)
-			}).Menu(a.labelMenu)
+			iconMenuButton(c, locales.SnoozeAction(), iconSnoozed, a.snoozeMenu).Disabled(len(actionTargets) == 0 || compositionView)
+			iconMenuButton(c, locales.EditLabels(), iconLabel, a.labelMenu).Disabled(compositionView)
 			starLabel := locales.AddStar()
 			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				starLabel = locales.RemoveStar()
@@ -66,7 +62,7 @@ func (a *App) reader(c *ui.Context) {
 				star.TextColor(t.Warning)
 			}
 			ui.Spacer(c)
-			ui.Button(c, locales.Reply()).Disabled(len(a.thread.Messages) == 0 || compositionView).OnClick(a.openReply)
+			threadAction(c, locales.Reply(), iconReply, a.openReply, len(a.thread.Messages) == 0 || compositionView).Bind(&a.readerReply)
 		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
 	})
 }
@@ -154,9 +150,9 @@ func (a *App) threadContent(c *ui.Context) {
 	})
 }
 
-func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func(), disabled ...bool) {
+func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func(), disabled ...bool) ui.Element {
 	t := c.Theme()
-	ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
+	return ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph).Size(15, 15)
 			ui.Text(c, label)
@@ -226,9 +222,7 @@ func (a *App) expandedMessageActions(c *ui.Context, message mail.Message) {
 }
 
 func (a *App) messageActionsMenu(c *ui.Context, message mail.Message) {
-	ui.Button(c, "").Label(locales.MessageActions()).Tooltip(locales.MessageActions()).Padding(5, 6).Children(func() {
-		ui.Icon(c, iconMore).Size(16, 16)
-	}).Menu(func(menu *ui.Menu) {
+	iconMenuButton(c, locales.MessageActions(), iconMore, func(menu *ui.Menu) {
 		if menu.Item(locales.Reply()).Chosen() {
 			a.openReplyMessage(message)
 		}

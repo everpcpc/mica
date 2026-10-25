@@ -72,6 +72,61 @@ func TestRemoteImagePreferenceIsRendered(t *testing.T) {
 	}
 }
 
+func remoteImageKnobCenter(tt *ui.Tester, button ui.Rect) (float32, int) {
+	image := tt.Image()
+	scale := float32(image.Bounds().Dx()) / 1280
+	minX := int((button.X + 2) * scale)
+	maxX := int((button.X + button.W - 2) * scale)
+	minY := int((button.Y + 2) * scale)
+	maxY := int((button.Y + button.H - 2) * scale)
+	count := 0
+	var sum float32
+	for y := minY; y < maxY; y++ {
+		for x := minX; x < maxX; x++ {
+			r, g, b, _ := image.RGBAAt(x, y).RGBA()
+			if r > 64000 && g > 64000 && b > 64000 {
+				count++
+				sum += float32(x) / scale
+			}
+		}
+	}
+	if count == 0 {
+		return 0, 0
+	}
+	return sum / float32(count), count
+}
+
+func TestRemoteImageSwitchShowsKnobAndSide(t *testing.T) {
+	a := newTestApp(newFakeService())
+	a.SetMailStore(newFakeMailStore())
+	a.settings = &settingsState{open: true}
+	tt := ui.NewTester(a.View, 1280, 800)
+	tt.SetLocale("en")
+	button, ok := tt.Find("Load automatically")
+	if !ok {
+		t.Fatal("remote image switch not found")
+	}
+	offCenter, offCount := remoteImageKnobCenter(tt, button)
+	if offCount == 0 {
+		t.Fatal("remote image switch has no visible knob")
+	}
+	if offCenter > button.X+button.W/2 {
+		t.Fatalf("off knob is on the right: center=%v button=%+v", offCenter, button)
+	}
+	if err := tt.Click("Load automatically"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(70 * time.Millisecond)
+	if _, count := remoteImageKnobCenter(tt, button); count == 0 {
+		t.Fatal("knob disappeared during the transition")
+	}
+	tt.Advance(140 * time.Millisecond)
+	onCenter, onCount := remoteImageKnobCenter(tt, button)
+	if onCount == 0 || onCenter < button.X+button.W/2 {
+		t.Fatalf("on knob is not on the right: center=%v count=%d button=%+v", onCenter, onCount, button)
+	}
+}
+
 func TestRemoteImagePerMessageAndGlobalAllow(t *testing.T) {
 	data := testPNG(t)
 	requests := 0
