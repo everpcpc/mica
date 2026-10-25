@@ -131,6 +131,9 @@ func TestFilterMenuTracksFeatureAvailability(t *testing.T) {
 	tt := ui.NewTester(a.View, 1280, 800)
 	a.OpenFilters()
 	tt.Frame()
+	if len(states) == 0 || !states[len(states)-1] {
+		t.Fatalf("an open Filters dialog disabled window restoration: %v", states)
+	}
 	opened := a.filterDialog
 	a.OpenFilters()
 	tt.Frame()
@@ -146,7 +149,67 @@ func TestFilterMenuTracksFeatureAvailability(t *testing.T) {
 	if a.filterDialog != nil || service.listCalls != 1 {
 		t.Fatalf("Settings allowed Filters to open: dialog=%p calls=%d", a.filterDialog, service.listCalls)
 	}
-	want := []bool{true, false, true, false}
+	want := []bool{true, false}
+	if len(states) != len(want) {
+		t.Fatalf("menu states = %v, want %v", states, want)
+	}
+	for i := range want {
+		if states[i] != want[i] {
+			t.Fatalf("menu states = %v, want %v", states, want)
+		}
+	}
+}
+
+func TestFiltersAuthenticationDisablesWriteControls(t *testing.T) {
+	service := newFilterTestService()
+	a := newFilterTestApp(service)
+	a.openFilters()
+	s := a.filterDialog
+	s.creating = true
+	s.from = "sender@example.com"
+	s.starred = true
+	a.authCancel = func() {}
+	tt := ui.NewTester(a.View, 1280, 800)
+	if err := tt.Click("Create filter"); err != nil {
+		t.Logf("Create is disabled during authentication: %v", err)
+	}
+	if service.createCalls != 0 {
+		t.Errorf("authentication allowed Create: %d calls", service.createCalls)
+	}
+	a.loadFilters(s)
+	a.requestFilterDelete("filter-existing")
+	if service.listCalls != 1 || s.deleteID != "" {
+		t.Fatalf("authentication allowed Refresh or Delete: lists=%d delete=%q", service.listCalls, s.deleteID)
+	}
+}
+
+func TestFiltersAuthenticationPreventsMenuAndReopen(t *testing.T) {
+	service := newFilterTestService()
+	a := newFilterTestApp(service)
+	a.openFilters()
+	a.closeFilterDialog(a.filterDialog)
+	a.authCancel = func() {}
+	var states []bool
+	a.SetFilterMenuHandler(func(enabled bool) { states = append(states, enabled) })
+	tt := ui.NewTester(a.View, 1280, 800)
+	if len(states) != 1 || states[0] {
+		t.Errorf("authentication left the Mailbox action enabled: %v", states)
+	}
+	if err := tt.Click("Filters"); err != nil {
+		t.Logf("sidebar Filters is disabled during authentication: %v", err)
+	}
+	if a.filterDialog != nil || service.listCalls != 1 {
+		t.Fatalf("authentication allowed Filters to reopen: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+	}
+	a.authCancel = nil
+	tt.Frame()
+	if err := tt.Click("Filters"); err != nil {
+		t.Fatal(err)
+	}
+	if a.filterDialog == nil || service.listCalls != 2 {
+		t.Fatalf("authentication completion did not restore Filters: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+	}
+	want := []bool{false, true}
 	if len(states) != len(want) {
 		t.Fatalf("menu states = %v, want %v", states, want)
 	}
