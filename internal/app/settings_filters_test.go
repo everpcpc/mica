@@ -294,6 +294,45 @@ func TestSettingsFiltersLabelNamedNoLabelUsesID(t *testing.T) {
 	}
 }
 
+func TestSettingsFiltersLongLabelListScrollsToLast(t *testing.T) {
+	service := newFilterTestService()
+	for i := 1; i <= 30; i++ {
+		id := fmt.Sprintf("Label_%02d", i)
+		service.labels = append(service.labels, mail.Label{ID: id, Name: fmt.Sprintf("Label %02d", i), Hide: true})
+	}
+	a := newFilterTestApp(service)
+	a.openFilters()
+	tt := ui.NewTester(a.View, 1280, 600)
+	if err := tt.Click("New filter"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("Add label: No label"); err != nil {
+		t.Fatal(err)
+	}
+	first, ok := tt.Find("Label 01")
+	if !ok {
+		t.Fatalf("first custom label is missing: %q", tt.Texts())
+	}
+	x, y := first.X+first.W/2, first.Y+first.H/2
+	tt.Move(x, y)
+	for range 30 {
+		tt.Scroll(x, y, 0, 120)
+	}
+	if a.filterDialog.optionsScroll.Y <= 0 {
+		t.Fatal("label popup did not scroll")
+	}
+	last, ok := tt.Find("Label 30")
+	if !ok || last.W <= 0 || last.H <= 0 || last.Y < 0 || last.Y+last.H > 600 {
+		t.Fatalf("last label is not visible after scrolling: %+v", last)
+	}
+	if err := tt.Click("Label 30"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.filterDialog.labelID; got != "Label_30" {
+		t.Fatalf("last label was not selected: %q", got)
+	}
+}
+
 func TestSettingsFiltersCreateBusyCannotDismiss(t *testing.T) {
 	service := newFilterTestService()
 	a := newFilterTestApp(service)

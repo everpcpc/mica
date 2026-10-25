@@ -37,6 +37,7 @@ type filterDialogState struct {
 	query         string
 	hasAttachment bool
 	labelID       string
+	optionsScroll ui.ScrollState
 	starred       bool
 	skipInbox     bool
 	markRead      bool
@@ -405,7 +406,7 @@ func (a *App) filterCreateForm(c *ui.Context, s *filterDialogState, disabled boo
 					face = t.SurfaceHover
 				}
 			}
-			trigger.Label(locales.FilterAddLabel()).Padding(t.Space(1.5), t.Space(3.5)).Gap(t.Space(1.5)).Radius(t.Radius).Background(face).TextColor(t.Text).MinWidth(t.Space(35)).Grow(1).Disabled(disabled).Justify(ui.SpaceBetween).Children(func() {
+			trigger.Label(locales.FilterAddLabel()+": "+selection.name).Padding(t.Space(1.5), t.Space(3.5)).Gap(t.Space(1.5)).Radius(t.Radius).Background(face).TextColor(t.Text).MinWidth(t.Space(35)).Grow(1).Disabled(disabled).Justify(ui.SpaceBetween).Children(func() {
 				ui.Text(c, selection.name).SingleLine()
 				ui.Icon(c, iconChevronDown).Size(10, 10).TextColor(t.TextMuted)
 			})
@@ -413,21 +414,23 @@ func (a *App) filterCreateForm(c *ui.Context, s *filterDialogState, disabled boo
 				trigger.Border(1, t.Border)
 			}
 			selector.Popup(func(panel ui.Element) {
-				panel.Margin(t.Space(1), 0, 0, 0).Padding(4).Radius(t.Radius+2).Background(t.Background).Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.18))
+				panel.Margin(t.Space(1), 0, 0, 0).Padding(4).Radius(t.Radius+2).Background(t.Background).MaxHeight(280).Shadow(0, 6, 20, 0, ui.RGBA(0, 0, 0, 0.18))
 				if t.Border.A > 0 {
 					panel.Border(1, t.Border)
 				}
-				option := func(value filterLabelOption) {
-					item := selector.Item(value).Padding(t.Space(1.5), t.Space(2.5)).Radius(t.Radius)
-					if item.Highlighted() {
-						item.Background(t.Accent).TextColor(t.AccentText)
+				ui.Scroll(c.Key("filter-label-options")).MaxHeight(280).TrackScroll(&s.optionsScroll).Shrink(1).Children(func() {
+					option := func(value filterLabelOption) {
+						item := selector.Item(value).Padding(t.Space(1.5), t.Space(2.5)).Radius(t.Radius)
+						if item.Highlighted() {
+							item.Background(t.Accent).TextColor(t.AccentText)
+						}
+						item.Children(func() { ui.Text(c, value.name).SingleLine() })
 					}
-					item.Children(func() { ui.Text(c, value.name).SingleLine() })
-				}
-				option(filterLabelOption{name: locales.FilterNoLabel()})
-				for _, label := range labels {
-					option(filterLabelOption{id: label.ID, name: label.Name})
-				}
+					option(filterLabelOption{name: locales.FilterNoLabel()})
+					for _, label := range labels {
+						option(filterLabelOption{id: label.ID, name: label.Name})
+					}
+				})
 			})
 			if selector.Trigger.Changed() {
 				s.labelID = selection.id
