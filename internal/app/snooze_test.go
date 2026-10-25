@@ -460,6 +460,59 @@ func TestSnoozeStaleOfflineSnapshotRemoved(t *testing.T) {
 	}
 }
 
+func TestSnoozePaginationDoesNotRestoreCompleted(t *testing.T) {
+	store := newFakeMailStore()
+	query := mail.Query{Search: "in:snoozed", Limit: threadPageSize}
+	store.lists[cacheListKey{email: "demo@example.com", query: query}] = []mail.ThreadSummary{{
+		ID: "completed", Subject: "Completed", SnoozeAt: time.Now().Add(-time.Hour), LabelIDs: []string{mail.Snoozed},
+	}}
+	service := &pagingService{fakeService: newFakeService(), pages: []mail.ThreadPage{
+		{NextPageToken: "next"},
+		{},
+	}}
+	a := New(service)
+	a.storeAccount = "demo@example.com"
+	a.accountVerified = true
+	a.selectedLabel = mail.Snoozed
+	a.schedule = func(fn func()) { fn() }
+	a.SetMailStore(store)
+	a.refreshList()
+	if len(a.threads) != 0 {
+		t.Fatalf("completed snooze appeared in the refreshed view: %+v", a.threads)
+	}
+	cached, found, err := store.ThreadList(context.Background(), "demo@example.com", query)
+	if err != nil || !found || len(cached) != 0 {
+		t.Fatalf("pagination restored a completed snooze: found=%v threads=%+v err=%v", found, cached, err)
+	}
+}
+
+func TestSnoozeCachedNextDoesNotRestoreCompleted(t *testing.T) {
+	store := newFakeMailStore()
+	query := mail.Query{Search: "in:snoozed", Limit: threadPageSize}
+	store.lists[cacheListKey{email: "demo@example.com", query: query}] = []mail.ThreadSummary{
+		{ID: "native", Subject: "Native", LabelIDs: []string{mail.Snoozed}},
+		{ID: "completed", Subject: "Completed", SnoozeAt: time.Now().Add(-time.Hour), LabelIDs: []string{mail.Snoozed}},
+	}
+	a := New(&offlineSearchService{fakeService: newFakeService()})
+	a.storeAccount = "demo@example.com"
+	a.accountVerified = true
+	a.selectedLabel = mail.Snoozed
+	a.schedule = func(fn func()) { fn() }
+	a.SetMailStore(store)
+	a.refreshList()
+	if len(a.threads) != 1 || a.threads[0].ID != "native" {
+		t.Fatalf("Snoozed fixture did not preserve only native mail: %+v", a.threads)
+	}
+	a.loadMoreThreads()
+	if len(a.threads) != 1 || a.threads[0].ID != "native" {
+		t.Fatalf("cached continuation restored a completed snooze: %+v", a.threads)
+	}
+	cached, found, err := store.ThreadList(context.Background(), "demo@example.com", query)
+	if err != nil || !found || len(cached) != 1 || cached[0].ID != "native" {
+		t.Fatalf("cached continuation restored the wrong rows: found=%v threads=%+v err=%v", found, cached, err)
+	}
+}
+
 func TestSnoozeRefreshConcurrentAccountRegistration(t *testing.T) {
 	store := newFakeMailStore()
 	service := &snoozeService{fakeService: newFakeService()}

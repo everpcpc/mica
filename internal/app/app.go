@@ -61,21 +61,26 @@ type App struct {
 	query                string
 	unreadOnly           bool
 
-	loading          bool
-	loadingMore      bool
-	nextPageToken    string
-	threadLoading    bool
-	mutationQueue    []mutationJob
-	mutationSequence uint64
-	mutationRunning  bool
-	mutationRefresh  bool
-	mutationLabels   bool
-	err              string
-	threadErr        string
-	notice           string
-	noticeID         uint64
-	noticeToastID    string
-	expiredNoticeID  string
+	loading            bool
+	loadingMore        bool
+	nextPageToken      string
+	cacheExhausted     bool
+	nextPage           *mail.ThreadPage
+	nextPageRequest    int
+	nextPageQueryToken string
+	nextPageErr        error
+	threadLoading      bool
+	mutationQueue      []mutationJob
+	mutationSequence   uint64
+	mutationRunning    bool
+	mutationRefresh    bool
+	mutationLabels     bool
+	err                string
+	threadErr          string
+	notice             string
+	noticeID           uint64
+	noticeToastID      string
+	expiredNoticeID    string
 
 	list                 ui.ListState
 	search               ui.Handle
@@ -378,8 +383,7 @@ func (a *App) refreshList() {
 	}
 	a.request++
 	request := a.request
-	a.nextPageToken = ""
-	a.loadingMore = false
+	a.resetNextPage()
 	a.loading = true
 	a.err = ""
 	service, version := a.service, a.serviceVersion
@@ -462,38 +466,9 @@ func (a *App) refreshList() {
 			a.applyThreadList(page.Threads, true)
 			a.startupSelectionDone = true
 			if a.accountVerified {
-				a.persistList(query, page.Threads)
+				a.persistList(query, page.Threads, page.NextPageToken != "")
 			}
-		})
-	})
-}
-
-func (a *App) loadMoreThreads() {
-	if a.selectedLabel == mail.Unified {
-		a.loadMoreUnified()
-		return
-	}
-	if a.nextPageToken == "" || a.loading || a.loadingMore || a.err != "" {
-		return
-	}
-	a.loadingMore = true
-	service, version := a.service, a.serviceVersion
-	request := a.request
-	query := a.currentQuery()
-	query.PageToken = a.nextPageToken
-	a.schedule(func() {
-		page, err := listThreadPage(context.Background(), service, query)
-		a.publish(func() {
-			if version != a.serviceVersion || request != a.request || query.PageToken != a.nextPageToken {
-				return
-			}
-			a.loadingMore = false
-			if err != nil {
-				a.err = err.Error()
-				return
-			}
-			a.nextPageToken = page.NextPageToken
-			a.applyHistoryChanges(page.Threads, nil)
+			a.prefetchNextThreads()
 		})
 	})
 }
@@ -572,7 +547,7 @@ func (a *App) historyThreadKey(id string) string {
 	return id
 }
 
-func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string) {
+func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string, preserveTail ...bool) {
 	if a.compositeThreads {
 		a.refreshUnified()
 		return
@@ -614,7 +589,7 @@ func (a *App) applyHistoryChanges(changed []mail.ThreadSummary, deleted []string
 	})
 	a.applyThreadList(updated, true)
 	if a.accountVerified || a.compositeThreads {
-		a.persistList(query, updated)
+		a.persistList(query, updated, preserveTail...)
 	}
 }
 
@@ -645,8 +620,7 @@ func (a *App) selectLabel() {
 		a.request++
 		a.threads = nil
 		a.threadCache = nil
-		a.nextPageToken = ""
-		a.loadingMore = false
+		a.resetNextPage()
 		a.loading = true
 		a.err = ""
 		a.undo = nil
