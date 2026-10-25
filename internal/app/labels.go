@@ -173,7 +173,8 @@ func threadLabel(c *ui.Context, label mail.Label, selected bool) ui.Element {
 		chip = chip.Border(1, t.AccentText.Alpha(0.65))
 	}
 	return chip.Children(func() {
-		ui.Text(c, label.Name).FontSize(11).TextColor(foreground).SingleLine()
+		// One shared offset balances glyph ink without giving label names different baselines.
+		ui.Text(c, label.Name).FontSize(11).TextColor(foreground).SingleLine().Top(-0.75)
 	})
 }
 
