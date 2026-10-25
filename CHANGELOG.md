@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.2 - 2026-10-25
+
+- Added color-coded label capsules to conversation lists and the reader, with compact list rows, wrapping reader labels, and selected-state contrast.
+- Fixed label visibility in global search and account-specific views, including correct metadata for multiple accounts.
+
 ## 0.17.1 - 2026-10-25
 
 - Added a fixed Filters action to the main sidebar and Gmail Filters… to the Mailbox application menu.
