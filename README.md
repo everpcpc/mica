@@ -38,7 +38,7 @@
 - **Remote image privacy.** Remote images are blocked by default. Allow them for one message or enable automatic loading in Settings.
 - **Multiple Gmail accounts.** Add, switch between, reauthorize, and remove accounts without mixing their credentials, caches, drafts, or notifications.
 - **All Inboxes.** Merge multiple Gmail inboxes with independent per-account pagination, owner-aware reading, replies, drafts, and actions, or expand the account group to open one account's Inbox.
-- **Offline access and notifications.** Search previously loaded mail in the active account and reopen cached attachments without a network connection. Local search does not cover Gmail's complete index or every Gmail search operator. Gmail watch and history synchronization keep the cache current.
+- **Offline access and notifications.** All Mail prefetches the next page and keeps cached pages available for offline browsing. Search previously loaded mail in the active account and reopen cached attachments without a network connection. Local search does not cover Gmail's complete index or every Gmail search operator, and this is not a complete Gmail mirror. Gmail watch and history synchronization keep the cache current.
 - **English and Simplified Chinese.** Follow the system language or choose one in Settings.
 - **A complete demo mailbox.** Explore the workflow without connecting a Google account.
 
