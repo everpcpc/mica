@@ -105,19 +105,12 @@ func (a *App) threadContent(c *ui.Context) {
 			ui.Column(c).Grow(1).MaxWidth(960).Padding(24, 24, 32, 24).Gap(18).Children(func() {
 				ui.Column(c).Gap(8).Children(func() {
 					ui.Text(c, thread.Subject).FontSize(22).LineHeight(1.3)
-					ui.Row(c).Gap(6).Children(func() {
+					ui.Row(c).Gap(6).Wrap().Children(func() {
 						if containsLabel(thread.LabelIDs, mail.Important) {
 							ui.Icon(c, iconImportant).Size(14, 14).TextColor(t.Warning).Label(locales.Important())
 						}
-						for _, id := range thread.LabelIDs {
-							if id == mail.Inbox || id == mail.Sent {
-								ui.Badge(c, a.labelName(id))
-							}
-						}
-						for _, label := range assignableLabels(a.ownerLabels(thread.AccountEmail)) {
-							if containsLabel(thread.LabelIDs, label.ID) {
-								ui.Badge(c, label.Name)
-							}
+						for _, label := range a.threadLabels(thread.AccountEmail, thread.LabelIDs, "") {
+							threadLabel(c, label, false)
 						}
 						ui.Text(c, locales.MessageCount(len(thread.Messages))).FontSize(11).TextColor(t.TextMuted)
 					})

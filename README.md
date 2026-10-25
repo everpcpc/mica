@@ -33,7 +33,7 @@
 - **Scheduled sending.** Choose a preset or a local date and time. Mica keeps the schedule and attachments on this Mac and sends while it is running, or after reopening if the time was missed. Canceling returns the complete message to a draft; uncertain results always require review before another attempt.
 - **Persistent Snooze.** Archive conversations until a local wake time, see them in Snoozed, reschedule or cancel, and restore them after restarts. Gmail changes stay ordered through the same background queue.
 - **Email links.** Open `mailto:` links into a draft, with an explicit default email app setting in macOS.
-- **Label management.** Assign, create, recolor, and delete custom Gmail labels.
+- **Label management.** Assign, create, recolor, and delete custom Gmail labels, with color-coded capsules in the conversation list and reader.
 - **Gmail filters.** Manage server-side rules for the active Gmail account from **Filters** in the sidebar or **Mailbox → Gmail Filters…**. Create rules from sender, recipient, subject, search, and attachment conditions, and delete rules after confirmation. Apply custom labels, stars, Inbox skipping, and read state to new incoming messages. Existing advanced criteria and forwarding actions remain readable; Mica does not replay filters against old mail.
 - **Comfortable reading.** Sanitized HTML mail, inline images, collapsible messages, light and dark appearances, and reduced-motion support.
 - **Remote image privacy.** Remote images are blocked by default. Allow them for one message or enable automatic loading in Settings.

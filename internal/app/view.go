@@ -341,6 +341,17 @@ func (a *App) threadRow(row ui.ListRow, thread *mail.ThreadSummary) {
 			}
 		})
 		ui.Text(c, thread.Snippet).FontSize(12).LineHeight(1.35).TextColor(secondary).MaxLines(2)
+		currentLabel := a.currentQuery().LabelID
+		if a.selectedLabel == mail.Unified {
+			currentLabel = ""
+		}
+		if labels := a.threadLabels(thread.AccountEmail, thread.LabelIDs, currentLabel); len(labels) > 0 {
+			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+				for _, label := range labels {
+					threadLabel(c, label, row.Selected())
+				}
+			})
+		}
 		if a.compositeThreads && normalizedEmail(thread.AccountEmail) != "" {
 			ui.Text(c, normalizedEmail(thread.AccountEmail)).FontSize(10).TextColor(secondary).SingleLine()
 		}

@@ -144,6 +144,39 @@ func assignableLabels(labels []mail.Label) []mail.Label {
 	return assignable
 }
 
+func (a *App) threadLabels(owner string, ids []string, omit string) []mail.Label {
+	labels := make([]mail.Label, 0, len(ids))
+	for _, id := range ids {
+		if id != omit && (id == mail.Inbox || id == mail.Sent) {
+			labels = append(labels, mail.Label{ID: id, Name: a.labelName(id)})
+		}
+	}
+	for _, label := range assignableLabels(a.ownerLabels(owner)) {
+		if label.ID != omit && containsLabel(ids, label.ID) {
+			labels = append(labels, label)
+		}
+	}
+	return labels
+}
+
+func threadLabel(c *ui.Context, label mail.Label, selected bool) ui.Element {
+	t := c.Theme()
+	background, foreground := t.Text.Alpha(0.08), t.TextMuted
+	colored := label.Color.Background != "" && label.Color.Text != ""
+	if colored {
+		background, foreground = ui.Hex(label.Color.Background), ui.Hex(label.Color.Text)
+	} else if selected {
+		background, foreground = t.AccentText, t.Accent
+	}
+	chip := ui.Box(c).Padding(2, 7).Radius(999).Background(background).Shrink(0)
+	if colored && selected {
+		chip = chip.Border(1, t.AccentText.Alpha(0.65))
+	}
+	return chip.Children(func() {
+		ui.Text(c, label.Name).FontSize(11).TextColor(foreground).SingleLine()
+	})
+}
+
 func visibleSidebarLabels(labels []mail.Label, items []sidebarLabel) []sidebarLabel {
 	visible := make([]sidebarLabel, 0, len(items))
 	for _, item := range items {
