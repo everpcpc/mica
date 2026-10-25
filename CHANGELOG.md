@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.3 - 2026-10-25
+
+- Balanced label badge text vertically across different glyph shapes without changing capsule dimensions, and refreshed the English screenshots.
+
 ## 0.17.2 - 2026-10-25
 
 - Added color-coded label capsules to conversation lists and the reader, with compact list rows, wrapping reader labels, and selected-state contrast.
