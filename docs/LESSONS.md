@@ -70,6 +70,7 @@
 - Adding or removing a label on a conversation is not the same as creating or deleting the label itself.
 - Keep label creation and deletion in the sidebar's management area; the reader menu is only for assigning labels to the current conversation. Creation must remain available when no custom labels exist. Right-clicking a label should expose color editing and deletion, and color updates must use Gmail-supported background/text pairs rather than arbitrary picker values.
 - Creating a label must wait for the server's real ID; do not invent temporary IDs.
+- Gmail's label-list and message-list visibility fields have different enum domains: `labelShow` belongs to the former, `show` to the latter. Verify the create request's JSON against the pinned API field definitions; a regression originally asserted the invalid `labelShow` value for both fields and hid the server rejection.
 - Deleting a label removes it from every conversation in that account. Require explicit confirmation and clean up the sidebar, current conversation, caches, and stale Undo entries. Unified cleanup must filter by owner because two accounts can use the same raw label ID.
 - When the active label is deleted, return to a mailbox view that still exists.
 

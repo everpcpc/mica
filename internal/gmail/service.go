@@ -204,7 +204,7 @@ func (s *Service) CreateLabel(ctx context.Context, name string) (mail.Label, err
 		Name                  string `json:"name"`
 		LabelListVisibility   string `json:"labelListVisibility"`
 		MessageListVisibility string `json:"messageListVisibility"`
-	}{Name: name, LabelListVisibility: "labelShow", MessageListVisibility: "labelShow"}
+	}{Name: name, LabelListVisibility: "labelShow", MessageListVisibility: "show"}
 	var detail apiLabel
 	if err := s.doJSON(ctx, http.MethodPost, "/labels", nil, body, &detail); err != nil {
 		return mail.Label{}, err

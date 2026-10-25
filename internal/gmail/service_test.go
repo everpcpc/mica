@@ -78,7 +78,7 @@ func TestCreateAndDeleteLabel(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			if body["name"] != "Receipts" || body["labelListVisibility"] != "labelShow" || body["messageListVisibility"] != "labelShow" {
+			if body["name"] != "Receipts" || body["labelListVisibility"] != "labelShow" || body["messageListVisibility"] != "show" {
 				t.Fatalf("create body = %v", body)
 			}
 			created = true
