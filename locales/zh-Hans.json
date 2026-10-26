@@ -66,6 +66,7 @@
   "expandMessage": "展开这封邮件",
   "collapseMessage": "收起这封邮件",
   "loadingMail": "正在同步邮件…",
+  "loadingConversations": "正在加载会话…",
   "loadMailFailed": "邮件加载失败",
   "retry": "重试",
   "offlineResults": "离线：正在显示本机缓存",

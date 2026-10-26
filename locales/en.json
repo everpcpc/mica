@@ -68,6 +68,7 @@
   "expandMessage": "Expand message",
   "collapseMessage": "Collapse message",
   "loadingMail": "Syncing mail…",
+  "loadingConversations": "Loading conversations…",
   "loadMailFailed": "Couldn't load mail",
   "retry": "Retry",
   "offlineResults": "Offline: showing cached results",
