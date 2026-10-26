@@ -78,6 +78,10 @@ func TestCaptureMotion(t *testing.T) {
 	x, y := r.X+r.W/2, r.Y+r.H/2
 	tt.Press(x, y)
 	captureFrame(t, tt, "button-pressed")
+	tt.Advance(60 * time.Millisecond)
+	captureFrame(t, tt, "button-press-mid")
+	tt.Advance(220 * time.Millisecond)
+	captureFrame(t, tt, "button-press-end")
 	tt.Release(x, y)
 	captureFrame(t, tt, "compose-start")
 	tt.Advance(100 * time.Millisecond)
@@ -103,6 +107,49 @@ func TestCaptureMotion(t *testing.T) {
 	if tt.HasText("Conversation archived") {
 		t.Fatal("toast remained visible after its deadline")
 	}
+}
+
+func TestCaptureLoading(t *testing.T) {
+	if os.Getenv("MICA_CAPTURE") == "" {
+		t.Skip("capture is opt-in")
+	}
+	for _, dark := range []bool{false, true} {
+		for _, scene := range []struct {
+			name    string
+			prepare func(*App)
+		}{
+			{name: "list", prepare: func(a *App) {
+				a.clearThread()
+				a.threads = nil
+				a.loading = true
+			}},
+			{name: "reader", prepare: func(a *App) {
+				a.clearThread()
+				a.selectedThread = "thread-1"
+				a.threadLoading = true
+			}},
+		} {
+			a := newTestApp(newFakeService())
+			scene.prepare(a)
+			tt := ui.NewTester(a.View, 1280, 800)
+			tt.SetLocale("en")
+			tt.SetDark(dark)
+			tt.Advance(450 * time.Millisecond)
+			name := "loading-" + scene.name
+			if dark {
+				name += "-dark"
+			}
+			captureFrame(t, tt, name)
+		}
+	}
+	a := newTestApp(newFakeService())
+	a.clearThread()
+	a.selectedThread = "thread-1"
+	a.threadLoading = true
+	tt := ui.NewTester(a.View, 980, 600)
+	tt.SetLocale("en")
+	tt.Advance(450 * time.Millisecond)
+	captureFrame(t, tt, "loading-reader-min")
 }
 
 func TestCaptureAccountSettings(t *testing.T) {

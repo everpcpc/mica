@@ -218,7 +218,7 @@ func TestIconButtonHoverIsCircular(t *testing.T) {
 		t.Fatal("icon button not found")
 	}
 	tt.Move(button.X+button.W/2, button.Y+button.H/2)
-	tt.Frame()
+	tt.Advance(time.Second)
 	scale := float32(tt.Image().Bounds().Dx()) / 400
 	corner := tt.Image().RGBAAt(int((button.X+1)*scale), int((button.Y+1)*scale))
 	edge := tt.Image().RGBAAt(int((button.X+1)*scale), int((button.Y+button.H/2)*scale))
@@ -228,6 +228,68 @@ func TestIconButtonHoverIsCircular(t *testing.T) {
 	}
 	if edge.R != hover.R || edge.G != hover.G || edge.B != hover.B || edge.A != hover.A {
 		t.Fatalf("hover edge color = %v, want %v", edge, hover)
+	}
+}
+
+func TestIconButtonPressMotion(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reduce bool
+	}{
+		{name: "animated"},
+		{name: "reduced motion", reduce: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var layout ui.Rect
+			tt := ui.NewTester(func(c *ui.Context) {
+				ui.Row(c).Padding(20).Children(func() {
+					layout = iconButton(c, "Archive", iconArchive, func() {}).LayoutBounds()
+				})
+			}, 400, 100)
+			tt.SetScale(2)
+			tt.SetPreferences(ui.Preferences{ReduceMotion: tc.reduce})
+			button, ok := tt.Find("Archive")
+			if !ok {
+				t.Fatal("icon button not found")
+			}
+			x, y := button.X+button.W/2, button.Y+button.H/2
+			tt.Move(x, y)
+			tt.Advance(time.Second)
+			before := layout
+			if before.W <= 0 || before.H <= 0 {
+				t.Fatalf("button has no committed layout: %+v", before)
+			}
+			edgeX, edgeY := int((button.X+0.5)*2), int(y*2)
+			tt.Press(x, y)
+			if !tc.reduce && !tt.FramePending() {
+				t.Fatal("press did not schedule an animation")
+			}
+			start := tt.Image().RGBAAt(edgeX, edgeY)
+			if tc.reduce {
+				if base := tt.Image().RGBAAt(0, 0); start != base {
+					t.Fatalf("reduced-motion press was not immediate: pixel=%v base=%v", start, base)
+				}
+			}
+			tt.Advance(60 * time.Millisecond)
+			mid := tt.Image().RGBAAt(edgeX, edgeY)
+			tt.Advance(time.Second)
+			pressed := tt.Image().RGBAAt(edgeX, edgeY)
+			base := tt.Image().RGBAAt(0, 0)
+			if pressed != base {
+				t.Fatalf("pressed button did not shrink away from its edge: start=%v mid=%v end=%v base=%v", start, mid, pressed, base)
+			}
+			if layout != before {
+				t.Fatalf("press changed layout bounds: got=%+v want=%+v", layout, before)
+			}
+			tt.Release(x, y)
+			tt.Advance(time.Second)
+			if released := tt.Image().RGBAAt(edgeX, edgeY); released == base {
+				t.Fatalf("released button did not recover its hover face: pixel=%v base=%v", released, base)
+			}
+			if layout != before {
+				t.Fatalf("release changed layout bounds: got=%+v want=%+v", layout, before)
+			}
+		})
 	}
 }
 

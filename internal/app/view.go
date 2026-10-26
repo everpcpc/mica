@@ -272,6 +272,10 @@ func (a *App) threadList(c *ui.Context) {
 		ui.Divider(c)
 		threads := a.visibleThreads()
 		if len(threads) == 0 {
+			if a.loading && len(a.threads) == 0 && a.err == "" {
+				a.threadListSkeleton(c)
+				return
+			}
 			a.emptyList(c)
 			if a.unreadOnly {
 				a.loadMoreThreads()
@@ -369,7 +373,7 @@ func (a *App) emptyList(c *ui.Context) {
 			ui.Text(c, locales.LoadMailFailed()).Bold()
 			ui.Text(c, a.err).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
 			ui.Button(c, locales.Retry()).OnClick(a.refresh)
-		} else if !a.loading {
+		} else if !a.loading || len(a.threads) > 0 {
 			if a.selectedLabel == mail.Outbox {
 				ui.Text(c, locales.EmptyOutbox()).Bold()
 				ui.Text(c, locales.EmptyOutboxHint()).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
@@ -393,7 +397,17 @@ func iconMenuButton(c *ui.Context, label string, svg *ui.SVG, build func(*ui.Men
 }
 
 func iconButtonStyle(c *ui.Context, label string, svg *ui.SVG) ui.Element {
-	return ui.Button(c, "").Label(label).Tooltip(label).Padding(5, 6).Radius(999).Children(func() {
+	t := c.Theme()
+	button := ui.ButtonBase(c).Label(label).Tooltip(label).Padding(5, 6).Radius(999)
+	face := ui.Transparent
+	if button.Pressed() {
+		face = t.SurfacePressed
+	} else if button.Hovered() {
+		face = t.SurfaceHover
+	}
+	button.Background(button.AnimateColor("face", face, ui.Animation{Duration: 120 * time.Millisecond}))
+	pressFeedback(button, 0.92).Children(func() {
 		ui.Icon(c, svg).Size(16, 16)
 	})
+	return button
 }

@@ -21,10 +21,7 @@ func (a *App) reader(c *ui.Context) {
 			case a.selectedThread == "":
 				a.emptyReader(c)
 			case a.threadLoading:
-				ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-					ui.Spinner(c).Size(22, 22)
-					ui.Text(c, locales.OpeningThread()).FontSize(12).TextColor(t.TextMuted)
-				})
+				a.readerSkeleton(c)
 			case a.threadErr != "":
 				ui.Column(c).Grow(1).Center().Padding(28).Gap(10).Children(func() {
 					ui.Text(c, locales.ThreadLoadFailed()).FontSize(17).Bold()
@@ -145,12 +142,14 @@ func (a *App) threadContent(c *ui.Context) {
 
 func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func(), disabled ...bool) ui.Element {
 	t := c.Theme()
-	return ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
+	button := ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04))
+	pressFeedback(button, 0.97).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph).Size(15, 15)
 			ui.Text(c, label)
 		})
-	}).OnClick(action)
+	})
+	return button.OnClick(action)
 }
 
 func (a *App) messageView(c *ui.Context, index int, message mail.Message) {

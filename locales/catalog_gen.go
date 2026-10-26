@@ -586,6 +586,16 @@ func (msgs Messages) LoadingMail() string {
 	return Catalog.Format(msgs.locale, "loadingMail", nil)
 }
 
+// LoadingConversations says "Loading conversations…"
+// in the language the app shows.
+func LoadingConversations() string { return In(i18n.Locale()).LoadingConversations() }
+
+// LoadingConversations says "Loading conversations…"
+// in the language of msgs.
+func (msgs Messages) LoadingConversations() string {
+	return Catalog.Format(msgs.locale, "loadingConversations", nil)
+}
+
 // LoadMailFailed says "Couldn't load mail"
 // in the language the app shows.
 func LoadMailFailed() string { return In(i18n.Locale()).LoadMailFailed() }
