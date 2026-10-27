@@ -168,15 +168,7 @@ func (a *App) sidebar(c *ui.Context) {
 		if mailboxList.Changed() {
 			a.selectLabel()
 		}
-		if !a.account.Demo {
-			ui.Row(c).Padding(4, 8).Shrink(0).Children(func() {
-				ui.Button(c.Key("gmail-filters"), "").Label(locales.Filters()).Tooltip(locales.FilterDialogTitle()).WidthPercent(100).Padding(8, 12).Gap(8).Justify(ui.Start).Disabled(!a.filtersAccountReady()).OnClick(a.openFilters).Children(func() {
-					ui.Icon(c, iconFilter).Size(16, 16).TextColor(t.TextMuted)
-					ui.Text(c, locales.Filters())
-				})
-			})
-		}
-		ui.Row(c).Height(36).Shrink(0).Padding(2, 12).Gap(10).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(44).Shrink(0).Padding(4, 12, 8, 12).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Avatar(c, a.account.Name, a.accountPhoto)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {

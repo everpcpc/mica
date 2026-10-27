@@ -33,6 +33,9 @@ func TestAccountRowIsSidebarFooter(t *testing.T) {
 	if account.Y < 700 {
 		t.Fatalf("account row is not in the sidebar footer: %+v", account)
 	}
+	if bottom := 800 - account.Y - account.H; bottom < 8 {
+		t.Fatalf("account row has only %vpt below it, want at least 8pt", bottom)
+	}
 }
 
 func TestThreadListUsesSenderAvatar(t *testing.T) {
@@ -212,6 +215,9 @@ func TestCaptureVisualRefresh(t *testing.T) {
 	}
 	t.Run("minimum window", func(t *testing.T) {
 		a := newTestApp(mail.NewDemo())
+		a.account.Name = "Alex Morgan"
+		a.account.Email = "alex@example.com"
+		a.account.Demo = false
 		a.selectThread("t-sync")
 		tt := ui.NewTester(a.View, 980, 600)
 		tt.SetLocale("en")
