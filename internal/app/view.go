@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"mica/internal/mail"
@@ -109,23 +110,15 @@ func (a *App) showNotice(c *ui.Context) {
 func (a *App) sidebar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
-	ui.Column(c).Fill().Children(func() {
+	root := ui.Column(c).Fill()
+	if !c.Vibrancy() {
+		root.Background(t.Surface)
+	}
+	root.Children(func() {
 		ui.Row(c).Height(titleBarHeight).Shrink(0).Padding(0, 12, 0, bar.Left+12).AlignItems(ui.Center).Justify(ui.End).DragWindow().Children(func() {
 			primaryAction(c, "").Label(locales.Compose()).Tooltip(locales.ComposeTooltip()).Padding(5, 7).Children(func() {
 				ui.Icon(c, iconCompose).Size(16, 16)
 			}).OnClick(func() { a.openCompose(nil) })
-		})
-		ui.Row(c).Margin(6, 8, 4, 8).Padding(8, 8).Gap(10).AlignItems(ui.Center).Radius(10).Background(t.Background).Border(1, t.Border).Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.05)).Children(func() {
-			ui.Avatar(c, a.account.Name, a.accountPhoto)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, a.account.Name).Bold().SingleLine()
-					if a.account.Demo {
-						ui.Badge(c, locales.Demo())
-					}
-				})
-				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted).SingleLine()
-			})
 		})
 		mailboxes := visibleSidebarLabels(a.labels, mailboxLabels)
 		mailboxList := ui.Sidebar(c, &a.selectedLabel, func() {
@@ -176,14 +169,25 @@ func (a *App) sidebar(c *ui.Context) {
 			a.selectLabel()
 		}
 		if !a.account.Demo {
-			ui.Divider(c)
-			ui.Row(c).Padding(8).Shrink(0).Children(func() {
+			ui.Row(c).Padding(4, 8).Shrink(0).Children(func() {
 				ui.Button(c.Key("gmail-filters"), "").Label(locales.Filters()).Tooltip(locales.FilterDialogTitle()).WidthPercent(100).Padding(8, 12).Gap(8).Justify(ui.Start).Disabled(!a.filtersAccountReady()).OnClick(a.openFilters).Children(func() {
 					ui.Icon(c, iconFilter).Size(16, 16).TextColor(t.TextMuted)
 					ui.Text(c, locales.Filters())
 				})
 			})
 		}
+		ui.Row(c).Height(36).Shrink(0).Padding(2, 12).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Avatar(c, a.account.Name, a.accountPhoto)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, a.account.Name).Bold().SingleLine()
+					if a.account.Demo {
+						ui.Badge(c, locales.Demo())
+					}
+				})
+				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			})
+		})
 	})
 }
 
@@ -232,7 +236,7 @@ func (a *App) allInboxes(c *ui.Context) {
 
 func (a *App) threadList(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
+	ui.Column(c).Fill().Background(t.Surface).Children(func() {
 		title := a.labelName(a.selectedLabel)
 		if a.query != "" {
 			title = locales.SearchResults()
@@ -288,9 +292,15 @@ func (a *App) threadList(c *ui.Context) {
 			return thread.Senders + ", " + thread.Subject + ", " + thread.Snippet
 		}
 		a.list.RoundRows = true
-		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Padding(4).Rows(func(row ui.ListRow) {
-			a.threadRow(row, &threads[row.Index])
+		accent := t.Accent
+		listTheme := *t
+		// MyGo paints selection with Accent; keep it neutral without changing the app's accent.
+		listTheme.Accent, listTheme.AccentText = t.SurfaceHover, t.Text
+		c.SetTheme(&listTheme)
+		list := ui.List(c.Key("threads"), &a.list, len(threads)).Grow(1).Padding(4).Gap(2).Rows(func(row ui.ListRow) {
+			a.threadRow(row, &threads[row.Index], accent)
 		})
+		c.SetTheme(t)
 		if list.Changed() && a.selectedRow >= 0 && a.selectedRow < len(threads) {
 			a.openThreadFromList(a.summaryKey(threads[a.selectedRow]))
 		}
@@ -300,69 +310,72 @@ func (a *App) threadList(c *ui.Context) {
 	})
 }
 
-func (a *App) threadRow(row ui.ListRow, thread *mail.ThreadSummary) {
+func (a *App) threadRow(row ui.ListRow, thread *mail.ThreadSummary, accent ui.Color) {
 	c := row.Context
 	t := c.Theme()
-	primary, secondary, accent := t.Text, t.TextMuted, t.Accent
-	if row.Selected() {
-		primary, secondary, accent = t.AccentText, t.AccentText.Alpha(0.9), t.AccentText
+	primary, secondary := t.Text, t.TextMuted
+	content := ui.Column(c).Padding(9, 10).Gap(3)
+	if thread.Unread && !row.Selected() {
+		content.Background(accent.Alpha(0.06)).Radius(8)
 	}
-	ui.Column(c).Padding(10, 12).Gap(4).Children(func() {
-		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			if thread.Unread {
-				ui.Box(c).Size(6, 6).Radius(3).Background(accent)
-			} else {
-				ui.Box(c).Size(6, 6)
-			}
-			senders := ui.Text(c, thread.Senders).Grow(1).MinWidth(0).SingleLine().TextColor(primary)
-			if thread.Unread {
-				senders.Bold()
-			}
-			date := shortTime(c, thread.Updated)
-			if !thread.SnoozeAt.IsZero() {
-				date = locales.SnoozeUntil(snoozeTime(thread.SnoozeAt))
-			}
-			ui.Text(c, date).FontSize(11).TextColor(secondary)
-		})
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			subject := ui.Text(c, thread.Subject).Grow(1).MinWidth(0).SingleLine().TextColor(primary)
-			if thread.Unread {
-				subject.Bold()
-			}
-			if containsLabel(thread.LabelIDs, mail.Important) {
-				importantColor := t.Warning
-				if row.Selected() {
-					importantColor = accent
+	content.Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
+			ui.Avatar(c, senderAvatarName(thread.Senders), nil).Size(28, 28)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+					if thread.Unread {
+						ui.Box(c).Size(6, 6).Radius(3).Background(accent)
+					} else {
+						ui.Box(c).Size(6, 6)
+					}
+					senders := ui.Text(c, thread.Senders).Grow(1).MinWidth(0).SingleLine().TextColor(primary)
+					if thread.Unread {
+						senders.Bold()
+					}
+					date := shortTime(c, thread.Updated)
+					if !thread.SnoozeAt.IsZero() {
+						date = locales.SnoozeUntil(snoozeTime(thread.SnoozeAt))
+					}
+					ui.Text(c, date).FontSize(11).TextColor(secondary)
+				})
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					subject := ui.Text(c, thread.Subject).Grow(1).MinWidth(0).SingleLine().TextColor(primary)
+					if thread.Unread {
+						subject.Bold()
+					}
+					if containsLabel(thread.LabelIDs, mail.Important) {
+						ui.Icon(c, iconImportant).Size(13, 13).TextColor(t.Warning).Label(locales.Important())
+					}
+					if thread.Starred {
+						ui.Icon(c, iconStar).Size(13, 13).TextColor(t.Warning)
+					}
+					if thread.MessageCount > 1 {
+						ui.Textf(c, "· %d", thread.MessageCount).FontSize(11).TextColor(secondary).Shrink(0)
+					}
+				})
+				ui.Text(c, thread.Snippet).FontSize(12).LineHeight(1.35).TextColor(secondary).SingleLine()
+				currentLabel := a.currentQuery().LabelID
+				if a.selectedLabel == mail.Unified {
+					currentLabel = ""
 				}
-				ui.Icon(c, iconImportant).Size(13, 13).TextColor(importantColor).Label(locales.Important())
-			}
-			if thread.Starred {
-				starColor := t.Warning
-				if row.Selected() {
-					starColor = accent
+				if labels := a.threadLabels(thread.AccountEmail, thread.LabelIDs, currentLabel); len(labels) > 0 {
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+						for _, label := range labels {
+							threadLabel(c, label)
+						}
+					})
 				}
-				ui.Icon(c, iconStar).Size(13, 13).TextColor(starColor)
-			}
-		})
-		ui.Text(c, thread.Snippet).FontSize(12).LineHeight(1.35).TextColor(secondary).MaxLines(2)
-		currentLabel := a.currentQuery().LabelID
-		if a.selectedLabel == mail.Unified {
-			currentLabel = ""
-		}
-		if labels := a.threadLabels(thread.AccountEmail, thread.LabelIDs, currentLabel); len(labels) > 0 {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				for _, label := range labels {
-					threadLabel(c, label, row.Selected())
+				if a.compositeThreads && normalizedEmail(thread.AccountEmail) != "" {
+					ui.Text(c, normalizedEmail(thread.AccountEmail)).FontSize(10).TextColor(secondary).SingleLine()
 				}
 			})
-		}
-		if a.compositeThreads && normalizedEmail(thread.AccountEmail) != "" {
-			ui.Text(c, normalizedEmail(thread.AccountEmail)).FontSize(10).TextColor(secondary).SingleLine()
-		}
-		if thread.MessageCount > 1 {
-			ui.Text(c, locales.MessageCount(thread.MessageCount)).FontSize(10).TextColor(secondary)
-		}
+		})
 	})
+}
+
+func senderAvatarName(senders string) string {
+	name, _, _ := strings.Cut(senders, ",")
+	return strings.TrimSpace(name)
 }
 
 func (a *App) emptyList(c *ui.Context) {

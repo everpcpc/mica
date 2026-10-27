@@ -159,20 +159,13 @@ func (a *App) threadLabels(owner string, ids []string, omit string) []mail.Label
 	return labels
 }
 
-func threadLabel(c *ui.Context, label mail.Label, selected bool) ui.Element {
+func threadLabel(c *ui.Context, label mail.Label) ui.Element {
 	t := c.Theme()
 	background, foreground := t.Text.Alpha(0.08), t.TextMuted
-	colored := label.Color.Background != "" && label.Color.Text != ""
-	if colored {
+	if label.Color.Background != "" && label.Color.Text != "" {
 		background, foreground = ui.Hex(label.Color.Background), ui.Hex(label.Color.Text)
-	} else if selected {
-		background, foreground = t.AccentText, t.Accent
 	}
-	chip := ui.Box(c).Padding(2, 7).Radius(999).Background(background).Shrink(0)
-	if colored && selected {
-		chip = chip.Border(1, t.AccentText.Alpha(0.65))
-	}
-	return chip.Children(func() {
+	return ui.Box(c).Padding(2, 7).Radius(999).Background(background).Shrink(0).Children(func() {
 		// One shared offset balances glyph ink without giving label names different baselines.
 		ui.Text(c, label.Name).FontSize(11).TextColor(foreground).SingleLine().Top(-0.75)
 	})

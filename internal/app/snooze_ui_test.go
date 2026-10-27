@@ -18,18 +18,8 @@ func TestSnoozeMenuAndShortcutEnglish(t *testing.T) {
 	a.selectThread("thread-1")
 	tt := ui.NewTester(a.View, 1280, 800)
 	tt.SetLocale("en")
-	r, ok := tt.Find("Snooze")
-	if !ok {
-		t.Fatal("snooze menu button not found")
-	}
-	x, y := r.X+r.W/2, r.Y+r.H/2
-	tt.Press(x, y)
-	menu := tt.Menu()
-	if len(menu) != 3 || menu[0] != "Tomorrow morning" || menu[1] != "This weekend" || menu[2] != "Next week" {
-		t.Fatalf("snooze menu = %q", menu)
-	}
-	tt.Release(x, y)
-	if err := tt.ChooseMenuItem("Tomorrow morning"); err != nil {
+	openReaderActions(t, tt)
+	if err := tt.ChooseMenuItem("Snooze", "Tomorrow morning"); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.snoozes) != 1 {
@@ -42,32 +32,16 @@ func TestSnoozeMenuAndShortcutEnglish(t *testing.T) {
 	if !tt.HasText("Snoozed until") {
 		t.Fatal("snoozed wake time is not rendered")
 	}
-	r, ok = tt.Find("Snooze")
-	if !ok {
-		t.Fatal("snooze menu button not found for rescheduling")
-	}
-	x, y = r.X+r.W/2, r.Y+r.H/2
-	tt.Press(x, y)
-	tt.Release(x, y)
-	if err := tt.ChooseMenuItem("Next week"); err != nil {
+	openReaderActions(t, tt)
+	if err := tt.ChooseMenuItem("Snooze", "Next week"); err != nil {
 		t.Fatal(err)
 	}
 	if len(a.threads) != 1 || len(store.snoozes) != 1 {
 		t.Fatalf("rescheduling removed the Snoozed row: threads=%v store=%v", a.threads, store.snoozes)
 	}
 	tt.Frame()
-	r, ok = tt.Find("Snooze")
-	if !ok {
-		t.Fatal("snooze menu button not found in Snoozed view")
-	}
-	x, y = r.X+r.W/2, r.Y+r.H/2
-	tt.Press(x, y)
-	menu = tt.Menu()
-	if len(menu) == 0 || menu[len(menu)-1] != "Unsnooze" {
-		t.Fatalf("snooze menu lacks Unsnooze: %q", menu)
-	}
-	tt.Release(x, y)
-	if err := tt.ChooseMenuItem("Unsnooze"); err != nil {
+	openReaderActions(t, tt)
+	if err := tt.ChooseMenuItem("Snooze", "Unsnooze"); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.snoozes) != 0 {

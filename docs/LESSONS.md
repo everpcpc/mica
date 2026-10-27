@@ -149,6 +149,8 @@
 ## Verify visuals through real rendering
 
 - Do not validate animation only by its parameters. Inspect start, middle, and end frames for jumps, ghosting, and blank screens.
+- `Element.Selected` owns both the Accent background and AccentText. Changing child text colors cannot produce a neutral selected row; scope a neutral theme while constructing the List, keep a separate app accent for unread state, and verify late-built rows as well as the first frame.
+- An `Enter` transition attached to conditionally inserted toolbar content can render fully opaque in every frame and schedule no animation. Give the entering element a stable key and explicit animation progress, then prove start/middle/end pixels and the reduced-motion branch; the compact reader header failed this check before using keyed `Jump` + `AnimateTo`.
 - A layout object's `Bounds` may include padding; X coordinates or outer widths alone cannot establish the content position.
 - For visual differences such as padding, compare text origins in rendered images when necessary.
 - A localized Select must not display a persisted code directly as its option label. Map state to display text explicitly and inspect the collapsed control's actual rendering for empty, `en`, and `zh-Hans` values.
