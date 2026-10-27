@@ -141,7 +141,12 @@ func TestReaderRecoveryActions(t *testing.T) {
 			a.selectLabel()
 			a.selectThread("thread-1")
 			tt := ui.NewTester(a.View, 1280, 800)
-			if err := tt.Click(tc.action); err != nil {
+			if tc.label == mail.Spam {
+				openReaderActions(t, tt)
+				if err := tt.ChooseMenuItem(tc.action); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := tt.Click(tc.action); err != nil {
 				t.Fatal(err)
 			}
 			switch tc.label {
@@ -169,9 +174,16 @@ func TestReaderRecoveryActions(t *testing.T) {
 		a := newTestApp(newFakeService())
 		a.selectThread("thread-1")
 		tt := ui.NewTester(a.View, 1280, 800)
-		if _, ok := tt.Find("Report spam"); !ok {
-			t.Fatal("ordinary reader does not offer Report spam")
+		openReaderActions(t, tt)
+		menu := tt.Menu()
+		found := false
+		for _, item := range menu {
+			found = found || item == "Report spam"
 		}
+		if !found {
+			t.Fatalf("ordinary reader does not offer Report spam: %q", menu)
+		}
+		tt.CloseMenu()
 	})
 }
 

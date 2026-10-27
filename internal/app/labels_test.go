@@ -77,21 +77,10 @@ func TestLabelMenuAddsRemovesAndUndoesCustomLabel(t *testing.T) {
 	a := newTestApp(service)
 	a.selectThread("thread-1")
 	tt := ui.NewTester(a.View, 1280, 800)
-	openMenu := func() {
-		r, ok := tt.Find("Edit labels")
-		if !ok {
-			t.Fatal("label menu button not found")
-		}
-		x, y := r.X+r.W/2, r.Y+r.H/2
-		tt.Press(x, y)
-		if menu := tt.Menu(); len(menu) == 0 || menu[0] != "Receipts" {
-			t.Fatalf("label menu = %q, want Receipts first", menu)
-		}
-		tt.Release(x, y)
-	}
+	openMenu := func() { openReaderActions(t, tt) }
 
 	openMenu()
-	if err := tt.ChooseMenuItem("Receipts"); err != nil {
+	if err := tt.ChooseMenuItem("Edit labels", "Receipts"); err != nil {
 		t.Fatal(err)
 	}
 	if !containsLabel(a.thread.LabelIDs, "Label_9") || len(service.add) != 1 || service.add[0] != "Label_9" {
@@ -103,7 +92,7 @@ func TestLabelMenuAddsRemovesAndUndoesCustomLabel(t *testing.T) {
 	tt.Frame()
 
 	openMenu()
-	if err := tt.ChooseMenuItem("Receipts"); err != nil {
+	if err := tt.ChooseMenuItem("Edit labels", "Receipts"); err != nil {
 		t.Fatal(err)
 	}
 	if len(a.threads) != 0 || len(service.remove) != 1 || service.remove[0] != "Label_9" {
@@ -115,24 +104,17 @@ func TestLabelMenuAddsRemovesAndUndoesCustomLabel(t *testing.T) {
 	}
 }
 
-func openLabelMenu(t *testing.T, tt *ui.Tester) {
-	t.Helper()
-	r, ok := tt.Find("Edit labels")
-	if !ok {
-		t.Fatal("label menu button not found")
-	}
-	x, y := r.X+r.W/2, r.Y+r.H/2
-	tt.Press(x, y)
-	tt.Release(x, y)
-}
-
 func TestLabelMenuOnlyAssignsCustomLabels(t *testing.T) {
 	service := newFakeService()
 	service.labels = append(service.labels, mail.Label{ID: "Label_9", Name: "Receipts"})
 	a := newTestApp(service)
 	a.selectThread("thread-1")
-	tt := ui.NewTester(a.View, 1280, 800)
-	openLabelMenu(t, tt)
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Button(c, "Labels").Menu(a.labelMenu)
+	}, 400, 300)
+	if err := tt.Click("Labels"); err != nil {
+		t.Fatal(err)
+	}
 	menu := tt.Menu()
 	for _, unwanted := range []string{"New label…", "Delete label"} {
 		for _, item := range menu {
@@ -292,10 +274,10 @@ func TestThreadLabelChipColorAndPadding(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := newColoredThreadLabelApp()
-			var accent, accentText ui.Color
+			var text, muted, selectedSurface ui.Color
 			view := tc.view(a)
 			tt := ui.NewTester(func(c *ui.Context) {
-				accent, accentText = c.Theme().Accent, c.Theme().AccentText
+				text, muted, selectedSurface = c.Theme().Text, c.Theme().TextMuted, c.Theme().SurfaceHover
 				view(c)
 			}, tc.width, 800)
 			tt.SetLocale("en")
@@ -305,9 +287,10 @@ func TestThreadLabelChipColorAndPadding(t *testing.T) {
 			if !ok || r.W == 0 || r.H == 0 {
 				t.Fatalf("label text has no rendered bounds: %+v, %v; %q", r, ok, tt.Texts())
 			}
-			scale := float32(tt.Image().Bounds().Dx()) / float32(tc.width)
+			img := tt.Image()
+			scale := float32(img.Bounds().Dx()) / float32(tc.width)
 			pixel := func(x, y float32) color.RGBA {
-				return tt.Image().RGBAAt(int(x*scale), int(y*scale))
+				return img.RGBAAt(int(x*scale), int(y*scale))
 			}
 			want := color.RGBA{R: 0x4a, G: 0x86, B: 0xe8, A: 255}
 			for _, point := range []struct {
@@ -326,7 +309,7 @@ func TestThreadLabelChipColorAndPadding(t *testing.T) {
 			whiteText := false
 			for y := int(r.Y * scale); y < int((r.Y+r.H)*scale); y++ {
 				for x := int(r.X * scale); x < int((r.X+r.W)*scale); x++ {
-					p := tt.Image().RGBAAt(x, y)
+					p := img.RGBAAt(x, y)
 					if p.R > 245 && p.G > 245 && p.B > 245 {
 						whiteText = true
 						break
@@ -341,22 +324,23 @@ func TestThreadLabelChipColorAndPadding(t *testing.T) {
 				if !found || sent.W == 0 {
 					t.Fatalf("neutral selected label is missing: %q", tt.Texts())
 				}
-				wantBackground := color.RGBA{R: accentText.R, G: accentText.G, B: accentText.B, A: accentText.A}
-				if got := pixel(sent.X-3, sent.Y+sent.H/2); got != wantBackground {
+				wantBackground := text.Alpha(0.08).Over(selectedSurface)
+				got := pixel(sent.X-3, sent.Y+sent.H/2)
+				if !sameVisualColor(ui.Color{R: got.R, G: got.G, B: got.B, A: got.A}, wantBackground) {
 					t.Errorf("neutral selected background = %v, want %v", got, wantBackground)
 				}
-				wantInk := color.RGBA{R: accent.R, G: accent.G, B: accent.B, A: accent.A}
-				accentInk := false
+				mutedInk := false
 				for y := int(sent.Y * scale); y < int((sent.Y+sent.H)*scale); y++ {
 					for x := int(sent.X * scale); x < int((sent.X+sent.W)*scale); x++ {
-						if tt.Image().RGBAAt(x, y) == wantInk {
-							accentInk = true
+						p := img.RGBAAt(x, y)
+						if p.R == muted.R && p.G == muted.G && p.B == muted.B && p.A == muted.A {
+							mutedInk = true
 							break
 						}
 					}
 				}
-				if !accentInk {
-					t.Errorf("neutral selected label has no accent text pixels, want %v", wantInk)
+				if !mutedInk {
+					t.Errorf("neutral selected label has no muted text pixels, want %v", muted)
 				}
 			}
 		})
@@ -372,7 +356,7 @@ func TestThreadLabelTextIsOpticallyBalanced(t *testing.T) {
 			}
 			tt := ui.NewTester(func(c *ui.Context) {
 				ui.Column(c).Padding(20).Children(func() {
-					threadLabel(c, label, false)
+					threadLabel(c, label)
 				})
 			}, 200, 100)
 			tt.SetScale(2)

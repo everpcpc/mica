@@ -46,10 +46,7 @@ func (a *App) reader(c *ui.Context) {
 			}
 			iconButton(c, archiveLabel, iconArchive, a.archive).Disabled(len(actionTargets) == 0 || compositionView)
 			iconButton(c, trashLabel, iconTrash, a.toggleTrash).Disabled(len(actionTargets) == 0 || compositionView)
-			iconButton(c, spamLabel, iconSpam, a.toggleSpam).Disabled(len(actionTargets) == 0 || compositionView)
 			iconButton(c, locales.ReadUnread(), iconMail, a.toggleUnread).Disabled(len(actionTargets) == 0 || compositionView)
-			iconMenuButton(c, locales.SnoozeAction(), iconSnoozed, a.snoozeMenu).Disabled(len(actionTargets) == 0 || compositionView)
-			iconMenuButton(c, locales.EditLabels(), iconLabel, a.labelMenu).Disabled(compositionView)
 			starLabel := locales.AddStar()
 			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				starLabel = locales.RemoveStar()
@@ -58,10 +55,41 @@ func (a *App) reader(c *ui.Context) {
 			if len(actionTargets) > 0 && actionTargets[0].Starred {
 				star.TextColor(t.Warning)
 			}
-			ui.Spacer(c)
+			iconMenuButton(c, locales.MessageActions(), iconMore, func(m *ui.Menu) {
+				if m.Item(spamLabel).Disabled(len(actionTargets) == 0 || compositionView).Chosen() {
+					a.toggleSpam()
+				}
+				m.Submenu(locales.SnoozeAction(), a.snoozeMenu).Disabled(len(actionTargets) == 0 || compositionView)
+				m.Submenu(locales.EditLabels(), a.labelMenu).Disabled(compositionView)
+			}).Disabled(len(actionTargets) == 0 || compositionView)
+			if a.compactReaderHeader() {
+				latest := a.thread.Messages[len(a.thread.Messages)-1]
+				metadata := shortTime(c, latest.Date)
+				if sender := addressName(latest.From); sender != "" {
+					metadata = sender + " · " + metadata
+				}
+				header := ui.Column(c.Key("compact-reader-"+a.thread.ID)).Grow(1).MinWidth(0).Padding(0, 8).Gap(1)
+				entered := ui.Local(header, "entered", func() bool { return false })
+				if !*entered {
+					*entered = true
+					header.Jump("enter", 0)
+				}
+				in := header.AnimateTo("enter", 1, ui.Animation{Duration: 160 * time.Millisecond})
+				header.Opacity(in).Translate(0, (in-1)*4).Children(func() {
+					ui.Text(c, a.thread.Subject).FontSize(12).Bold().SingleLine()
+					ui.Text(c, metadata).FontSize(10).TextColor(t.TextMuted).SingleLine()
+				})
+			} else {
+				ui.Spacer(c)
+			}
 			threadAction(c, locales.Reply(), iconReply, a.openReply, len(a.thread.Messages) == 0 || compositionView).Bind(&a.readerReply)
 		}).Absolute().Top(6).Left(12).Right(bar.Right+12).Height(40).Padding(4, 6).Radius(20).Material(glass.Glass{Tint: t.Background}).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.06)).DragWindow()
 	})
+}
+
+func (a *App) compactReaderHeader() bool {
+	return a.selectedThread != "" && !a.threadLoading && a.threadErr == "" &&
+		a.readerScroll.Y > 64 && a.readerScroll.MaxY > 0 && len(a.thread.Messages) > 0
 }
 
 func (a *App) emptyReader(c *ui.Context) {
@@ -107,7 +135,7 @@ func (a *App) threadContent(c *ui.Context) {
 							ui.Icon(c, iconImportant).Size(14, 14).TextColor(t.Warning).Label(locales.Important())
 						}
 						for _, label := range a.threadLabels(thread.AccountEmail, thread.LabelIDs, "") {
-							threadLabel(c, label, false)
+							threadLabel(c, label)
 						}
 						ui.Text(c, locales.MessageCount(len(thread.Messages))).FontSize(11).TextColor(t.TextMuted)
 					})
@@ -142,7 +170,7 @@ func (a *App) threadContent(c *ui.Context) {
 
 func threadAction(c *ui.Context, label string, glyph *ui.SVG, action func(), disabled ...bool) ui.Element {
 	t := c.Theme()
-	button := ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Material(glass.Glass{Tint: t.Background.Alpha(0.82), Interactive: true}).Border(1, t.Border).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.04))
+	button := ui.Button(c, "").Label(label).Disabled(len(disabled) > 0 && disabled[0]).Padding(7, 12).Radius(16).Border(1, t.Border)
 	pressFeedback(button, 0.97).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, glyph).Size(15, 15)
