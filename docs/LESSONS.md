@@ -205,6 +205,7 @@
 
 - Moving an action out of a preferences panel also requires removing the panel's ownership of its state. The Filters move exposed close-time coupling that discarded the dialog and blocked Settings on filter writes; cover the primary entry, repeated opening, modal availability, and independent close behavior with rendered tests.
 - Opening a feature and restoring its existing window are different availability contracts. Keep the Mailbox action enabled while Filters is open without reloading it, and carry authentication guards independently of Settings; state-based regressions reproduced enabled writes and reopening during authentication, plus a disabled restoration action with an open dialog.
+- Fixed sidebar footers are poor homes for low-frequency management actions and account identity. Keep those actions in the application menu, give the account an explicit bottom inset, and verify a non-Demo capture; a Demo that hides the action cannot expose the crowding.
 
 ## Validate release metadata early
 

@@ -79,47 +79,41 @@ func newFilterTestApp(service *filterTestService) *App {
 func openTestFilters(t *testing.T, a *App) *ui.Tester {
 	t.Helper()
 	tt := ui.NewTester(a.View, 1280, 800)
-	if err := tt.Click("Filters"); err != nil {
-		t.Fatal(err)
-	}
+	a.OpenFilters()
+	tt.Frame()
 	return tt
 }
 
-func TestFiltersPrimaryEntryOutsideSettings(t *testing.T) {
+func TestFiltersUseMailboxActionWithoutSidebarEntry(t *testing.T) {
 	service := newFilterTestService()
 	a := newTestApp(service)
 	tt := ui.NewTester(a.View, 1280, 800)
-	entry, ok := tt.Find("Filters")
-	if !ok || entry.W <= 0 || entry.H <= 0 {
-		t.Fatalf("main window has no Filters feature entry: %+v", entry)
+	if tt.HasText("Filters") {
+		t.Fatalf("sidebar still contains Filters: %q", tt.Texts())
 	}
-	if entry.X >= a.sidebarWidth || entry.Y+entry.H < 760 {
-		t.Fatalf("Filters is not a fixed sidebar footer entry: %+v", entry)
-	}
-	if err := tt.Click("Filters"); err != nil {
-		t.Fatal(err)
-	}
+	a.OpenFilters()
+	tt.Frame()
 	if a.filterDialog == nil || service.listCalls != 1 {
-		t.Fatalf("sidebar Filters did not load the active account: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+		t.Fatalf("Mailbox Filters did not load the active account: dialog=%p calls=%d", a.filterDialog, service.listCalls)
 	}
 }
 
-func TestFiltersPrimaryEntryStaysVisibleWithLongSidebar(t *testing.T) {
+func TestAccountStaysVisibleWithLongSidebar(t *testing.T) {
 	service := newFilterTestService()
 	for i := 1; i <= 40; i++ {
 		service.labels = append(service.labels, mail.Label{ID: fmt.Sprintf("Label_sidebar_%d", i), Name: fmt.Sprintf("Sidebar label %d", i)})
 	}
 	a := newTestApp(service)
 	tt := ui.NewTester(a.View, 1280, 600)
-	entry, ok := tt.Find("Filters")
-	if !ok || entry.W <= 0 || entry.H <= 0 || entry.Y+entry.H < 560 {
-		t.Fatalf("Filters footer is not visible at the minimum window height: %+v", entry)
+	if tt.HasText("Filters") {
+		t.Fatalf("sidebar still contains Filters: %q", tt.Texts())
 	}
-	if err := tt.Click("Filters"); err != nil {
-		t.Fatal(err)
+	account, ok := tt.Find(a.account.Name)
+	if !ok || account.W <= 0 || account.H <= 0 {
+		t.Fatalf("account footer is not visible at the minimum window height: %+v", account)
 	}
-	if a.filterDialog == nil || service.listCalls != 1 {
-		t.Fatalf("minimum-height Filters entry is not usable: dialog=%p calls=%d", a.filterDialog, service.listCalls)
+	if bottom := 600 - account.Y - account.H; bottom < 8 {
+		t.Fatalf("account row has only %vpt below it, want at least 8pt", bottom)
 	}
 }
 
@@ -195,17 +189,15 @@ func TestFiltersAuthenticationPreventsMenuAndReopen(t *testing.T) {
 	if len(states) != 1 || states[0] {
 		t.Errorf("authentication left the Mailbox action enabled: %v", states)
 	}
-	if err := tt.Click("Filters"); err != nil {
-		t.Logf("sidebar Filters is disabled during authentication: %v", err)
-	}
+	a.OpenFilters()
+	tt.Frame()
 	if a.filterDialog != nil || service.listCalls != 1 {
 		t.Fatalf("authentication allowed Filters to reopen: dialog=%p calls=%d", a.filterDialog, service.listCalls)
 	}
 	a.authCancel = nil
 	tt.Frame()
-	if err := tt.Click("Filters"); err != nil {
-		t.Fatal(err)
-	}
+	a.OpenFilters()
+	tt.Frame()
 	if a.filterDialog == nil || service.listCalls != 2 {
 		t.Fatalf("authentication completion did not restore Filters: dialog=%p calls=%d", a.filterDialog, service.listCalls)
 	}
