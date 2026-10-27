@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.1 - 2026-10-27
+
+- Removed the sidebar Filters entry while preserving Gmail Filters in the Mailbox menu.
+- Increased sidebar account padding to keep the avatar, name, and email away from the window's bottom edge.
+
 ## 0.18.0 - 2026-10-27
 
 - Refreshed the mailbox with neutral selection, soft unread accents, sender avatars, compact rows, clearer pane layering, and a footer account row.
