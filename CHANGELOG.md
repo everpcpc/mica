@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0 - 2026-10-27
+
+- Refreshed the mailbox with neutral selection, soft unread accents, sender avatars, compact rows, clearer pane layering, and a footer account row.
+- Simplified primary and secondary controls, grouped Spam, Snooze, and label assignment under Message actions, and added a compact reader header during scrolling with reduced-motion support.
+- Added theme-aware loading skeletons and subtle icon-button hover and press feedback.
+
 ## 0.17.3 - 2026-10-25
 
 - Balanced label badge text vertically across different glyph shapes without changing capsule dimensions, and refreshed the English screenshots.
