@@ -1,5 +1,10 @@
 # Development Lessons
 
+## Retain renderers across conversations, not message membership across conversations
+
+- Reconcile renderer membership only when the incoming conversation matches the currently displayed conversation. Comparing the incoming ID with the selected ID makes every selected conversation look identical and deletes the previous reader's renderers during an update.
+- Bound retained native WebViews with an LRU touched on actual creation and reuse. Explicit collapse, remote-image permission changes, reader clearing, and account resets still destroy the affected renderers and revoke their resource tokens.
+
 ## Do not copy external service concepts directly
 
 - An internal virtual label is not necessarily a real label on the server.

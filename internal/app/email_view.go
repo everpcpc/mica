@@ -15,6 +15,8 @@ import (
 
 const emailInitialHeight float32 = 24
 
+const recentEmailPageLimit = 5
+
 type emailPage struct {
 	messageKey string
 	view       *mygo.WebView
@@ -80,6 +82,7 @@ func (a *App) emailView(c *ui.Context, message mail.Message) ui.Element {
 func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 	key := readerMessageKey(message)
 	if page := a.emailPages[key]; page != nil {
+		a.touchEmailPage(key)
 		return page
 	}
 	if a.newEmailView == nil {
@@ -99,6 +102,7 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 		a.emailPages = make(map[string]*emailPage)
 	}
 	a.emailPages[key] = page
+	a.touchEmailPage(key)
 	services := c.Services()
 	view.Page().OnDOMReady(func() {
 		_, _ = view.Page().Eval(emailHeightScript)
@@ -124,11 +128,55 @@ func (a *App) emailPage(c *ui.Context, message mail.Message) *emailPage {
 
 func (a *App) closeEmailView(key string) {
 	if page := a.emailPages[key]; page != nil {
-		page.view.Destroy()
+		if a.destroyEmailView != nil {
+			a.destroyEmailView(page.view)
+		} else {
+			page.view.Destroy()
+		}
 		delete(a.emailPages, key)
+	}
+	for i, recent := range a.emailPageRecent {
+		if recent == key {
+			a.emailPageRecent = append(a.emailPageRecent[:i], a.emailPageRecent[i+1:]...)
+			break
+		}
 	}
 	if a.emailResources != nil {
 		a.emailResources.revokeMessage(key)
+	}
+}
+
+func (a *App) touchEmailPage(key string) {
+	for i, recent := range a.emailPageRecent {
+		if recent == key {
+			a.emailPageRecent = append(a.emailPageRecent[:i], a.emailPageRecent[i+1:]...)
+			break
+		}
+	}
+	a.emailPageRecent = append(a.emailPageRecent, key)
+	a.trimEmailPages()
+}
+
+func (a *App) trimEmailPages() {
+	for key := range a.emailPages {
+		found := false
+		for _, recent := range a.emailPageRecent {
+			if recent == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.emailPageRecent = append(a.emailPageRecent, key)
+		}
+	}
+	for len(a.emailPageRecent) > recentEmailPageLimit {
+		oldest := a.emailPageRecent[0]
+		if a.emailPages[oldest] == nil {
+			a.emailPageRecent = a.emailPageRecent[1:]
+			continue
+		}
+		a.closeEmailView(oldest)
 	}
 }
 
@@ -136,6 +184,7 @@ func (a *App) closeEmailViews() {
 	for key := range a.emailPages {
 		a.closeEmailView(key)
 	}
+	a.emailPageRecent = nil
 }
 
 func (a *App) retainEmailViews(thread mail.Thread) {
@@ -146,7 +195,9 @@ func (a *App) retainEmailViews(thread mail.Thread) {
 	for key := range a.emailPages {
 		if !messages[key] {
 			a.closeEmailView(key)
+			continue
 		}
+		a.touchEmailPage(key)
 	}
 }
 

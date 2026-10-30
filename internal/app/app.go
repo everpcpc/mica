@@ -95,12 +95,14 @@ type App struct {
 	remoteImagePermissions map[string]bool
 
 	emailPages           map[string]*emailPage
+	emailPageRecent      []string
 	emailHeights         map[string]float32
 	attachmentDownloads  map[string]attachmentDownload
 	openPath             func(string) error
 	openDialog           func(mygo.OpenDialogOptions) ([]string, error)
 	saveDialog           func(mygo.SaveDialogOptions) (string, error)
 	newEmailView         func() (*mygo.WebView, error)
+	destroyEmailView     func(*mygo.WebView)
 	documents            map[string]*emailDocument
 	expandedMessages     map[string]bool
 	compose              *composer
@@ -794,11 +796,9 @@ func (a *App) loadThread(id string) {
 }
 
 func (a *App) showThread(id string, thread mail.Thread) {
-	sameThread := a.threadKey(thread) == id
+	sameThread := a.threadKey(thread) == a.threadKey(a.thread)
 	if sameThread {
 		a.retainEmailViews(thread)
-	} else {
-		a.closeEmailViews()
 	}
 	a.thread = thread
 	a.threadLoading = false
