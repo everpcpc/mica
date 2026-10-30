@@ -643,6 +643,7 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.labelDialog = nil
 	a.filterDialog = nil
 	a.threadCache = nil
+	a.invalidateThreadPrefetch()
 	a.resetMessageViews()
 	a.clearThread()
 	a.startupSelectionDone = false

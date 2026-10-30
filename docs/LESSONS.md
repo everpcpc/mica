@@ -1,5 +1,12 @@
 # Development Lessons
 
+## Give background prefetch explicit scheduling and freshness boundaries
+
+- Debounce detail prefetch through the background scheduler, not the UI timer channel. A held scheduling queue must not start prefetch, while a controllable timer must not leave a prefetch worker permanently waiting.
+- Selecting an in-flight prefetch must mark that exact request for presentation. A single selection slot blocks an unrelated conversation selected while the prefetch is running; concurrent prefetch of another conversation must still use the foreground request path.
+- Reserve a detail-cache revision before prefetching and check it before updating memory or persistence. History synchronization can save a newer conversation while the prefetch is in flight.
+- Pause prefetch during mutations and resume when the FIFO empties. Admit delayed and active prefetch into the cache drain so quitting stops new work without stranding admitted cache writes.
+
 ## Do not copy external service concepts directly
 
 - An internal virtual label is not necessarily a real label on the server.
