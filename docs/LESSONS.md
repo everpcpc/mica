@@ -5,6 +5,11 @@
 - A WebView that scrolls its own page must keep wheel input. Container scrolling is appropriate only for documents whose height is managed by native UI, and must be an explicit WebView option rather than global backend behavior.
 - Native input regressions should exercise real wheel and trackpad event conversion without starting unnecessary WebContent processes.
 
+## Preserve the reader until its replacement is ready
+
+- A pending selection and the displayed conversation are separate identities. Keep readable content while another detail loads, and compare the incoming conversation with the displayed reader before resetting reading position or reconciling renderers.
+- Suppress entrance motion for cached replacements and prove it with unchanged start, middle, and end pixels, not only animation flags.
+
 ## Give background prefetch explicit scheduling and freshness boundaries
 
 - Debounce detail prefetch through the background scheduler, not the UI timer channel. A held scheduling queue must not start prefetch, while a controllable timer must not leave a prefetch worker permanently waiting.
