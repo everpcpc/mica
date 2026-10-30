@@ -221,6 +221,9 @@ func (a *App) pumpMutations() {
 		for _, waiter := range waiters {
 			waiter()
 		}
+		if worker := a.threadPrefetch; worker != nil && worker.current == nil {
+			a.runThreadPrefetch(worker)
+		}
 		return
 	}
 	job := a.mutationQueue[0]

@@ -5,6 +5,17 @@
 - Reconcile renderer membership only when the incoming conversation matches the currently displayed conversation. Comparing the incoming ID with the selected ID makes every selected conversation look identical and deletes the previous reader's renderers during an update.
 - Bound retained native WebViews with an LRU touched on actual creation and reuse. Explicit collapse, remote-image permission changes, reader clearing, and account resets still destroy the affected renderers and revoke their resource tokens.
 
+
+- A pending selection and the displayed conversation are separate identities. Keep readable content while another detail loads, and compare the incoming conversation with the displayed reader before resetting reading position or reconciling renderers.
+- Suppress entrance motion for cached replacements and prove it with unchanged start, middle, and end pixels, not only animation flags.
+
+## Give background prefetch explicit scheduling and freshness boundaries
+
+- Debounce detail prefetch through the background scheduler, not the UI timer channel. A held scheduling queue must not start prefetch, while a controllable timer must not leave a prefetch worker permanently waiting.
+- Selecting an in-flight prefetch must mark that exact request for presentation. A single selection slot blocks an unrelated conversation selected while the prefetch is running; concurrent prefetch of another conversation must still use the foreground request path.
+- Reserve a detail-cache revision before prefetching and check it before updating memory or persistence. History synchronization can save a newer conversation while the prefetch is in flight.
+- Pause prefetch during mutations and resume when the FIFO empties. Admit delayed and active prefetch into the cache drain so quitting stops new work without stranding admitted cache writes.
+
 ## Do not copy external service concepts directly
 
 - An internal virtual label is not necessarily a real label on the server.

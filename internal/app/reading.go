@@ -20,9 +20,9 @@ func (a *App) reader(c *ui.Context) {
 			switch {
 			case a.selectedThread == "":
 				a.emptyReader(c)
-			case a.threadLoading:
+			case a.threadLoading && len(a.thread.Messages) == 0:
 				a.readerSkeleton(c)
-			case a.threadErr != "":
+			case a.threadErr != "" && len(a.thread.Messages) == 0:
 				ui.Column(c).Grow(1).Center().Padding(28).Gap(10).Children(func() {
 					ui.Text(c, locales.ThreadLoadFailed()).FontSize(17).Bold()
 					ui.Text(c, a.threadErr).FontSize(12).TextColor(t.TextMuted).TextAlign(ui.Center)
@@ -122,10 +122,14 @@ func (a *App) labelMenu(m *ui.Menu) {
 func (a *App) threadContent(c *ui.Context) {
 	t := c.Theme()
 	thread := a.thread
-	ui.Scroll(c.Key("read-"+thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Background).Padding(titleBarHeight, 0, 0, 0).ScrollbarInsets(titleBarHeight, 0, 0).Transition(ui.ElementTransition{
-		Enter:    &ui.Motion{Y: 10, Opacity: 0},
-		Duration: 240 * time.Millisecond,
-	}).Children(func() {
+	content := ui.Scroll(c.Key("read-"+thread.ID)).TrackScroll(&a.readerScroll).Grow(1).Background(t.Background).Padding(titleBarHeight, 0, 0, 0).ScrollbarInsets(titleBarHeight, 0, 0)
+	if a.threadFreshCall >= a.threadCall {
+		content.Transition(ui.ElementTransition{
+			Enter:    &ui.Motion{Y: 10, Opacity: 0},
+			Duration: 240 * time.Millisecond,
+		})
+	}
+	content.Children(func() {
 		ui.Row(c).Justify(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MaxWidth(960).Padding(24, 24, 32, 24).Gap(18).Children(func() {
 				ui.Column(c).Gap(8).Children(func() {
