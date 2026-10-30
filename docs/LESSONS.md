@@ -1,6 +1,10 @@
 # Development Lessons
 
-## Preserve the reader until its replacement is ready
+## Retain renderers across conversations, not message membership across conversations
+
+- Reconcile renderer membership only when the incoming conversation matches the currently displayed conversation. Comparing the incoming ID with the selected ID makes every selected conversation look identical and deletes the previous reader's renderers during an update.
+- Bound retained native WebViews with an LRU touched on actual creation and reuse. Explicit collapse, remote-image permission changes, reader clearing, and account resets still destroy the affected renderers and revoke their resource tokens.
+
 
 - A pending selection and the displayed conversation are separate identities. Keep readable content while another detail loads, and compare the incoming conversation with the displayed reader before resetting reading position or reconciling renderers.
 - Suppress entrance motion for cached replacements and prove it with unchanged start, middle, and end pixels, not only animation flags.
