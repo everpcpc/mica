@@ -729,7 +729,6 @@ func (a *App) loadThread(id string) {
 	service, generation := a.ownerService(ref.AccountEmail)
 	if worker := a.threadPrefetch; worker != nil && worker.current != nil && worker.epoch == a.threadEpoch && worker.current.key == id {
 		worker.current.selected = true
-		a.thread = mail.Thread{}
 		a.threadLoading = true
 		return
 	}
@@ -760,7 +759,6 @@ func (a *App) loadThread(id string) {
 	if owner == "" {
 		owner = a.storeAccount
 	}
-	a.thread = mail.Thread{}
 	a.threadLoading = true
 	store, email := a.store, ref.AccountEmail
 	if email == "" {
@@ -807,7 +805,7 @@ func (a *App) loadThread(id string) {
 }
 
 func (a *App) showThread(id string, thread mail.Thread) {
-	sameThread := a.threadKey(thread) == id
+	sameThread := a.threadKey(thread) == a.threadKey(a.thread)
 	if sameThread {
 		a.retainEmailViews(thread)
 	} else {
