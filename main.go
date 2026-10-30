@@ -66,6 +66,7 @@ func appMenu(openSettings, openFilters func(), shortcut func(ui.Key, ui.Modifier
 func main() {
 	mygo.Use(native.Plugin)
 	a := app.New(mail.NewDemo())
+	a.EnableThreadPrefetch()
 	if err := app.RegisterEmailRenderer(a); err != nil {
 		log.Fatal(err)
 	}

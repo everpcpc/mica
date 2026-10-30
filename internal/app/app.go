@@ -49,6 +49,9 @@ type App struct {
 	compositeThreads         bool
 	thread                   mail.Thread
 	threadCache              map[string]mail.Thread
+	threadPrefetch           *threadPrefetchWorker
+	threadEpoch              uint64
+	threadPrefetchEnabled    bool
 	profileReauthAttempted   bool
 
 	selectedLabel        string
@@ -330,6 +333,7 @@ func (a *App) refresh() {
 		return
 	}
 	a.threadCache = make(map[string]mail.Thread)
+	a.invalidateThreadPrefetch()
 	if a.selectedThread != "" {
 		id := a.selectedThread
 		a.selectedThread = ""
@@ -527,6 +531,7 @@ func (a *App) syncThreadSelection(clearMissing bool) {
 }
 
 func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
+	a.invalidateThreadPrefetch()
 	if !a.compositeThreads {
 		for i := range threads {
 			if threads[i].AccountEmail == "" {
@@ -541,6 +546,7 @@ func (a *App) applyThreadList(threads []mail.ThreadSummary, clearMissing bool) {
 			a.selectThread(a.summaryKey(visible[0]))
 		}
 	}
+	a.prefetchVisibleThreads()
 }
 
 func (a *App) historyThreadKey(id string) string {
@@ -623,6 +629,7 @@ func (a *App) selectLabel() {
 		a.request++
 		a.threads = nil
 		a.threadCache = nil
+		a.invalidateThreadPrefetch()
 		a.resetNextPage()
 		a.loading = true
 		a.err = ""
@@ -720,6 +727,12 @@ func (a *App) loadThread(id string) {
 	}
 	ref := parseThreadRef(id)
 	service, generation := a.ownerService(ref.AccountEmail)
+	if worker := a.threadPrefetch; worker != nil && worker.current != nil && worker.epoch == a.threadEpoch && worker.current.key == id {
+		worker.current.selected = true
+		a.thread = mail.Thread{}
+		a.threadLoading = true
+		return
+	}
 	if service == nil && ref.AccountEmail != "" {
 		a.threadLoading = true
 		a.ensureAccountClient(ref.AccountEmail, func(err error) {
@@ -1160,6 +1173,7 @@ func (a *App) removeThreadIfHidden(id string) {
 }
 
 func (a *App) removeThreads(ids []string) {
+	a.invalidateThreadPrefetch()
 	removed := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		removed[id] = true
@@ -1211,6 +1225,7 @@ func (a *App) removeThreads(ids []string) {
 }
 
 func (a *App) removeThread(id string) {
+	a.invalidateThreadPrefetch()
 	delete(a.threadCache, id)
 	removed := -1
 	for i := range a.threads {

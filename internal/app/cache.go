@@ -269,11 +269,28 @@ func mergeCachedThreadTail(current, cached []mail.ThreadSummary, query mail.Quer
 }
 
 func (a *App) WaitForCacheWrites() {
+	a.invalidateThreadPrefetch()
 	a.cacheState.mu.Lock()
 	a.cacheState.quitting = true
 	a.cacheState.attachmentWritesBlocked = true
 	a.cacheState.mu.Unlock()
 	a.cacheState.writes.Wait()
+}
+
+func (a *App) cacheQuitting() bool {
+	a.cacheState.mu.Lock()
+	defer a.cacheState.mu.Unlock()
+	return a.cacheState.quitting
+}
+
+func (a *App) admitCacheWork() bool {
+	a.cacheState.mu.Lock()
+	defer a.cacheState.mu.Unlock()
+	if a.cacheState.quitting {
+		return false
+	}
+	a.cacheState.writes.Add(1)
+	return true
 }
 
 func (a *App) persistThread(thread mail.Thread) {
