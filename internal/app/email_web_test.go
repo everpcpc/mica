@@ -135,10 +135,15 @@ func TestEmailDocumentUsesSystemFont(t *testing.T) {
 	}
 }
 
-func TestEmailWheelScriptForwardsVerticalWheel(t *testing.T) {
-	for _, want := range []string{"MicaMail.Wheel", "preventDefault", "deltaY"} {
+func TestEmailScriptLeavesWheelToNativeInput(t *testing.T) {
+	for _, unwanted := range []string{"MicaMail.Wheel", `addEventListener("wheel"`} {
+		if strings.Contains(emailHeightScript, unwanted) {
+			t.Fatalf("email script bypasses native wheel routing with %q", unwanted)
+		}
+	}
+	for _, want := range []string{"ResizeObserver", "MicaMail.Height", "MicaMail.Shortcut"} {
 		if !strings.Contains(emailHeightScript, want) {
-			t.Fatalf("wheel forwarding is missing %q", want)
+			t.Fatalf("email script lost %q", want)
 		}
 	}
 }

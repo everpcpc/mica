@@ -1,5 +1,10 @@
 # Development Lessons
 
+## Forward embedded wheel input only with an explicit application opt-in
+
+- A WebView that scrolls its own page must keep wheel input. Container scrolling is appropriate only for documents whose height is managed by native UI, and must be an explicit WebView option rather than global backend behavior.
+- Native input regressions should exercise real wheel and trackpad event conversion without starting unnecessary WebContent processes.
+
 ## Give background prefetch explicit scheduling and freshness boundaries
 
 - Debounce detail prefetch through the background scheduler, not the UI timer channel. A held scheduling queue must not start prefetch, while a controllable timer must not leave a prefetch worker permanently waiting.
