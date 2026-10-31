@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.0 - 2026-10-31
+
+- Prefetched visible conversation details and reused recent email WebViews for faster inbox navigation.
+- Kept readable content visible during slow conversation switches and removed repeated entrance motion for cached conversations.
+- Routed email wheel and trackpad input directly through the native reader instead of an asynchronous JavaScript bridge.
+
 ## 0.18.1 - 2026-10-27
 
 - Removed the sidebar Filters entry while preserving Gmail Filters in the Mailbox menu.

@@ -2,7 +2,7 @@
   "name": "Mica",
   "identifier": "dev.mica.mail",
   "urlSchemes": ["mailto"],
-  "version": "0.18.1",
+  "version": "0.19.0",
   "out": "build",
   "i18n": {
     "dir": "locales",
