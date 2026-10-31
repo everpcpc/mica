@@ -106,7 +106,11 @@ jobs:
         run: |
           version="$(jq -r .version mygo.json)"
           mkdir -p build/release
-          cp "build/darwin-universal/Mica $version.dmg" "build/release/Mica.$version.dmg"
+          dmg="build/darwin-universal/mica-$version.dmg"
+          if [ ! -f "$dmg" ]; then
+            dmg="build/darwin-universal/Mica $version.dmg"
+          fi
+          cp "$dmg" "build/release/Mica.$version.dmg"
           for file in build/darwin-universal/mica-*.tar.gz build/darwin-universal/mica-*.delta build/darwin-universal/update-*.json; do
             [ -e "$file" ] || continue
             cp "$file" build/release/
