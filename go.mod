@@ -1,12 +1,12 @@
 module mica
 
-go 1.27.2
+go 1.27.3
 
 tool github.com/egoist/mygo/cmd/mygo
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.8.0
-	github.com/egoist/mygo v0.6.2
+	github.com/egoist/mygo v0.7.4-0.20261031101317-2f67b1ccfd9c
 	github.com/godwit-email/godwit v1.10.0
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.60.0

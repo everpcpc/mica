@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"math"
 	"net/url"
 	"time"
 
@@ -247,23 +246,6 @@ func (b *emailBridge) Shortcut(ctx context.Context, name string, shift bool) err
 	return nil
 }
 
-func (b *emailBridge) Wheel(ctx context.Context, dy float64) error {
-	if math.IsNaN(dy) || math.IsInf(dy, 0) {
-		return errors.New("mail: invalid wheel delta")
-	}
-	page := mygo.CallerPage(ctx)
-	b.app.publish(func() {
-		for _, candidate := range b.app.emailPages {
-			if candidate.view.Page() == page {
-				scroll := &b.app.readerScroll
-				scroll.Y = min(max(scroll.Y+float32(dy), 0), scroll.MaxY)
-				return
-			}
-		}
-	})
-	return nil
-}
-
 const emailHeightScript = `
 (() => {
   const body = document.getElementById("godwit-body");
@@ -287,21 +269,6 @@ const emailHeightScript = `
     image.addEventListener("load", measure);
     image.addEventListener("error", measure);
   }
-  let pending = 0, queued = false;
-  addEventListener("wheel", event => {
-    if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    event.preventDefault();
-    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1;
-    pending += event.deltaY * unit;
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(() => {
-      queued = false;
-      const dy = pending;
-      pending = 0;
-      if (dy) mygo.call("MicaMail.Wheel", dy).catch(() => {});
-    });
-  }, {passive: false});
   const keyShortcuts = {
     c: "compose", j: "next", k: "previous", o: "open", u: "close", e: "archive", b: "snooze",
     s: "star", r: "reply", a: "replyAll", f: "forward", z: "undo",
