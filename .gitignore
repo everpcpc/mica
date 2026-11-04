@@ -3,3 +3,4 @@
 /secrets/
 /internal/gmail/oauth-client.json
 mygo_windows_*.syso
+.agents/tasks
