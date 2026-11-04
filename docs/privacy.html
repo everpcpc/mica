@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="How Mica handles Google account information, Gmail content, local storage, remote images, and software updates.">
+  <meta name="theme-color" content="#f5f5f0">
+  <title>Privacy Policy — Mica</title>
+  <link rel="icon" href="../resources/icon.png">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="site-header shell">
+    <a class="brand" href="./" aria-label="Mica home"><img src="../resources/icon.png" alt="" width="36" height="36"><span>Mica</span></a>
+    <nav class="header-links" aria-label="Main navigation"><a href="./">Home</a><a href="terms.html">Terms</a><a class="download-small" href="https://github.com/everpcpc/mica/issues">Contact <span aria-hidden="true">↗</span></a></nav>
+  </header>
+
+  <main class="document shell">
+    <div class="document-heading">
+      <p class="eyebrow">The details, in plain language</p>
+      <h1>Privacy Policy</h1>
+      <p class="effective-date">Effective November 4, 2026</p>
+      <p class="document-intro">Mica is a Gmail client for macOS maintained through <a href="https://github.com/everpcpc/mica">the Mica project on GitHub</a>. This policy explains what the app processes, where that information goes, and the choices you have.</p>
+    </div>
+
+    <section>
+      <h2>The short version</h2>
+      <p>Mica connects directly from your Mac to Google to provide Gmail features. Mica does not operate a separate mail server or a developer-operated account service for your mailbox. The app does not include advertising, cross-app tracking, or third-party analytics. Your Google password is entered on Google's sign-in page, not in Mica.</p>
+      <p>Google, remote content hosts, GitHub, and Apple may process information when you use their respective services. Their own privacy policies apply to that processing.</p>
+    </section>
+
+    <section>
+      <h2>Information Mica processes</h2>
+      <p>If you connect a Google account, Mica requests OAuth access to your Gmail data and basic Google profile information. Depending on the features you use, this can include:</p>
+      <ul>
+        <li>Your email address, display name, and profile photo.</li>
+        <li>Mailbox labels, filters, conversation and message metadata, message bodies, and attachments.</li>
+        <li>Recipients, subjects, message content, and attachments that you put in drafts or send.</li>
+        <li>Gmail history identifiers and notification information needed to keep your mailbox current.</li>
+      </ul>
+      <p>These permissions allow Mica to read and organize mail, create and update drafts, send messages, manage filters, and receive Gmail notifications. Mica uses this information to provide the features you request, not to sell personal information or build advertising profiles.</p>
+      <p>You can explore the built-in demo mailbox without connecting a Google account. Demo content is fictional and is not fetched from Gmail.</p>
+    </section>
+
+    <section>
+      <h2>Information stored on your Mac</h2>
+      <h3>Credentials and account state</h3>
+      <p>OAuth tokens, the active-account identifier, and Gmail history checkpoints are stored in the macOS Keychain. Mica uses those credentials to authenticate with Google and to refresh access tokens when needed. Rebuilt apps may trigger a macOS Keychain access prompt; this is controlled by macOS and the app's code signature.</p>
+      <h3>Mailbox and composition data</h3>
+      <p>Mica keeps a local SQLite database in its application data directory. It can contain account metadata, labels, cached conversations and message bodies, downloaded attachment bytes, drafts, Outbox records, scheduled-send information, Snooze schedules, and app preferences. Remote images are not stored in this cache.</p>
+      <p>These records support offline access, recovery after interruptions, and the app's mail features. Mica does not add a separate encryption layer to this SQLite database; anyone or anything with access to the relevant files or backups on your Mac may be able to read them. macOS account security, device encryption, and your backup practices therefore matter.</p>
+      <p>Updater preferences, such as automatic-check choices and a skipped version, are also stored locally.</p>
+    </section>
+
+    <section>
+      <h2>Services Mica contacts</h2>
+      <h3>Google</h3>
+      <p>Mica communicates with Google OAuth, Gmail, Google UserInfo, and Google Cloud Pub/Sub endpoints. Requests to these services include the account and mailbox information necessary to perform them, along with normal network metadata such as your IP address.</p>
+      <p>For Gmail notifications, Mica creates or uses resources in the Google Cloud project associated with the app's OAuth configuration. Gmail publishes notification messages containing an email address and history identifier through that project's Pub/Sub topic. Mica then asks Gmail for the corresponding mailbox changes. This notification path is not a developer-operated mail server.</p>
+      <p>If you choose custom OAuth credentials in Settings, those credentials and their associated Google Cloud project determine the OAuth client and Pub/Sub resources used. You are responsible for that project's configuration and compliance.</p>
+      <h3>Remote content hosts</h3>
+      <p>Remote images in email are blocked by default. You can allow them for one message or enable automatic loading in Settings. When allowed, Mica fetches those resources directly from their hosts without attaching your Gmail credentials. Those hosts can still receive network information such as your IP address and may use image requests for their own tracking purposes.</p>
+      <p>Profile photos are retrieved from the image URLs supplied by Google. Opening a link or attachment in another application is subject to that application's behavior and policies.</p>
+      <h3>GitHub and software updates</h3>
+      <p>Release builds check GitHub for software updates by default, normally once a day. You can also check manually, disable automatic checks in the updater, or choose whether updates download automatically. Update checks and downloads reveal ordinary network information to GitHub and its delivery providers. Mica does not include your Gmail messages or OAuth tokens in update requests.</p>
+      <p>These public web pages are hosted by GitHub Pages and use no analytics, advertising scripts, or third-party fonts. GitHub may process visitor IP addresses and standard request logs when you view them.</p>
+      <h3>Apple and other local services</h3>
+      <p>macOS provides Keychain, local notification, WebView, and application services. Official releases are signed and notarized using Apple's developer services. Apple and your other installed applications may process information according to their own policies when you use those services.</p>
+    </section>
+
+    <section>
+      <h2>Removal, retention, and backups</h2>
+      <p>Removing an account in Mica removes its locally stored OAuth token, active-account association, history checkpoint, cached account data, drafts, Outbox records, downloaded attachments, and Snooze records after the required local checks. A local unsent draft or Outbox item can prevent account removal until you address it.</p>
+      <p>Removing an account in Mica does not revoke access at Google. You can revoke Mica's access in your <a href="https://myaccount.google.com/permissions">Google Account permissions</a>. Messages already sent through Gmail remain subject to Gmail's retention and the recipients' systems.</p>
+      <p>Uninstalling Mica may not remove its Keychain entries, application data, or system backups. To remove local remnants, delete those items through macOS as appropriate. Copies in Time Machine or other backups remain until you delete or rotate those backups.</p>
+      <p>Mica has no developer-operated mailbox account database from which you need to request deletion. Questions submitted through GitHub Issues are retained by GitHub under its policies; please do not post passwords, OAuth tokens, or private message content there.</p>
+    </section>
+
+    <section>
+      <h2>Your choices</h2>
+      <ul>
+        <li>Use the demo mailbox without connecting Google.</li>
+        <li>Connect or remove Gmail accounts in Mica's Settings.</li>
+        <li>Keep remote images blocked, allow them per message, or enable automatic loading.</li>
+        <li>Change update behavior in the updater.</li>
+        <li>Revoke Mica's access through your Google Account.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Children</h2>
+      <p>Mica is a general-purpose mail client and is not directed at children. It does not knowingly maintain a separate service collecting children's personal information. Google accounts and Gmail use remain subject to Google's age requirements and policies.</p>
+    </section>
+
+    <section>
+      <h2>Changes and contact</h2>
+      <p>We may update this policy as Mica's features or distribution change. The current version and its effective date will be published on this page. Significant changes may also be noted in the project's release history.</p>
+      <p>For privacy questions or concerns, open an issue in the <a href="https://github.com/everpcpc/mica/issues">Mica GitHub issue tracker</a>. Use a general description rather than including sensitive mailbox data or credentials.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer shell">
+    <div class="footer-brand"><span class="brand-name">Mica</span><span>Your mail, with fewer distractions.</span></div>
+    <nav class="footer-links" aria-label="Legal and source links"><a href="./">Home</a><a href="terms.html">Terms</a><a href="https://github.com/everpcpc/mica">GitHub <span aria-hidden="true">↗</span></a></nav>
+    <p class="legal-note">This policy describes Mica itself, not Google's processing of your Gmail account.</p>
+  </footer>
+</body>
+</html>
