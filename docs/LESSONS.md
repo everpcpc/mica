@@ -1,5 +1,9 @@
 # Development Lessons
 
+## Verify assets within the actual deployment root
+
+- When a host publishes only a subdirectory, a relative path to a file elsewhere in the repository can work in a full-repository preview but return 404 in production. Resolve every asset against the published root and check the real public URL after deployment.
+
 ## Forward embedded wheel input only with an explicit application opt-in
 
 - A WebView that scrolls its own page must keep wheel input. Container scrolling is appropriate only for documents whose height is managed by native UI, and must be an explicit WebView option rather than global backend behavior.
