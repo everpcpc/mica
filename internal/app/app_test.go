@@ -33,6 +33,8 @@ type fakeService struct {
 	deletedLabels         []string
 	labelColors           map[string]mail.LabelColor
 	watchID               uint64
+	ensurePushFunc        func() error
+	watchFunc             func() (gmail.WatchState, error)
 	historyFunc           func(uint64, func([]mail.ThreadSummary) error) (uint64, error)
 	stream                func(context.Context, func(gmail.PushNotification) error) error
 }

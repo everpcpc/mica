@@ -237,9 +237,17 @@ func TestNotificationsStopForDemoAndAccountSwitch(t *testing.T) {
 	}
 }
 
-func (f *fakeService) EnsurePush(context.Context) error { return nil }
+func (f *fakeService) EnsurePush(context.Context) error {
+	if f.ensurePushFunc != nil {
+		return f.ensurePushFunc()
+	}
+	return nil
+}
 
 func (f *fakeService) Watch(context.Context) (gmail.WatchState, error) {
+	if f.watchFunc != nil {
+		return f.watchFunc()
+	}
 	id := f.watchID
 	if id == 0 {
 		id = 1
