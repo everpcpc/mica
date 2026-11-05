@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0 - 2026-11-05
+
+- Updated the OAuth client configuration used by release builds; sign in again after upgrading.
+- Added the public Mica homepage, privacy policy, and terms of service.
+- Added repository homepage, description, and discovery metadata.
+
 ## 0.19.0 - 2026-10-31
 
 - Prefetched visible conversation details and reused recent email WebViews for faster inbox navigation.
