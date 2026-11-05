@@ -20,6 +20,8 @@ const (
 	watchRenewInterval       = 24 * time.Hour
 	historyReconcileInterval = time.Hour
 	historyBatchDelay        = 500 * time.Millisecond
+	pushRetryInitialDelay    = time.Second
+	pushRetryMaxDelay        = 30 * time.Second
 )
 
 type pushService interface {
@@ -43,6 +45,7 @@ type notificationWorker struct {
 	stopping        bool
 	wg              sync.WaitGroup
 	reauthAttempted bool
+	sleep           func(context.Context, time.Duration) bool
 }
 
 func (a *App) SetNotificationHandlers(badge func(int), notify func(string, string, string)) {
@@ -121,28 +124,74 @@ func (worker *notificationWorker) after(app *App, delay time.Duration, fn func()
 	})
 }
 
+func (worker *notificationWorker) wait(delay time.Duration) bool {
+	if worker.sleep != nil {
+		return worker.sleep(worker.ctx, delay)
+	}
+	return sleepContext(worker.ctx, delay)
+}
+
 func (a *App) runNotifications(worker *notificationWorker) {
 	service, ctx := worker.service, worker.ctx
+	synchronizer := &historySynchronizer{app: a, worker: worker, service: service, ctx: ctx, version: worker.version, email: worker.email}
+	maintenanceStarted := false
+	backoff := pushRetryInitialDelay
+	for {
+		if err := a.connectNotifications(worker, synchronizer); err == nil {
+			if !maintenanceStarted {
+				worker.after(a, watchRenewInterval, func() { a.renewWatch(worker) })
+				worker.after(a, historyReconcileInterval, func() { a.reconcileHistory(synchronizer) })
+				maintenanceStarted = true
+			}
+			err = service.Stream(ctx, func(notification gmail.PushNotification) error {
+				if normalizedEmail(notification.EmailAddress) != worker.email {
+					return nil
+				}
+				return synchronizer.trigger()
+			})
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				return
+			}
+			if a.handleFatalPushError(worker, err) {
+				return
+			}
+		} else {
+			if ctx.Err() != nil {
+				return
+			}
+			if a.handleFatalPushError(worker, err) {
+				return
+			}
+		}
+		if !worker.wait(backoff) {
+			return
+		}
+		backoff = nextPushRetryDelay(backoff)
+	}
+}
+
+func (a *App) connectNotifications(worker *notificationWorker, synchronizer *historySynchronizer) error {
+	service, ctx := worker.service, worker.ctx
 	if err := service.EnsurePush(ctx); err != nil {
-		a.handlePushError(worker, err)
-		return
+		return err
 	}
 	state, err := service.Watch(ctx)
 	if err != nil {
-		a.handlePushError(worker, err)
-		return
+		return err
 	}
-	synchronizer := &historySynchronizer{app: a, worker: worker, service: service, ctx: ctx, version: worker.version, email: worker.email, historyID: state.HistoryID}
 	checkpoint, ok, err := a.loadCheckpoint(worker.email)
-	if err == nil && ok && checkpoint < state.HistoryID {
+	if err == nil && ok {
+		synchronizer.advance(checkpoint)
+	}
+	synchronizer.advance(state.HistoryID)
+	if err == nil && ok && checkpoint < synchronizer.current() {
 		a.publish(func() {
 			if a.notificationActive(worker) {
 				a.unreadSeen = make(map[string]time.Time)
 			}
 		})
 		if err := synchronizer.sync(checkpoint); err != nil {
-			a.handlePushError(worker, err)
-			return
+			return err
 		}
 		a.publish(func() {
 			if a.notificationActive(worker) {
@@ -152,55 +201,54 @@ func (a *App) runNotifications(worker *notificationWorker) {
 	}
 	synchronizer.refreshUnread()
 	if err := a.saveCheckpoint(worker.email, synchronizer.current()); err != nil {
-		a.handlePushError(worker, err)
-		return
+		return err
 	}
-	worker.after(a, watchRenewInterval, func() { a.renewWatch(worker) })
-	worker.after(a, historyReconcileInterval, func() { a.reconcileHistory(synchronizer) })
-	backoff := time.Second
-	for {
-		err := service.Stream(ctx, func(notification gmail.PushNotification) error {
-			if normalizedEmail(notification.EmailAddress) != worker.email {
-				return nil
-			}
-			return synchronizer.trigger()
-		})
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-			return
-		}
-		if isPushAuthError(err) || isPushConfigError(err) {
-			a.handlePushError(worker, err)
-			return
-		}
-		if !sleepContext(ctx, backoff) {
-			return
-		}
-		if backoff < 30*time.Second {
-			backoff *= 2
-		}
-	}
+	return nil
 }
 
 func (a *App) renewWatch(worker *notificationWorker) {
+	a.renewWatchWithBackoff(worker, pushRetryInitialDelay)
+}
+
+func (a *App) renewWatchWithBackoff(worker *notificationWorker, backoff time.Duration) {
 	if worker.ctx.Err() != nil {
 		return
 	}
 	if _, err := worker.service.Watch(worker.ctx); err != nil {
-		a.handlePushError(worker, err)
+		if a.handleFatalPushError(worker, err) {
+			return
+		}
+		worker.after(a, backoff, func() { a.renewWatchWithBackoff(worker, nextPushRetryDelay(backoff)) })
 		return
 	}
 	worker.after(a, watchRenewInterval, func() { a.renewWatch(worker) })
 }
 
 func (a *App) reconcileHistory(synchronizer *historySynchronizer) {
+	a.reconcileHistoryWithBackoff(synchronizer, pushRetryInitialDelay)
+}
+
+func (a *App) reconcileHistoryWithBackoff(synchronizer *historySynchronizer, backoff time.Duration) {
 	if synchronizer.ctx.Err() != nil {
 		return
 	}
 	if err := synchronizer.sync(synchronizer.current()); err != nil {
-		a.handlePushError(synchronizer.worker, err)
+		if a.handleFatalPushError(synchronizer.worker, err) {
+			return
+		}
+		synchronizer.worker.after(a, backoff, func() {
+			a.reconcileHistoryWithBackoff(synchronizer, nextPushRetryDelay(backoff))
+		})
 		return
 	}
 	synchronizer.worker.after(a, historyReconcileInterval, func() { a.reconcileHistory(synchronizer) })
+}
+
+func nextPushRetryDelay(current time.Duration) time.Duration {
+	if current >= pushRetryMaxDelay {
+		return pushRetryMaxDelay
+	}
+	return min(current*2, pushRetryMaxDelay)
 }
 
 func sleepContext(ctx context.Context, duration time.Duration) bool {
@@ -234,6 +282,17 @@ func (a *App) handlePushError(worker *notificationWorker, err error) {
 		}
 		a.notice = err.Error()
 	})
+}
+
+func (a *App) handleFatalPushError(worker *notificationWorker, err error) bool {
+	if err == nil || worker.ctx.Err() != nil {
+		return worker.ctx.Err() != nil
+	}
+	if !isPushAuthError(err) && !isPushConfigError(err) {
+		return false
+	}
+	a.handlePushError(worker, err)
+	return true
 }
 
 func isPushAuthError(err error) bool {
@@ -278,6 +337,14 @@ func (s *historySynchronizer) current() uint64 {
 	return s.historyID
 }
 
+func (s *historySynchronizer) advance(historyID uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if historyID > s.historyID {
+		s.historyID = historyID
+	}
+}
+
 func (s *historySynchronizer) trigger() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -285,10 +352,13 @@ func (s *historySynchronizer) trigger() error {
 		return nil
 	}
 	s.pending = true
-	run := func() {
+	var run func()
+	run = func() {
 		if err := s.sync(s.current()); err != nil {
 			if s.worker != nil {
-				s.app.handlePushError(s.worker, err)
+				if !s.app.handleFatalPushError(s.worker, err) {
+					s.retryAfter(s.worker, historyBatchDelay, run)
+				}
 			} else {
 				s.app.publish(func() {
 					if s.active() {
@@ -304,6 +374,17 @@ func (s *historySynchronizer) trigger() error {
 		s.app.after(historyBatchDelay, run)
 	}
 	return nil
+}
+
+func (s *historySynchronizer) retryAfter(worker *notificationWorker, delay time.Duration, run func()) {
+	s.mu.Lock()
+	if s.pending {
+		s.mu.Unlock()
+		return
+	}
+	s.pending = true
+	s.mu.Unlock()
+	worker.after(s.app, delay, run)
 }
 
 func (s *historySynchronizer) sync(start uint64) error {
