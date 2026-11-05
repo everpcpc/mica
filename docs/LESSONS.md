@@ -1,5 +1,9 @@
 # Development Lessons
 
+## Reconnect the complete notification pipeline
+
+- Retrying only Streaming Pull leaves startup, watch renewal, and history synchronization as terminal failure paths. Retry transient failures throughout the worker with bounded backoff, renew the watch before receiving again, and catch up from the persisted history checkpoint without allowing an older watch response to move it backward. Keep authentication and configuration failures on their explicit recovery paths. Controlled regressions must cover setup, reconnect catch-up, renewal, periodic reconciliation, and push-triggered history failures.
+
 ## Verify assets within the actual deployment root
 
 - When a host publishes only a subdirectory, a relative path to a file elsewhere in the repository can work in a full-repository preview but return 404 in production. Resolve every asset against the published root and check the real public URL after deployment.
