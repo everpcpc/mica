@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.1 - 2026-11-05
+
+- Restored Gmail notifications after transient Pub/Sub, watch, and history synchronization failures.
+- Reconnected with a fresh Gmail watch and caught up from the saved history checkpoint without losing progress.
+
 ## 0.20.0 - 2026-11-05
 
 - Updated the OAuth client configuration used by release builds; sign in again after upgrading.
