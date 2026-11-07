@@ -3,6 +3,7 @@
 ## Deduplicate automatic authentication at the shared entry point
 
 - Per-source reauthorization flags do not prevent profile and notification recovery from starting separate browser flows. A later request must wait for the active authentication instead of cancelling and replacing it, while failure, cancellation, and manual retry still clear or supersede that operation normally. A controlled profile-then-push regression created two OAuth attempts before the shared guard and only one afterward, with a successful manual retry after failure.
+- Concurrency deduplication alone does not stop a successful reauthorization from creating a new service and repeating the same background error. Profile metadata and notification permission failures must not open OAuth automatically; stop the affected background worker, preserve mail access and the original error, and leave browser authorization to explicit user actions. Regressions must cover failures after service replacement as well as overlapping attempts. Pub/Sub API enablement and IAM are Cloud project configuration, not additional Gmail grants that repeated consent can repair.
 
 ## Reconnect the complete notification pipeline
 

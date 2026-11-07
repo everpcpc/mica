@@ -492,7 +492,11 @@ func (a *App) reauthorizeGmail() {
 	if email == "" {
 		email = a.account.Email
 	}
-	a.authenticateAccount(email)
+	authenticate := a.authenticateAccountFunc
+	if authenticate == nil {
+		authenticate = a.authenticateAccount
+	}
+	authenticate(email)
 }
 
 func (a *App) authenticateAccount(expectedEmail string) {
@@ -618,7 +622,6 @@ func (a *App) useService(service mail.Service, cachedAccount ...string) {
 	a.nextAccountGeneration(a.storeAccount)
 	a.accountVerified = false
 	a.labelsSynced = false
-	a.profileReauthAttempted = false
 	a.account = mail.Account{Name: "Mica", Demo: !connected}
 	a.accountPhoto = nil
 	a.labels = nil

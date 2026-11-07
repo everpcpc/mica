@@ -52,7 +52,6 @@ type App struct {
 	threadPrefetch           *threadPrefetchWorker
 	threadEpoch              uint64
 	threadPrefetchEnabled    bool
-	profileReauthAttempted   bool
 
 	selectedLabel        string
 	selectedThread       string
@@ -157,17 +156,18 @@ type App struct {
 	loadCheckpoint       func(string) (uint64, bool, error)
 	saveCheckpoint       func(string, uint64) error
 
-	startupPending        bool
-	draftRestorePending   bool
-	pendingMailto         string
-	registerURLScheme     func(string) error
-	isURLSchemeRegistered func(string) bool
-	defaultMailApp        bool
-	loadActiveAccount     func() (string, error)
-	loginGmail            gmailLoginFunc
-	unifiedAccounts       []mail.Account
-	unifiedExpanded       bool
-	accountInboxPending   string
+	startupPending          bool
+	draftRestorePending     bool
+	pendingMailto           string
+	registerURLScheme       func(string) error
+	isURLSchemeRegistered   func(string) bool
+	defaultMailApp          bool
+	loadActiveAccount       func() (string, error)
+	loginGmail              gmailLoginFunc
+	authenticateAccountFunc func(string)
+	unifiedAccounts         []mail.Account
+	unifiedExpanded         bool
+	accountInboxPending     string
 }
 
 func New(service mail.Service) *App {
@@ -202,6 +202,7 @@ func New(service mail.Service) *App {
 	a.isURLSchemeRegistered = mygo.App.IsURLSchemeRegistered
 	a.loadActiveAccount = gmail.NewActiveAccountStore().Load
 	a.loginGmail = loginGmailService
+	a.authenticateAccountFunc = a.authenticateAccount
 	a.list.Selected = &a.selectedRow
 	a.list.Selection = &a.threadSelection
 	return a
@@ -274,10 +275,6 @@ func (a *App) Start() {
 					a.persistList(a.currentQuery(), a.threads)
 				}
 				a.loadAccountPhoto(account)
-				if account.ProfileUnauthorized && !a.profileReauthAttempted {
-					a.profileReauthAttempted = true
-					a.reauthorizeGmail()
-				}
 				a.startNotifications()
 			}
 			if labelsErr == nil {
