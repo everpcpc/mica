@@ -165,6 +165,53 @@ func TestAccountSwitchRestartsThreadSelection(t *testing.T) {
 	}
 }
 
+func TestProfilePermissionDoesNotStartAuthentication(t *testing.T) {
+	h := newNotificationHarness()
+	h.service.account.ProfileUnauthorized = true
+	attempts := 0
+	h.app.authenticateAccountFunc = func(string) { attempts++ }
+	h.app.Start()
+	if attempts != 0 {
+		t.Fatalf("profile permission started %d OAuth attempts, want 0", attempts)
+	}
+	if !h.app.accountVerified || !h.app.account.ProfileUnauthorized {
+		t.Fatalf("profile permission prevented account recovery: %+v", h.app.account)
+	}
+}
+
+func TestPushPermissionStopsNotificationsWithoutAuthentication(t *testing.T) {
+	h := newNotificationHarness()
+	h.app.Start()
+	worker := h.app.notification
+	if worker == nil {
+		t.Fatal("notification worker did not start")
+	}
+	attempts := 0
+	h.app.authenticateAccountFunc = func(string) { attempts++ }
+	permissionErr := &gmail.APIError{StatusCode: 403, Reason: "permissionDenied", Message: "Cloud Pub/Sub permission denied"}
+	h.app.handlePushError(worker, permissionErr)
+	if attempts != 0 {
+		t.Fatalf("notification permission started %d OAuth attempts, want 0", attempts)
+	}
+	if h.app.notification != nil || h.app.notificationsStarted {
+		t.Fatal("notification permission did not stop the worker")
+	}
+	if h.app.notice != permissionErr.Error() {
+		t.Fatalf("notification error = %q, want %q", h.app.notice, permissionErr)
+	}
+}
+
+func TestReauthorizeRemainsExplicit(t *testing.T) {
+	a := New(newFakeService())
+	a.storeAccount = "demo@example.com"
+	var accounts []string
+	a.authenticateAccountFunc = func(email string) { accounts = append(accounts, email) }
+	a.reauthorizeGmail()
+	if len(accounts) != 1 || accounts[0] != a.storeAccount {
+		t.Fatalf("explicit reauthorization accounts = %v, want [%s]", accounts, a.storeAccount)
+	}
+}
+
 func TestSelectThreadLoadsMessagesAndMarksRead(t *testing.T) {
 	service := newFakeService()
 	a := newTestApp(service)

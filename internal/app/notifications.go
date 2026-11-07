@@ -35,17 +35,16 @@ type pushService interface {
 }
 
 type notificationWorker struct {
-	ctx             context.Context
-	cancel          context.CancelFunc
-	done            chan struct{}
-	service         pushService
-	version         int
-	email           string
-	mu              sync.Mutex
-	stopping        bool
-	wg              sync.WaitGroup
-	reauthAttempted bool
-	sleep           func(context.Context, time.Duration) bool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	done     chan struct{}
+	service  pushService
+	version  int
+	email    string
+	mu       sync.Mutex
+	stopping bool
+	wg       sync.WaitGroup
+	sleep    func(context.Context, time.Duration) bool
 }
 
 func (a *App) SetNotificationHandlers(badge func(int), notify func(string, string, string)) {
@@ -273,11 +272,6 @@ func (a *App) handlePushError(worker *notificationWorker, err error) {
 		a.stopNotifications()
 		if isPushConfigError(err) {
 			a.notice = err.Error()
-			return
-		}
-		if isPushAuthError(err) && !worker.reauthAttempted {
-			worker.reauthAttempted = true
-			a.reauthorizeGmail()
 			return
 		}
 		a.notice = err.Error()

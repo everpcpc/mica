@@ -104,7 +104,7 @@ func TestConnectRequiresOAuthConfiguration(t *testing.T) {
 	}
 }
 
-func TestProfileAndPushShareAuthenticationAttempt(t *testing.T) {
+func TestConcurrentAuthenticationAttemptsShareOneFlow(t *testing.T) {
 	a := New(newFakeService())
 	a.storeAccount = "demo@example.com"
 	a.account.Email = a.storeAccount
