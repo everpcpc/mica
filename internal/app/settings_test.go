@@ -172,7 +172,7 @@ func TestSettingsPushStatusExplainsFailureAndRetries(t *testing.T) {
 			t.Fatalf("push failure UI is missing %q: %q", text, tt.Texts())
 		}
 	}
-	dot, ok := tt.Find("●")
+	dot, ok := tt.Find("Push notification health")
 	if !ok || dot.W <= 0 || dot.H <= 0 {
 		t.Fatalf("push status dot is not rendered: %+v", dot)
 	}
@@ -204,6 +204,41 @@ func TestSettingsPushStatusExplainsFailureAndRetries(t *testing.T) {
 	}
 	if !tt.HasText("Active") || tt.HasText("Needs attention") {
 		t.Fatalf("retry did not render the recovered state: %q", tt.Texts())
+	}
+}
+
+func TestAccountPushIndicatorTracksStatusAndOpensSettings(t *testing.T) {
+	h := newNotificationHarness()
+	h.app.Start()
+	tt := ui.NewTester(h.app.View, 1280, 800)
+	tt.SetLocale("en")
+	indicator, ok := tt.Find("Push notifications: Active")
+	if !ok || indicator.W <= 0 || indicator.H <= 0 {
+		t.Fatalf("main-window push indicator is not rendered: %+v", indicator)
+	}
+	h.app.handlePushError(h.app.notification, &gmail.APIError{StatusCode: 403, Reason: "permissionDenied", Message: "Cloud Pub/Sub permission denied"})
+	tt.Frame()
+	if _, ok := tt.Find("Push notifications: Active"); ok {
+		t.Fatal("main-window indicator retained the old active state")
+	}
+	if _, ok := tt.Find("Push notifications: Needs attention"); !ok {
+		t.Fatalf("main-window indicator did not show the failure: %q", tt.Texts())
+	}
+	h.app.schedule = func(func()) {}
+	if err := tt.Click("Push notifications: Needs attention"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if h.app.settings == nil || !h.app.settings.open || !tt.HasText("Last error: gmail: Cloud Pub/Sub permission denied (permissionDenied)") {
+		t.Fatalf("main-window indicator did not open push diagnostics: settings=%p texts=%q", h.app.settings, tt.Texts())
+	}
+}
+
+func TestDemoHasNoMainWindowPushIndicator(t *testing.T) {
+	a := newTestApp(newFakeService())
+	tt := ui.NewTester(a.View, 1280, 800)
+	if tt.HasText("Push notifications:") {
+		t.Fatalf("demo account rendered push status: %q", tt.Texts())
 	}
 }
 

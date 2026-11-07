@@ -124,8 +124,7 @@ func (a *App) accountSettingsRow(c *ui.Context, s *settingsState, account mail.A
 	})
 }
 
-func (a *App) notificationSettings(c *ui.Context, s *settingsState) {
-	t := c.Theme()
+func (a *App) notificationPresentation(t *ui.Theme) (notificationStatus, string, ui.Color, bool) {
 	status := a.notificationStatus
 	if status == notificationIdle && (a.accountTransition != nil || !a.accountVerified) {
 		status = notificationConnecting
@@ -147,9 +146,15 @@ func (a *App) notificationSettings(c *ui.Context, s *settingsState) {
 			label, color, retry = locales.PushStatusUnavailable(), t.TextMuted, false
 		}
 	}
+	return status, label, color, retry
+}
+
+func (a *App) notificationSettings(c *ui.Context, s *settingsState) {
+	t := c.Theme()
+	status, label, color, retry := a.notificationPresentation(t)
 	ui.Column(c.Key("push-notification-status")).Gap(5).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "●").FontSize(10).TextColor(color)
+			ui.Text(c, "●").Label(locales.PushStatusHealth()).FontSize(10).TextColor(color)
 			ui.Text(c, locales.PushNotifications()).FontSize(12).Bold()
 			ui.Text(c, label).FontSize(12).TextColor(color).Grow(1)
 			if retry {

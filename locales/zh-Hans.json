@@ -254,6 +254,7 @@
   "loggedOutDemo": "已退出 Gmail，已切换到演示邮箱",
   "gmailConnected": "Gmail 已连接",
   "pushNotifications": "推送通知",
+  "pushStatusHealth": "推送通知状态",
   "pushStatusConnecting": "正在连接…",
   "pushStatusActive": "正常",
   "pushStatusReconnecting": "正在重连…",

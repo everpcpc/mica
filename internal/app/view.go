@@ -179,6 +179,15 @@ func (a *App) sidebar(c *ui.Context) {
 				})
 				ui.Text(c, a.account.Email).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			})
+			if !a.account.Demo {
+				_, label, color, _ := a.notificationPresentation(t)
+				statusLabel := locales.PushNotifications() + ": " + label
+				tooltip := statusLabel
+				if a.notificationErr != nil {
+					tooltip += "\n" + a.notificationErr.Error()
+				}
+				ui.Button(c.Key("push-notification-indicator"), "●").Label(statusLabel).Tooltip(tooltip).FontSize(10).TextColor(color).Padding(6).Radius(999).MinWidth(26).OnClick(a.OpenSettings)
+			}
 		})
 	})
 }

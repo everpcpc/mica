@@ -57,6 +57,19 @@ func TestNotificationStartupRetriesTransientFailures(t *testing.T) {
 			},
 			calls: func(_ *fakeService, calls *int) int { return *calls },
 		},
+		{
+			name: "Gmail rate limit",
+			fail: func(service *fakeService, calls *int) {
+				service.watchFunc = func() (gmail.WatchState, error) {
+					*calls++
+					if *calls == 1 {
+						return gmail.WatchState{}, &gmail.APIError{StatusCode: 403, Reason: "rateLimitExceeded", Message: "Quota exceeded"}
+					}
+					return gmail.WatchState{HistoryID: 1}, nil
+				}
+			},
+			calls: func(_ *fakeService, calls *int) int { return *calls },
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			h := newNotificationHarness()
@@ -82,6 +95,90 @@ func TestNotificationStartupRetriesTransientFailures(t *testing.T) {
 				t.Fatal("temporary setup failure stopped the notification worker")
 			}
 		})
+	}
+}
+
+type notificationQueryRecorder struct {
+	*fakeService
+	queries     []mail.Query
+	unreadCalls int
+	failUnread  int
+}
+
+func (s *notificationQueryRecorder) ListThreads(ctx context.Context, query mail.Query) ([]mail.ThreadSummary, error) {
+	s.queries = append(s.queries, query)
+	if query.LabelID == mail.Inbox && query.Search == "is:unread" {
+		s.unreadCalls++
+		if s.unreadCalls <= s.failUnread {
+			return nil, errors.New("temporary unread baseline failure")
+		}
+	}
+	return s.fakeService.ListThreads(ctx, query)
+}
+
+func TestNotificationUnreadBaselineBoundsQuotaUsage(t *testing.T) {
+	h := newNotificationHarness()
+	recorder := &notificationQueryRecorder{fakeService: h.service}
+	h.app.service = recorder
+	h.app.Start()
+	found := false
+	for _, query := range recorder.queries {
+		if query.LabelID == mail.Inbox && query.Search == "is:unread" {
+			found = true
+			if query.Limit != 25 {
+				t.Fatalf("unread baseline limit = %d, want 25 to bound metadata quota usage", query.Limit)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("notification startup did not establish an unread baseline")
+	}
+}
+
+type slowNotificationSetup struct {
+	*fakeService
+	delay time.Duration
+}
+
+func (s *slowNotificationSetup) EnsurePush(ctx context.Context) error {
+	select {
+	case <-time.After(s.delay):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestNotificationUnreadBaselineFailureRetries(t *testing.T) {
+	h := newNotificationHarness()
+	recorder := &notificationQueryRecorder{fakeService: h.service, failUnread: 1}
+	worker := newNotificationWorkerForTest(t, h)
+	worker.service = recorder
+	h.service.stream = func(context.Context, func(gmail.PushNotification) error) error {
+		worker.cancel()
+		return context.Canceled
+	}
+	h.app.runNotifications(worker)
+	if recorder.unreadCalls != 2 {
+		t.Fatalf("unread baseline calls = %d, want a retry after the temporary failure", recorder.unreadCalls)
+	}
+	if h.app.notificationStatus != notificationConnected {
+		t.Fatalf("notification status = %v after baseline recovery, want connected", h.app.notificationStatus)
+	}
+}
+
+func TestNotificationSetupTimeoutRetries(t *testing.T) {
+	h := newNotificationHarness()
+	worker := newNotificationWorkerForTest(t, h)
+	worker.service = &slowNotificationSetup{fakeService: h.service, delay: 50 * time.Millisecond}
+	worker.setupTimeout = 10 * time.Millisecond
+	worker.sleep = func(ctx context.Context, _ time.Duration) bool {
+		worker.cancel()
+		return false
+	}
+	h.app.runNotifications(worker)
+	if h.app.notificationStatus != notificationReconnecting || !errors.Is(h.app.notificationErr, context.DeadlineExceeded) {
+		t.Fatalf("timed-out setup status = %v, %v; want reconnecting after deadline", h.app.notificationStatus, h.app.notificationErr)
 	}
 }
 
@@ -248,13 +345,17 @@ func TestPushHistoryFailureRetriesWithoutDisconnect(t *testing.T) {
 	historyCalls := 0
 	h.service.historyFunc = func(uint64, func([]mail.ThreadSummary) error) (uint64, error) {
 		historyCalls++
-		if historyCalls == 1 {
+		if historyCalls <= 2 {
 			return 0, errors.New("temporary network failure")
 		}
 		return 1, nil
 	}
+	var delays []time.Duration
 	var callbacks []func()
-	h.app.after = func(_ time.Duration, fn func()) { callbacks = append(callbacks, fn) }
+	h.app.after = func(delay time.Duration, fn func()) {
+		delays = append(delays, delay)
+		callbacks = append(callbacks, fn)
+	}
 	synchronizer := &historySynchronizer{
 		app: h.app, worker: worker, service: h.service, ctx: worker.ctx,
 		version: worker.version, email: worker.email, historyID: 1,
@@ -270,8 +371,15 @@ func TestPushHistoryFailureRetriesWithoutDisconnect(t *testing.T) {
 		t.Fatalf("callbacks after failure = %d, want a retry", len(callbacks))
 	}
 	callbacks[1]()
-	if historyCalls != 2 {
-		t.Fatalf("history calls = %d, want 2", historyCalls)
+	if len(callbacks) != 3 {
+		t.Fatalf("callbacks after second failure = %d, want another retry", len(callbacks))
+	}
+	callbacks[2]()
+	if historyCalls != 3 {
+		t.Fatalf("history calls = %d, want 3", historyCalls)
+	}
+	if !reflect.DeepEqual(delays, []time.Duration{historyBatchDelay, pushRetryInitialDelay, 2 * pushRetryInitialDelay}) {
+		t.Fatalf("history retry delays = %v, want batch delay followed by exponential backoff", delays)
 	}
 	if h.app.notification != worker || worker.ctx.Err() != nil {
 		t.Fatal("temporary push history failure stopped the notification worker")
