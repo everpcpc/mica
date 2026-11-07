@@ -2,7 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
+	"net/url"
+	"strings"
 
+	"mica/internal/gmail"
 	"mica/internal/mail"
 	"mica/locales"
 
@@ -107,12 +111,97 @@ func (a *App) accountSettingsRow(c *ui.Context, s *settingsState, account mail.A
 			}
 			ui.Button(c, locales.RemoveAccount()).Disabled(s.busy).OnClick(func() { a.requestRemoveAccount(email) })
 		})
+		if active {
+			a.notificationSettings(c, s)
+		}
 		if s.removeEmail == email {
 			ui.Text(c, locales.RemoveAccountWarning(email)).FontSize(12).LineHeight(1.4).TextColor(t.TextMuted)
 			ui.Row(c).Justify(ui.End).Gap(8).Children(func() {
 				ui.Button(c, locales.Cancel()).Disabled(s.busy).OnClick(func() { a.requestRemoveAccount(email) })
 				ui.Button(c, locales.ConfirmRemoveAccount()).TextColor(t.Danger).Disabled(s.busy).OnClick(func() { a.removeAccount(email) })
 			})
+		}
+	})
+}
+
+func (a *App) notificationSettings(c *ui.Context, s *settingsState) {
+	t := c.Theme()
+	status := a.notificationStatus
+	if status == notificationIdle && (a.accountTransition != nil || !a.accountVerified) {
+		status = notificationConnecting
+	}
+	label := locales.PushStatusStopped()
+	color := t.Warning
+	retry := true
+	switch status {
+	case notificationConnecting:
+		label, color, retry = locales.PushStatusConnecting(), t.TextMuted, false
+	case notificationConnected:
+		label, color, retry = locales.PushStatusActive(), t.Success, false
+	case notificationReconnecting:
+		label, color, retry = locales.PushStatusReconnecting(), t.Warning, false
+	case notificationFailed:
+		label, color = locales.PushStatusAttention(), t.Danger
+	default:
+		if _, ok := a.service.(pushService); !ok {
+			label, color, retry = locales.PushStatusUnavailable(), t.TextMuted, false
+		}
+	}
+	ui.Column(c.Key("push-notification-status")).Gap(5).Children(func() {
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "●").FontSize(10).TextColor(color)
+			ui.Text(c, locales.PushNotifications()).FontSize(12).Bold()
+			ui.Text(c, label).FontSize(12).TextColor(color).Grow(1)
+			if retry {
+				ui.Button(c, locales.RetryPushNotifications()).Disabled(s.busy).OnClick(a.startNotifications)
+			}
+		})
+		if a.notificationErr == nil {
+			return
+		}
+		if status == notificationFailed {
+			if hint := pushNotificationHint(a.notificationErr); hint != "" {
+				ui.Text(c, hint).FontSize(11).LineHeight(1.4).TextColor(t.TextMuted)
+			}
+		}
+		ui.Text(c, locales.PushLastError(a.notificationErr.Error())).FontSize(11).LineHeight(1.4).TextColor(t.TextMuted)
+		if status == notificationFailed {
+			a.pushConsoleLinks(c, a.notificationErr)
+		}
+	})
+}
+
+func pushNotificationHint(err error) string {
+	if errors.Is(err, gmail.ErrPushProjectIDRequired) {
+		return locales.PushProjectRequiredHint()
+	}
+	if isPushConfigError(err) {
+		return locales.PushAPIDisabledHint()
+	}
+	var apiErr *gmail.APIError
+	if errors.As(err, &apiErr) && (apiErr.StatusCode == 401 || apiErr.Reason == "insufficientPermissions") {
+		return locales.PushScopeHint()
+	}
+	if isPushAuthError(err) {
+		return locales.PushPermissionHint()
+	}
+	return ""
+}
+
+func (a *App) pushConsoleLinks(c *ui.Context, err error) {
+	service, ok := a.service.(interface{ PushProjectID() string })
+	if !ok {
+		return
+	}
+	projectID := strings.TrimSpace(service.PushProjectID())
+	if projectID == "" {
+		return
+	}
+	query := "?project=" + url.QueryEscape(projectID)
+	ui.Row(c).Gap(12).Children(func() {
+		ui.Link(c, locales.PushEnableAPI(), "https://console.cloud.google.com/apis/library/pubsub.googleapis.com"+query)
+		if isPushAuthError(err) {
+			ui.Link(c, locales.PushOpenTopics(), "https://console.cloud.google.com/cloudpubsub/topic/list"+query)
 		}
 	})
 }

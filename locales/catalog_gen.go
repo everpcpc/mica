@@ -2384,6 +2384,156 @@ func (msgs Messages) GmailConnected() string {
 	return Catalog.Format(msgs.locale, "gmailConnected", nil)
 }
 
+// PushNotifications says "Push notifications"
+// in the language the app shows.
+func PushNotifications() string { return In(i18n.Locale()).PushNotifications() }
+
+// PushNotifications says "Push notifications"
+// in the language of msgs.
+func (msgs Messages) PushNotifications() string {
+	return Catalog.Format(msgs.locale, "pushNotifications", nil)
+}
+
+// PushStatusConnecting says "Connecting…"
+// in the language the app shows.
+func PushStatusConnecting() string { return In(i18n.Locale()).PushStatusConnecting() }
+
+// PushStatusConnecting says "Connecting…"
+// in the language of msgs.
+func (msgs Messages) PushStatusConnecting() string {
+	return Catalog.Format(msgs.locale, "pushStatusConnecting", nil)
+}
+
+// PushStatusActive says "Active"
+// in the language the app shows.
+func PushStatusActive() string { return In(i18n.Locale()).PushStatusActive() }
+
+// PushStatusActive says "Active"
+// in the language of msgs.
+func (msgs Messages) PushStatusActive() string {
+	return Catalog.Format(msgs.locale, "pushStatusActive", nil)
+}
+
+// PushStatusReconnecting says "Reconnecting…"
+// in the language the app shows.
+func PushStatusReconnecting() string { return In(i18n.Locale()).PushStatusReconnecting() }
+
+// PushStatusReconnecting says "Reconnecting…"
+// in the language of msgs.
+func (msgs Messages) PushStatusReconnecting() string {
+	return Catalog.Format(msgs.locale, "pushStatusReconnecting", nil)
+}
+
+// PushStatusAttention says "Needs attention"
+// in the language the app shows.
+func PushStatusAttention() string { return In(i18n.Locale()).PushStatusAttention() }
+
+// PushStatusAttention says "Needs attention"
+// in the language of msgs.
+func (msgs Messages) PushStatusAttention() string {
+	return Catalog.Format(msgs.locale, "pushStatusAttention", nil)
+}
+
+// PushStatusStopped says "Stopped"
+// in the language the app shows.
+func PushStatusStopped() string { return In(i18n.Locale()).PushStatusStopped() }
+
+// PushStatusStopped says "Stopped"
+// in the language of msgs.
+func (msgs Messages) PushStatusStopped() string {
+	return Catalog.Format(msgs.locale, "pushStatusStopped", nil)
+}
+
+// PushStatusUnavailable says "Unavailable"
+// in the language the app shows.
+func PushStatusUnavailable() string { return In(i18n.Locale()).PushStatusUnavailable() }
+
+// PushStatusUnavailable says "Unavailable"
+// in the language of msgs.
+func (msgs Messages) PushStatusUnavailable() string {
+	return Catalog.Format(msgs.locale, "pushStatusUnavailable", nil)
+}
+
+// RetryPushNotifications says "Retry notifications"
+// in the language the app shows.
+func RetryPushNotifications() string { return In(i18n.Locale()).RetryPushNotifications() }
+
+// RetryPushNotifications says "Retry notifications"
+// in the language of msgs.
+func (msgs Messages) RetryPushNotifications() string {
+	return Catalog.Format(msgs.locale, "retryPushNotifications", nil)
+}
+
+// PushProjectRequiredHint says "The OAuth client has no Cloud project ID. Add one in custom OAuth settings and reconnect."
+// in the language the app shows.
+func PushProjectRequiredHint() string { return In(i18n.Locale()).PushProjectRequiredHint() }
+
+// PushProjectRequiredHint says "The OAuth client has no Cloud project ID. Add one in custom OAuth settings and reconnect."
+// in the language of msgs.
+func (msgs Messages) PushProjectRequiredHint() string {
+	return Catalog.Format(msgs.locale, "pushProjectRequiredHint", nil)
+}
+
+// PushAPIDisabledHint says "Cloud Pub/Sub API is disabled for this OAuth project. Enable it, then retry."
+// in the language the app shows.
+func PushAPIDisabledHint() string { return In(i18n.Locale()).PushAPIDisabledHint() }
+
+// PushAPIDisabledHint says "Cloud Pub/Sub API is disabled for this OAuth project. Enable it, then retry."
+// in the language of msgs.
+func (msgs Messages) PushAPIDisabledHint() string {
+	return Catalog.Format(msgs.locale, "pushAPIDisabledHint", nil)
+}
+
+// PushScopeHint says "The Google authorization is missing Pub/Sub access. Reauthorize this account, then retry."
+// in the language the app shows.
+func PushScopeHint() string { return In(i18n.Locale()).PushScopeHint() }
+
+// PushScopeHint says "The Google authorization is missing Pub/Sub access. Reauthorize this account, then retry."
+// in the language of msgs.
+func (msgs Messages) PushScopeHint() string {
+	return Catalog.Format(msgs.locale, "pushScopeHint", nil)
+}
+
+// PushPermissionHint says "Check that Cloud Pub/Sub API is enabled and Mica can manage the topic and subscription. Gmail's publisher also needs …"
+// in the language the app shows.
+func PushPermissionHint() string { return In(i18n.Locale()).PushPermissionHint() }
+
+// PushPermissionHint says "Check that Cloud Pub/Sub API is enabled and Mica can manage the topic and subscription. Gmail's publisher also needs …"
+// in the language of msgs.
+func (msgs Messages) PushPermissionHint() string {
+	return Catalog.Format(msgs.locale, "pushPermissionHint", nil)
+}
+
+// PushLastError says "Last error: {error}"
+// in the language the app shows.
+func PushLastError(error string) string { return In(i18n.Locale()).PushLastError(error) }
+
+// PushLastError says "Last error: {error}"
+// in the language of msgs.
+func (msgs Messages) PushLastError(error string) string {
+	return Catalog.Format(msgs.locale, "pushLastError", map[string]any{"error": error})
+}
+
+// PushEnableAPI says "Enable Pub/Sub API"
+// in the language the app shows.
+func PushEnableAPI() string { return In(i18n.Locale()).PushEnableAPI() }
+
+// PushEnableAPI says "Enable Pub/Sub API"
+// in the language of msgs.
+func (msgs Messages) PushEnableAPI() string {
+	return Catalog.Format(msgs.locale, "pushEnableAPI", nil)
+}
+
+// PushOpenTopics says "Open Pub/Sub topics"
+// in the language the app shows.
+func PushOpenTopics() string { return In(i18n.Locale()).PushOpenTopics() }
+
+// PushOpenTopics says "Open Pub/Sub topics"
+// in the language of msgs.
+func (msgs Messages) PushOpenTopics() string {
+	return Catalog.Format(msgs.locale, "pushOpenTopics", nil)
+}
+
 // ClientSecretPlaceholder says "OAuth client secret"
 // in the language the app shows.
 func ClientSecretPlaceholder() string { return In(i18n.Locale()).ClientSecretPlaceholder() }

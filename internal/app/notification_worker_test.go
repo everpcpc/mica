@@ -85,6 +85,37 @@ func TestNotificationStartupRetriesTransientFailures(t *testing.T) {
 	}
 }
 
+func TestNotificationStatusTracksReconnectAndRecovery(t *testing.T) {
+	h := newNotificationHarness()
+	worker := newNotificationWorkerForTest(t, h)
+	calls := 0
+	h.service.ensurePushFunc = func() error {
+		calls++
+		if calls == 1 {
+			return errors.New("temporary network failure")
+		}
+		return nil
+	}
+	var statuses []notificationStatus
+	h.app.update = func(fn func()) {
+		fn()
+		if len(statuses) == 0 || statuses[len(statuses)-1] != h.app.notificationStatus {
+			statuses = append(statuses, h.app.notificationStatus)
+		}
+	}
+	h.service.stream = func(context.Context, func(gmail.PushNotification) error) error {
+		worker.cancel()
+		return context.Canceled
+	}
+	h.app.runNotifications(worker)
+	if !reflect.DeepEqual(statuses, []notificationStatus{notificationReconnecting, notificationConnected}) {
+		t.Fatalf("notification statuses = %v, want reconnecting then connected", statuses)
+	}
+	if h.app.notificationErr != nil {
+		t.Fatalf("recovered notification retained error: %v", h.app.notificationErr)
+	}
+}
+
 func TestNotificationReconnectWatchesAndCatchesUp(t *testing.T) {
 	h := newNotificationHarness()
 	h.app.after = func(time.Duration, func()) {}

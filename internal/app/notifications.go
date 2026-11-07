@@ -24,6 +24,16 @@ const (
 	pushRetryMaxDelay        = 30 * time.Second
 )
 
+type notificationStatus uint8
+
+const (
+	notificationIdle notificationStatus = iota
+	notificationConnecting
+	notificationConnected
+	notificationReconnecting
+	notificationFailed
+)
+
 type pushService interface {
 	mail.Service
 	EnsurePush(context.Context) error
@@ -60,6 +70,8 @@ func (a *App) startNotifications() {
 	if !ok {
 		return
 	}
+	a.notificationStatus = notificationConnecting
+	a.notificationErr = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	worker := &notificationWorker{
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), service: service,
@@ -84,6 +96,8 @@ func (a *App) stopNotifications() <-chan struct{} {
 	worker := a.notification
 	a.notification = nil
 	a.notificationsStarted = false
+	a.notificationStatus = notificationIdle
+	a.notificationErr = nil
 	if worker == nil {
 		if a.notificationDone != nil {
 			done := a.notificationDone
@@ -104,6 +118,16 @@ func (a *App) stopNotifications() <-chan struct{} {
 
 func (a *App) notificationActive(worker *notificationWorker) bool {
 	return worker != nil && a.notification == worker && a.serviceVersion == worker.version
+}
+
+func (a *App) setNotificationStatus(worker *notificationWorker, status notificationStatus, err error) {
+	a.publish(func() {
+		if !a.notificationActive(worker) {
+			return
+		}
+		a.notificationStatus = status
+		a.notificationErr = err
+	})
 }
 
 func (worker *notificationWorker) after(app *App, delay time.Duration, fn func()) {
@@ -136,7 +160,9 @@ func (a *App) runNotifications(worker *notificationWorker) {
 	maintenanceStarted := false
 	backoff := pushRetryInitialDelay
 	for {
-		if err := a.connectNotifications(worker, synchronizer); err == nil {
+		var err error
+		if err = a.connectNotifications(worker, synchronizer); err == nil {
+			a.setNotificationStatus(worker, notificationConnected, nil)
 			if !maintenanceStarted {
 				worker.after(a, watchRenewInterval, func() { a.renewWatch(worker) })
 				worker.after(a, historyReconcileInterval, func() { a.reconcileHistory(synchronizer) })
@@ -162,6 +188,7 @@ func (a *App) runNotifications(worker *notificationWorker) {
 				return
 			}
 		}
+		a.setNotificationStatus(worker, notificationReconnecting, err)
 		if !worker.wait(backoff) {
 			return
 		}
@@ -270,10 +297,8 @@ func (a *App) handlePushError(worker *notificationWorker, err error) {
 			return
 		}
 		a.stopNotifications()
-		if isPushConfigError(err) {
-			a.notice = err.Error()
-			return
-		}
+		a.notificationStatus = notificationFailed
+		a.notificationErr = err
 		a.notice = err.Error()
 	})
 }
@@ -299,6 +324,9 @@ func isPushAuthError(err error) bool {
 }
 
 func isPushConfigError(err error) bool {
+	if errors.Is(err, gmail.ErrPushProjectIDRequired) {
+		return true
+	}
 	var apiErr *gmail.APIError
 	if errors.As(err, &apiErr) {
 		return apiErr.Reason == "accessNotConfigured" || apiErr.Reason == "serviceDisabled"

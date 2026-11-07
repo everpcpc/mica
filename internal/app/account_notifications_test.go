@@ -38,9 +38,13 @@ func TestStaleNotificationErrorDoesNotStopCurrentWorker(t *testing.T) {
 	a.serviceVersion = 2
 	a.notification = current
 	a.notificationsStarted = true
+	a.notificationStatus = notificationConnected
 	a.handlePushError(old, errors.New("late old-account failure"))
 	if a.notification != current || !a.notificationsStarted || newCtx.Err() != nil {
 		t.Fatalf("stale error stopped the current worker: notification=%p started=%v err=%v", a.notification, a.notificationsStarted, newCtx.Err())
+	}
+	if a.notificationStatus != notificationConnected || a.notificationErr != nil {
+		t.Fatalf("stale error replaced current status: %v, %v", a.notificationStatus, a.notificationErr)
 	}
 }
 

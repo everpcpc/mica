@@ -143,7 +143,7 @@ func TestEnsurePushLeavesExistingResourcesAndPolicyUnchanged(t *testing.T) {
 func TestEnsurePushRequiresProject(t *testing.T) {
 	service := NewWithProject(nil, "", nil)
 	err := service.EnsurePush(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "project id") {
+	if !errors.Is(err, ErrPushProjectIDRequired) || !strings.Contains(err.Error(), "project id") {
 		t.Fatalf("error = %v, want missing project id", err)
 	}
 }
