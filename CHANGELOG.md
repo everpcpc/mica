@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.2 - 2026-11-07
+
+- Prevented profile and notification recovery from opening duplicate OAuth browser flows.
+
 ## 0.20.1 - 2026-11-05
 
 - Restored Gmail notifications after transient Pub/Sub, watch, and history synchronization failures.
