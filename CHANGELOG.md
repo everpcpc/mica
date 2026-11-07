@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.5 - 2026-11-07
+
+- Recovered Gmail push notifications from quota errors with bounded retries and setup timeouts.
+- Reduced notification metadata quota usage and added a main-window status indicator.
+
 ## 0.20.4 - 2026-11-07
 
 - Added persistent Gmail Pub/Sub connection status, diagnostic guidance, and manual retry in Settings.
