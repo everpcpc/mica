@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.3 - 2026-11-07
+
+- Stopped UserInfo and notification permission errors from repeatedly opening OAuth.
+- Kept mail available after profile permission failures and preserved explicit Reauthorize actions.
+
 ## 0.20.2 - 2026-11-07
 
 - Prevented profile and notification recovery from opening duplicate OAuth browser flows.
