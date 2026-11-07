@@ -149,6 +149,64 @@ func TestConcurrentAuthenticationAttemptsShareOneFlow(t *testing.T) {
 	}
 }
 
+func TestSettingsPushStatusExplainsFailureAndRetries(t *testing.T) {
+	h := newNotificationHarness()
+	h.app.Start()
+	pushErr := &gmail.APIError{StatusCode: 403, Reason: "accessNotConfigured", Message: "Cloud Pub/Sub API has not been used"}
+	h.app.handlePushError(h.app.notification, pushErr)
+	account := h.app.account
+	h.app.settings = &settingsState{open: true, accounts: []mail.Account{account}}
+	var danger ui.Color
+	tt := ui.NewTester(func(c *ui.Context) {
+		danger = c.Theme().Danger
+		h.app.View(c)
+	}, 1280, 800)
+	tt.SetLocale("en")
+	for _, text := range []string{
+		"Push notifications", "Needs attention",
+		"Cloud Pub/Sub API is disabled for this OAuth project. Enable it, then retry.",
+		"Last error: gmail: Cloud Pub/Sub API has not been used (accessNotConfigured)",
+		"Enable Pub/Sub API", "Retry notifications",
+	} {
+		if !tt.HasText(text) {
+			t.Fatalf("push failure UI is missing %q: %q", text, tt.Texts())
+		}
+	}
+	dot, ok := tt.Find("●")
+	if !ok || dot.W <= 0 || dot.H <= 0 {
+		t.Fatalf("push status dot is not rendered: %+v", dot)
+	}
+	img := tt.Image()
+	scale := float32(img.Bounds().Dx()) / 1280
+	colored := false
+	for y := int(dot.Y * scale); y < int((dot.Y+dot.H)*scale) && !colored; y++ {
+		for x := int(dot.X * scale); x < int((dot.X+dot.W)*scale); x++ {
+			p := img.RGBAAt(x, y)
+			if sameVisualColor(ui.Color{R: p.R, G: p.G, B: p.B, A: p.A}, danger) {
+				colored = true
+				break
+			}
+		}
+	}
+	if !colored {
+		t.Fatal("push failure dot does not contain the theme danger color")
+	}
+	chinese := locales.In("zh-Hans")
+	if chinese.PushNotifications() != "推送通知" || chinese.PushStatusAttention() != "需要处理" || chinese.PushEnableAPI() != "启用 Pub/Sub API" {
+		t.Fatalf("Chinese push status catalog is incomplete: %q / %q / %q", chinese.PushNotifications(), chinese.PushStatusAttention(), chinese.PushEnableAPI())
+	}
+	if err := tt.Click("Retry notifications"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if h.app.notificationStatus != notificationConnected || h.app.notificationErr != nil {
+		t.Fatalf("retry status = %v, %v; want connected", h.app.notificationStatus, h.app.notificationErr)
+	}
+	if !tt.HasText("Active") || tt.HasText("Needs attention") {
+		t.Fatalf("retry did not render the recovered state: %q", tt.Texts())
+	}
+}
+
 func TestSettingsCustomOAuthIsCollapsed(t *testing.T) {
 	a := newTestApp(newFakeService())
 	a.settings = &settingsState{open: true}

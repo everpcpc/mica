@@ -151,6 +151,8 @@ type App struct {
 	notificationsStarted bool
 	notification         *notificationWorker
 	notificationDone     <-chan struct{}
+	notificationStatus   notificationStatus
+	notificationErr      error
 	unreadSeen           map[string]time.Time
 	pendingThread        notificationTarget
 	loadCheckpoint       func(string) (uint64, bool, error)

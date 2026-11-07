@@ -18,6 +18,9 @@ import (
 	"google.golang.org/api/option"
 )
 
+// ErrPushProjectIDRequired reports that push notifications have no Cloud project to use.
+var ErrPushProjectIDRequired = errors.New("gmail: project id is required")
+
 const (
 	pushTopicID         = "mica-gmail"
 	pushSubscriptionID  = "mica-gmail-stream"
@@ -192,7 +195,7 @@ func (s *Service) Stream(ctx context.Context, fn func(PushNotification) error) e
 		return errors.New("gmail: token source is required")
 	}
 	if strings.TrimSpace(s.projectID) == "" {
-		return errors.New("gmail: project id is required")
+		return ErrPushProjectIDRequired
 	}
 	receiver, err := newStreamReceiver(ctx, s.projectID, s.tokenSource)
 	if err != nil {
@@ -286,9 +289,14 @@ func (r *pubsubStreamReceiver) Close() error {
 
 func (s *Service) pushTopicName() (string, error) {
 	if strings.TrimSpace(s.projectID) == "" {
-		return "", errors.New("gmail: project id is required")
+		return "", ErrPushProjectIDRequired
 	}
 	return "projects/" + s.projectID + "/topics/" + pushTopicID, nil
+}
+
+// PushProjectID returns the Cloud project used for Gmail push resources.
+func (s *Service) PushProjectID() string {
+	return s.projectID
 }
 
 func (s *Service) ensurePubSubResource(ctx context.Context, path string, body any) error {

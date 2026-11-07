@@ -39,6 +39,8 @@ type fakeService struct {
 	stream                func(context.Context, func(gmail.PushNotification) error) error
 }
 
+func (f *fakeService) PushProjectID() string { return "project-1" }
+
 func newFakeService() *fakeService {
 	return &fakeService{
 		account: mail.Account{Name: "Demo User", Email: "demo@example.com", Demo: true},
@@ -198,6 +200,24 @@ func TestPushPermissionStopsNotificationsWithoutAuthentication(t *testing.T) {
 	}
 	if h.app.notice != permissionErr.Error() {
 		t.Fatalf("notification error = %q, want %q", h.app.notice, permissionErr)
+	}
+	if h.app.notificationStatus != notificationFailed || h.app.notificationErr != permissionErr {
+		t.Fatalf("persistent notification status = %v, %v; want the original failure", h.app.notificationStatus, h.app.notificationErr)
+	}
+}
+
+func TestMissingPushProjectIsConfigurationFailure(t *testing.T) {
+	h := newNotificationHarness()
+	h.app.Start()
+	worker := h.app.notification
+	if !h.app.handleFatalPushError(worker, gmail.ErrPushProjectIDRequired) {
+		t.Fatal("missing project ID was treated as a transient failure")
+	}
+	if h.app.notificationStatus != notificationFailed || h.app.notificationErr != gmail.ErrPushProjectIDRequired {
+		t.Fatalf("missing project status = %v, %v", h.app.notificationStatus, h.app.notificationErr)
+	}
+	if got := pushNotificationHint(gmail.ErrPushProjectIDRequired); got != "The OAuth client has no Cloud project ID. Add one in custom OAuth settings and reconnect." {
+		t.Fatalf("missing project hint = %q", got)
 	}
 }
 

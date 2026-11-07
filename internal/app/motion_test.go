@@ -163,6 +163,7 @@ func TestCaptureAccountSettings(t *testing.T) {
 	second.Name, second.Email, second.Demo = "Work", "work@example.com", false
 	a.account = first
 	a.storeAccount = first.Email
+	a.notificationStatus = notificationConnected
 	a.settings = &settingsState{open: true}
 	a.settings.accounts = append(a.settings.accounts, first, second)
 	tt := ui.NewTester(a.View, 1280, 800)
