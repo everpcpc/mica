@@ -286,6 +286,7 @@
   "loggedOutDemo": "Signed out of Gmail. Using the demo mailbox.",
   "gmailConnected": "Gmail connected",
   "pushNotifications": "Push notifications",
+  "pushStatusHealth": "Push notification health",
   "pushStatusConnecting": "Connecting…",
   "pushStatusActive": "Active",
   "pushStatusReconnecting": "Reconnecting…",

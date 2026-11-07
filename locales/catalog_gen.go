@@ -2394,6 +2394,16 @@ func (msgs Messages) PushNotifications() string {
 	return Catalog.Format(msgs.locale, "pushNotifications", nil)
 }
 
+// PushStatusHealth says "Push notification health"
+// in the language the app shows.
+func PushStatusHealth() string { return In(i18n.Locale()).PushStatusHealth() }
+
+// PushStatusHealth says "Push notification health"
+// in the language of msgs.
+func (msgs Messages) PushStatusHealth() string {
+	return Catalog.Format(msgs.locale, "pushStatusHealth", nil)
+}
+
 // PushStatusConnecting says "Connecting…"
 // in the language the app shows.
 func PushStatusConnecting() string { return In(i18n.Locale()).PushStatusConnecting() }

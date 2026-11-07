@@ -57,7 +57,7 @@ On first launch, Mica opens the interactive demo mailbox. Open **Settings** with
 - Go 1.27.2 or newer
 - A Google Cloud project with the Gmail API and Cloud Pub/Sub API enabled
 
-Push notifications also need permission to manage the project's Pub/Sub topic and subscription and to update the topic's IAM policy. Mica adds the Gmail push service account as a topic publisher automatically. Existing accounts may need explicit reauthorization to grant the Pub/Sub OAuth scope. **Settings → Push notifications** shows the connection state, preserves the underlying API error, and links to the relevant Cloud Console pages.
+Push notifications also need permission to manage the project's Pub/Sub topic and subscription and to update the topic's IAM policy. Mica adds the Gmail push service account as a topic publisher automatically. Existing accounts may need explicit reauthorization to grant the Pub/Sub OAuth scope. The current account's status dot in the main-window sidebar and **Settings → Push notifications** show the connection state, preserve the underlying API error, and link to the relevant Cloud Console pages. Click the dot to open the detailed settings.
 
 Clone the repository:
 

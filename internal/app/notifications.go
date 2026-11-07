@@ -20,8 +20,10 @@ const (
 	watchRenewInterval       = 24 * time.Hour
 	historyReconcileInterval = time.Hour
 	historyBatchDelay        = 500 * time.Millisecond
+	unreadBaselineLimit      = 25
 	pushRetryInitialDelay    = time.Second
 	pushRetryMaxDelay        = 30 * time.Second
+	pushSetupTimeout         = 5 * time.Minute
 )
 
 type notificationStatus uint8
@@ -45,16 +47,17 @@ type pushService interface {
 }
 
 type notificationWorker struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	done     chan struct{}
-	service  pushService
-	version  int
-	email    string
-	mu       sync.Mutex
-	stopping bool
-	wg       sync.WaitGroup
-	sleep    func(context.Context, time.Duration) bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	done         chan struct{}
+	service      pushService
+	version      int
+	email        string
+	mu           sync.Mutex
+	stopping     bool
+	wg           sync.WaitGroup
+	sleep        func(context.Context, time.Duration) bool
+	setupTimeout time.Duration
 }
 
 func (a *App) SetNotificationHandlers(badge func(int), notify func(string, string, string)) {
@@ -197,7 +200,13 @@ func (a *App) runNotifications(worker *notificationWorker) {
 }
 
 func (a *App) connectNotifications(worker *notificationWorker, synchronizer *historySynchronizer) error {
-	service, ctx := worker.service, worker.ctx
+	timeout := worker.setupTimeout
+	if timeout <= 0 {
+		timeout = pushSetupTimeout
+	}
+	ctx, cancel := context.WithTimeout(worker.ctx, timeout)
+	defer cancel()
+	service := worker.service
 	if err := service.EnsurePush(ctx); err != nil {
 		return err
 	}
@@ -216,7 +225,7 @@ func (a *App) connectNotifications(worker *notificationWorker, synchronizer *his
 				a.unreadSeen = make(map[string]time.Time)
 			}
 		})
-		if err := synchronizer.sync(checkpoint); err != nil {
+		if err := synchronizer.syncWithContext(ctx, checkpoint); err != nil {
 			return err
 		}
 		a.publish(func() {
@@ -225,7 +234,9 @@ func (a *App) connectNotifications(worker *notificationWorker, synchronizer *his
 			}
 		})
 	}
-	synchronizer.refreshUnread()
+	if err := synchronizer.refreshUnreadWithContext(ctx); err != nil {
+		return err
+	}
 	if err := a.saveCheckpoint(worker.email, synchronizer.current()); err != nil {
 		return err
 	}
@@ -317,6 +328,9 @@ func (a *App) handleFatalPushError(worker *notificationWorker, err error) bool {
 func isPushAuthError(err error) bool {
 	var apiErr *gmail.APIError
 	if errors.As(err, &apiErr) {
+		if apiErr.Transient() {
+			return false
+		}
 		return apiErr.StatusCode == 401 || apiErr.StatusCode == 403
 	}
 	code := status.Code(err)
@@ -374,12 +388,12 @@ func (s *historySynchronizer) trigger() error {
 		return nil
 	}
 	s.pending = true
-	var run func()
-	run = func() {
+	var run func(time.Duration)
+	run = func(backoff time.Duration) {
 		if err := s.sync(s.current()); err != nil {
 			if s.worker != nil {
 				if !s.app.handleFatalPushError(s.worker, err) {
-					s.retryAfter(s.worker, historyBatchDelay, run)
+					s.retryAfter(s.worker, backoff, func() { run(nextPushRetryDelay(backoff)) })
 				}
 			} else {
 				s.app.publish(func() {
@@ -391,9 +405,9 @@ func (s *historySynchronizer) trigger() error {
 		}
 	}
 	if s.worker != nil {
-		s.worker.after(s.app, historyBatchDelay, run)
+		s.worker.after(s.app, historyBatchDelay, func() { run(pushRetryInitialDelay) })
 	} else {
-		s.app.after(historyBatchDelay, run)
+		s.app.after(historyBatchDelay, func() { run(pushRetryInitialDelay) })
 	}
 	return nil
 }
@@ -410,6 +424,10 @@ func (s *historySynchronizer) retryAfter(worker *notificationWorker, delay time.
 }
 
 func (s *historySynchronizer) sync(start uint64) error {
+	return s.syncWithContext(s.ctx, start)
+}
+
+func (s *historySynchronizer) syncWithContext(ctx context.Context, start uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pending = false
@@ -419,13 +437,13 @@ func (s *historySynchronizer) sync(start uint64) error {
 	changed := make(map[string]bool)
 	var changedSummaries []mail.ThreadSummary
 	var deleted []string
-	latest, err := s.service.History(s.ctx, start, func(page gmail.HistoryPage) error {
+	latest, err := s.service.History(ctx, start, func(page gmail.HistoryPage) error {
 		for _, id := range page.ChangedThreadIDs {
 			if changed[id] {
 				continue
 			}
 			changed[id] = true
-			summary, gone, err := s.cacheThread(id)
+			summary, gone, err := s.cacheThreadWithContext(ctx, id)
 			if err != nil {
 				return err
 			}
@@ -452,8 +470,10 @@ func (s *historySynchronizer) sync(start uint64) error {
 				s.app.unreadSeen = nil
 			}
 		})
-		s.refreshUnread()
-		watch, watchErr := s.service.Watch(s.ctx)
+		if err := s.refreshUnreadWithContext(ctx); err != nil {
+			return err
+		}
+		watch, watchErr := s.service.Watch(ctx)
 		if watchErr != nil {
 			return watchErr
 		}
@@ -468,7 +488,7 @@ func (s *historySynchronizer) sync(start uint64) error {
 	if len(changedSummaries) == 0 && len(deleted) == 0 {
 		return nil
 	}
-	label, labelErr := s.service.Label(s.ctx, mail.Inbox)
+	label, labelErr := s.service.Label(ctx, mail.Inbox)
 	s.app.publish(func() {
 		if !s.active() {
 			return
@@ -489,7 +509,11 @@ func (s *historySynchronizer) sync(start uint64) error {
 }
 
 func (s *historySynchronizer) cacheThread(id string) (mail.ThreadSummary, bool, error) {
-	summary, thread, err := s.service.ThreadState(s.ctx, id)
+	return s.cacheThreadWithContext(s.ctx, id)
+}
+
+func (s *historySynchronizer) cacheThreadWithContext(ctx context.Context, id string) (mail.ThreadSummary, bool, error) {
+	summary, thread, err := s.service.ThreadState(ctx, id)
 	if err != nil {
 		var apiErr *gmail.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
@@ -503,7 +527,7 @@ func (s *historySynchronizer) cacheThread(id string) (mail.ThreadSummary, bool, 
 			if version.Load() != revision {
 				return mail.ThreadSummary{}, true, nil
 			}
-			return mail.ThreadSummary{}, true, store.DeleteThread(s.ctx, s.email, id)
+			return mail.ThreadSummary{}, true, store.DeleteThread(ctx, s.email, id)
 		}
 		return mail.ThreadSummary{}, false, err
 	}
@@ -514,16 +538,16 @@ func (s *historySynchronizer) cacheThread(id string) (mail.ThreadSummary, bool, 
 		if version.Load() != revision {
 			return summary, false, nil
 		}
-		if err := store.SaveThread(s.ctx, s.email, thread); err != nil {
+		if err := store.SaveThread(ctx, s.email, thread); err != nil {
 			return mail.ThreadSummary{}, false, err
 		}
 	}
 	return summary, false, nil
 }
 
-func (s *historySynchronizer) refreshUnread() {
-	threads, err := s.service.ListThreads(s.ctx, mail.Query{LabelID: mail.Inbox, Search: "is:unread", Limit: 100})
-	labels, labelsErr := s.service.Labels(s.ctx)
+func (s *historySynchronizer) refreshUnreadWithContext(ctx context.Context) error {
+	threads, err := s.service.ListThreads(ctx, mail.Query{LabelID: mail.Inbox, Search: "is:unread", Limit: unreadBaselineLimit})
+	labels, labelsErr := s.service.Labels(ctx)
 	s.app.publish(func() {
 		if !s.active() {
 			return
@@ -535,6 +559,10 @@ func (s *historySynchronizer) refreshUnread() {
 			s.app.updateUnreadForAccount(s.email, threads)
 		}
 	})
+	if err != nil {
+		return err
+	}
+	return labelsErr
 }
 
 func (a *App) setLabels(labels []mail.Label) {

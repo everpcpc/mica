@@ -12,6 +12,7 @@ import (
 	"mica/locales"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 	"golang.org/x/oauth2"
 )
@@ -46,7 +47,7 @@ func (a *App) OpenSettings() {
 }
 
 func (a *App) openSettings() {
-	s := &settingsState{open: true, language: mygo.App.Locale(), busy: a.accountTransition != nil}
+	s := &settingsState{open: true, language: i18n.Locale(), busy: a.accountTransition != nil}
 	a.settings = s
 	a.schedule(func() {
 		clientID, clientSecret, err := loadCustomOAuthCredentials()
