@@ -152,7 +152,7 @@
 - Supersede timer callbacks with per-thread tokens and verify the exact wake time before changing Gmail. Retry overdue failures with a delay, and close new cache work on quit while admitted operations finish.
 - Check the owner generation at mutation completion as well as enqueue. The selection ID may be empty after leaving Unified, but the owner still identifies the correct service and cache. Notices belong to the visible owner only.
 - Persist a restoring state before a remote wake or unsnooze. Restart must resume that cleanup instead of waiting for the original wake time or reviving the cancelled conversation. A remote success followed by a local deletion failure is pending cleanup, not a completed action.
-- Not every MyGo application getter is safe off the main thread. Formatting in a background workflow must use the current i18n locale rather than `App.Region`, which deadlocked a direct Snooze action. Verify menu behavior and real rendered English output after adding a toolbar action.
+- Not every MyGo application getter is safe off the main thread or before the headless app loop is ready. Formatting in a background workflow must use the current i18n locale rather than `App.Region`, which deadlocked a direct Snooze action; reading `App.Locale` to save and restore a headless test's language deadlocked the same way. Verify menu behavior and real rendered English output after adding a toolbar action, and use `locales.In` for direct translated-catalog assertions instead of driving global application locale state in a headless test.
 
 ## Serialize draft saves and preserve identity
 
