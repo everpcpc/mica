@@ -1,5 +1,9 @@
 # Development Lessons
 
+## Deduplicate automatic authentication at the shared entry point
+
+- Per-source reauthorization flags do not prevent profile and notification recovery from starting separate browser flows. A later request must wait for the active authentication instead of cancelling and replacing it, while failure, cancellation, and manual retry still clear or supersede that operation normally. A controlled profile-then-push regression created two OAuth attempts before the shared guard and only one afterward, with a successful manual retry after failure.
+
 ## Reconnect the complete notification pipeline
 
 - Retrying only Streaming Pull leaves startup, watch renewal, and history synchronization as terminal failure paths. Retry transient failures throughout the worker with bounded backoff, renew the watch before receiving again, and catch up from the persisted history checkpoint without allowing an older watch response to move it backward. Keep authentication and configuration failures on their explicit recovery paths. Controlled regressions must cover setup, reconnect catch-up, renewal, periodic reconciliation, and push-triggered history failures.
