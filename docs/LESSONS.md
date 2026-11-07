@@ -7,6 +7,7 @@
 
 ## Reconnect the complete notification pipeline
 
+- Classify Gmail failures by their API reason before treating an HTTP status as fatal. A 403 `rateLimitExceeded` is transient and must not stop the worker or show IAM guidance. Regression tests must prove automatic recovery, bound the unread metadata baseline to control quota use, propagate baseline failures instead of publishing Active, and use exponential backoff for push-triggered history retries rather than repeating every batch interval. Slow setup needs a bounded context across every stage so Connecting cannot remain indefinitely.
 - Retrying only Streaming Pull leaves startup, watch renewal, and history synchronization as terminal failure paths. Retry transient failures throughout the worker with bounded backoff, renew the watch before receiving again, and catch up from the persisted history checkpoint without allowing an older watch response to move it backward. Keep authentication and configuration failures on their explicit recovery paths. Controlled regressions must cover setup, reconnect catch-up, renewal, periodic reconciliation, and push-triggered history failures.
 
 ## Verify assets within the actual deployment root
