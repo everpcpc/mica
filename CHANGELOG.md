@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.4 - 2026-11-07
+
+- Added persistent Gmail Pub/Sub connection status, diagnostic guidance, and manual retry in Settings.
+- Stopped missing Cloud project IDs from causing endless notification reconnects.
+
 ## 0.20.3 - 2026-11-07
 
 - Stopped UserInfo and notification permission errors from repeatedly opening OAuth.
