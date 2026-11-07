@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"mica/internal/gmail"
+	"mica/internal/mail"
 	"mica/locales"
 
 	"github.com/egoist/mygo/ui"
@@ -99,6 +101,51 @@ func TestConnectRequiresOAuthConfiguration(t *testing.T) {
 	}
 	if a.settings.busy {
 		t.Fatal("validation failure left settings busy")
+	}
+}
+
+func TestProfileAndPushShareAuthenticationAttempt(t *testing.T) {
+	a := New(newFakeService())
+	a.storeAccount = "demo@example.com"
+	a.account.Email = a.storeAccount
+	var jobs, updates []func()
+	a.schedule = func(fn func()) { jobs = append(jobs, fn) }
+	a.update = func(fn func()) { updates = append(updates, fn) }
+	loginCalls := 0
+	a.loginGmail = func(context.Context, mailStore, string, string, string, string) (mail.Service, string, error) {
+		loginCalls++
+		return nil, "", errors.New("authorization failed")
+	}
+	a.authenticateAccountWithCredentials(a.storeAccount, "id", "secret", "project")
+	if len(jobs) != 1 || a.authCancel == nil {
+		t.Fatalf("initial authentication did not start: jobs=%d active=%v", len(jobs), a.authCancel != nil)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	worker := &notificationWorker{ctx: ctx, cancel: cancel, done: make(chan struct{}), version: a.serviceVersion}
+	a.notification = worker
+	a.notificationsStarted = true
+	a.handlePushError(worker, &gmail.APIError{StatusCode: 401})
+	for len(updates) > 0 {
+		update := updates[0]
+		updates = updates[1:]
+		update()
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("profile and notification errors started %d OAuth attempts, want 1", len(jobs))
+	}
+	jobs[0]()
+	for len(updates) > 0 {
+		update := updates[0]
+		updates = updates[1:]
+		update()
+	}
+	if loginCalls != 1 || a.authCancel != nil {
+		t.Fatalf("failed authentication did not finish cleanly: calls=%d active=%v", loginCalls, a.authCancel != nil)
+	}
+	a.authenticateAccountWithCredentials(a.storeAccount, "id", "secret", "project")
+	if len(jobs) != 2 {
+		t.Fatalf("manual retry was blocked after failure: jobs=%d, want 2", len(jobs))
 	}
 }
 

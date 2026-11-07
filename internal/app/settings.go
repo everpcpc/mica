@@ -497,52 +497,68 @@ func (a *App) reauthorizeGmail() {
 
 func (a *App) authenticateAccount(expectedEmail string) {
 	expectedEmail = normalizedEmail(expectedEmail)
-	if expectedEmail == "" || a.accountTransition != nil || a.compose != nil {
+	if expectedEmail == "" || a.authCancel != nil || a.accountTransition != nil || a.compose != nil {
 		return
 	}
 	clientID, clientSecret, err := loadOAuthCredentials()
 	if err == nil {
 		var projectID string
 		projectID, err = loadOAuthProjectID()
-		if err == nil && clientID != "" && clientSecret != "" {
-			s := a.settings
-			if s != nil {
-				s.busy = true
-				s.err = ""
-			}
-			a.cancelPendingAuthentication()
-			auth := a.authID
-			version := a.serviceVersion
-			ctx, cancel := context.WithCancel(context.Background())
-			a.authCancel = cancel
-			if s != nil {
-				s.cancel = cancel
-			}
-			a.schedule(func() {
-				service, email, loginErr := loginGmailService(ctx, a.store, clientID, clientSecret, projectID, expectedEmail)
-				a.publish(func() {
-					if version != a.serviceVersion || a.authID != auth {
-						return
-					}
-					a.authCancel = nil
-					if a.settings == s && s != nil {
-						s.cancel = nil
-					}
-					if loginErr != nil {
-						a.accountAuthenticationFailed(s, expectedEmail, loginErr)
-						return
-					}
-					if a.compose != nil || a.accountTransition != nil {
-						a.accountAuthenticationFailed(s, expectedEmail, errors.New(locales.AccountComposerRequired()))
-						return
-					}
-					a.transitionToService(service, email, false, "")
-				})
-			})
+		if err == nil {
+			a.authenticateAccountWithCredentials(expectedEmail, clientID, clientSecret, projectID)
 			return
 		}
 	}
 	a.accountAuthenticationFailed(a.settings, expectedEmail, err)
+}
+
+func (a *App) authenticateAccountWithCredentials(expectedEmail, clientID, clientSecret, projectID string) {
+	// Profile and notification recovery can race; both must await the same browser flow.
+	if expectedEmail == "" || a.authCancel != nil || a.accountTransition != nil || a.compose != nil {
+		return
+	}
+	if clientID == "" || clientSecret == "" {
+		a.accountAuthenticationFailed(a.settings, expectedEmail, gmail.ErrNoSession)
+		return
+	}
+	s := a.settings
+	if s != nil {
+		s.busy = true
+		s.err = ""
+	}
+	a.cancelPendingAuthentication()
+	auth := a.authID
+	version := a.serviceVersion
+	ctx, cancel := context.WithCancel(context.Background())
+	a.authCancel = cancel
+	if s != nil {
+		s.cancel = cancel
+	}
+	a.schedule(func() {
+		login := a.loginGmail
+		if login == nil {
+			login = loginGmailService
+		}
+		service, email, loginErr := login(ctx, a.store, clientID, clientSecret, projectID, expectedEmail)
+		a.publish(func() {
+			if version != a.serviceVersion || a.authID != auth {
+				return
+			}
+			a.authCancel = nil
+			if a.settings == s && s != nil {
+				s.cancel = nil
+			}
+			if loginErr != nil {
+				a.accountAuthenticationFailed(s, expectedEmail, loginErr)
+				return
+			}
+			if a.compose != nil || a.accountTransition != nil {
+				a.accountAuthenticationFailed(s, expectedEmail, errors.New(locales.AccountComposerRequired()))
+				return
+			}
+			a.transitionToService(service, email, false, "")
+		})
+	})
 }
 
 func (a *App) accountAuthenticationFailed(s *settingsState, expectedEmail string, err error) {
